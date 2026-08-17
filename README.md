@@ -27,7 +27,11 @@ Mantenha `MAIL_DRY_RUN=1` em desenvolvimento: o e-mail vai para o log em vez da 
 | `npm run lint` | ESLint |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm test` | Testes do engine, formatadores, geometria do PDF, WhatsApp e e-mail |
-| `npm run infra:verificar` | Diagnostica o `.env.local`: banco, RLS, bucket, usuária da Mel e domínio no Resend. Não imprime segredo |
+| `npm run infra:verificar` | Diagnostica o `.env.local`: banco, RLS, bucket, usuária da Mel e SMTP/Resend. Não imprime segredo |
+| `npm run e2e:formulario` | Fluxo público completo nas 4 categorias e nas duas ramificações, contra as rotas HTTP reais |
+| `npm run e2e:admin -- <email>` | Painel: gera PDF, sobe no Storage e **envia e-mail de verdade** para o endereço informado |
+| `npm run bundle:verificar` | Procura os **valores** dos segredos no bundle do navegador (grep por nome dá falso positivo) |
+| `npm run admin:criar -- <email>` | Cria a usuária do painel já confirmada, com senha forte gerada |
 | `npm run templates:placeholder` | Regera os 4 PDFs base provisórios |
 | `npm run pdf:verificar` | Gera uma proposta por categoria em `.pdf-verificacao/` e confere os limites do PRD |
 | `npm run pdf:verificar -- --grid` | Idem + os PDFs de calibração, sem precisar de sessão |

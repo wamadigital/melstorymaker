@@ -12,7 +12,10 @@
     "templates:placeholder": "node scripts/placeholder-templates.mjs",
     "pdf:verificar": "node --conditions=react-server --import tsx scripts/verificar-pdf.ts",
     "infra:verificar": "node --env-file=.env.local --import tsx scripts/verificar-infra.ts",
-    "admin:criar": "node --env-file=.env.local --import tsx scripts/criar-admin.ts"
+    "admin:criar": "node --env-file=.env.local --import tsx scripts/criar-admin.ts",
+    "e2e:formulario": "node --env-file=.env.local --import tsx scripts/e2e-formulario.ts",
+    "e2e:admin": "node --env-file=.env.local --import tsx scripts/e2e-admin.ts",
+    "bundle:verificar": "node --env-file=.env.local --import tsx scripts/verificar-bundle.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
