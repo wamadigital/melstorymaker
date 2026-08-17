@@ -38,7 +38,7 @@ export function LoginClient() {
   }
 
   return (
-    <div className="flex min-h-[100dvh] items-center justify-center px-5">
+    <div className="flex min-h-dvh items-center justify-center px-5">
       <form onSubmit={entrar} className="w-full max-w-sm space-y-6">
         <div className="space-y-1.5 text-center">
           <h1 className="text-2xl font-semibold">Painel da Mel</h1>

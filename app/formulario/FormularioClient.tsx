@@ -201,17 +201,21 @@ export function FormularioClient({ whatsappMel }: { whatsappMel: string }) {
       return;
     }
 
-    await submeter(atualizadas, categoria, leadId);
+    await submeter(atualizadas, categoria, leadId, passo.id);
   }
 
-  async function submeter(rec: Respostas, cat: Categoria, id: string) {
+  async function submeter(rec: Respostas, cat: Categoria, id: string, passoFinal: string) {
     setOcupado(true);
     setErro(null);
 
     try {
       // Aqui o await e obrigatorio: e a ultima chance de o servidor receber
       // tudo antes da transicao de status.
-      const salvou = await salvar(rec, null, cat, id);
+      //
+      // passoFinal (e nao null) de proposito: se o submit falhar logo depois, a
+      // retomada precisa voltar na ULTIMA pergunta, nao na primeira. Passar null
+      // faria o handler cair no primeiro passo visivel.
+      const salvou = await salvar(rec, passoFinal, cat, id);
       if (!salvou) throw new Error("autosave");
 
       const r = await fetch(`/api/leads/${id}/submit`, { method: "POST" });
@@ -256,7 +260,7 @@ export function FormularioClient({ whatsappMel }: { whatsappMel: string }) {
 
   return (
     <LazyMotion features={domAnimation} strict>
-      <div className="mx-auto flex min-h-[100dvh] w-full max-w-xl flex-col px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-5">
+      <div className="mx-auto flex min-h-dvh w-full max-w-xl flex-col px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-5">
         {tela === "pergunta" && (
           <header className="mb-8 flex items-center gap-3">
             <Button
