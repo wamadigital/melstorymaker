@@ -7,7 +7,32 @@ export type Categoria = (typeof CATEGORIAS)[number];
 export const STATUS = ["incompleto", "aguardando_revisao", "enviado"] as const;
 export type Status = (typeof STATUS)[number];
 
-export type TipoPergunta = "texto" | "data" | "hora" | "escolha_unica" | "email" | "telefone";
+export type TipoPergunta =
+  | "texto"
+  | "data"
+  | "hora"
+  | "escolha_unica"
+  | "email"
+  | "telefone"
+  | "numero";
+
+/**
+ * Arte usada no PDF. NAO e a mesma coisa que `Categoria`: aniversario resolve
+ * entre duas artes conforme a idade, mas continua sendo uma categoria so no
+ * banco. Manter os dois conceitos separados evita mexer no enum do Postgres --
+ * ou seja, evita migration.
+ */
+export const TEMPLATES = [
+  "debutante",
+  "aniversario_infantil",
+  "aniversario_adulto",
+  "casamento",
+  "corporativo",
+] as const;
+export type TemplateId = (typeof TEMPLATES)[number];
+
+/** 14 anos ou menos usa a arte infantil; 15 ou mais, a de adulto. */
+export const IDADE_MAXIMA_INFANTIL = 14;
 
 /**
  * Duas formas de opcao convivem no arvore.json: a pergunta de categoria usa
@@ -24,7 +49,12 @@ export type Passo = {
   obrigatorio?: boolean;
   placeholder?: string;
   mascara?: string;
-  min?: string;
+  /**
+   * Em `data`, string ISO ou o literal "hoje". Em `numero`, o valor numerico.
+   * Os dois tipos convivem no mesmo campo porque o arvore.json e o schema.
+   */
+  min?: string | number;
+  max?: string | number;
   opcoes?: OpcaoBruta[];
   /** Ramificacao: o passo so aparece se as respostas baterem com este mapa. */
   exibir_se?: Record<string, string>;

@@ -11,8 +11,8 @@
  * Roda nas 4 categorias, com making_of "Sim" e "Nao", e deixa os leads no
  * banco para a revisao no painel.
  */
-import { passosVisiveis } from "@/lib/form/engine";
-import { CATEGORIAS, type Categoria, type Respostas } from "@/lib/form/types";
+import { passosVisiveis, resolverTemplateId } from "@/lib/form/engine";
+import { CATEGORIAS, type Categoria, type Passo, type Respostas } from "@/lib/form/types";
 
 const BASE = process.env.APP_URL ?? "http://localhost:3000";
 
@@ -24,20 +24,41 @@ const erro = (m: string) => {
 };
 const checar = (cond: boolean, m: string) => (cond ? ok(m) : erro(m));
 
-/** Respostas de exemplo por tipo de pergunta, derivadas do proprio arvore.json. */
-function responder(id: string, tipo: string, makingOf: "Sim" | "Não"): string {
-  if (id === "making_of") return makingOf;
-  if (id === "entrega") return "Em tempo real";
-  if (id === "contato_email") return "lead.teste@example.com";
-  if (id === "contato_whatsapp") return "(19) 99999-8888";
+/**
+ * O rate limit e 10 criacoes por minuto por IP. Rodar este teste duas vezes
+ * seguidas estoura o limite, e sem esta checagem o resultado vira uma lista de
+ * falhas sem relacao aparente com a causa.
+ */
+let avisouLimite = false;
+function ehRateLimit(status: number): boolean {
+  if (status !== 429) return false;
+  if (!avisouLimite) {
+    avisouLimite = true;
+    console.log(
+      "\n  \x1b[33m! rate limit atingido (10 criações/min por IP).\x1b[0m\n" +
+        "    Não é bug: é o limite funcionando. Espere 1 minuto e rode de novo.\n",
+    );
+  }
+  return true;
+}
 
-  switch (tipo) {
+/** Respostas de exemplo por tipo de pergunta, derivadas do proprio arvore.json. */
+function responder(passo: Passo, makingOf: "Sim" | "Não", idade: string): string {
+  if (passo.id === "making_of") return makingOf;
+  if (passo.id === "entrega") return "Em tempo real";
+  if (passo.id === "contato_email") return "lead.teste@example.com";
+  if (passo.id === "contato_whatsapp") return "(19) 99999-8888";
+  if (passo.id === "idade") return idade;
+
+  switch (passo.tipo) {
     case "data":
       return "2027-03-14";
     case "hora":
       return "19:30";
+    case "numero":
+      return String(typeof passo.min === "number" ? passo.min : 1);
     case "texto":
-      return id === "nome" ? "Ana & João Teste" : `Local de ${id}`;
+      return passo.id === "nome" ? "Ana & João Teste" : `Local de ${passo.id}`;
     default:
       return "x";
   }
@@ -47,8 +68,10 @@ async function json(r: Response) {
   return { status: r.status, body: await r.json().catch(() => null) };
 }
 
-async function rodarCategoria(categoria: Categoria, makingOf: "Sim" | "Não") {
-  console.log(`\n\x1b[1m${categoria} (making_of = ${makingOf})\x1b[0m`);
+async function rodarCategoria(categoria: Categoria, makingOf: "Sim" | "Não", idade = "30") {
+  const temIdade = passosVisiveis(categoria, {}).some((p) => p.id === "idade");
+  const sufixo = temIdade ? `idade = ${idade}` : `making_of = ${makingOf}`;
+  console.log(`\n\x1b[1m${categoria} (${sufixo})\x1b[0m`);
 
   // --- RF-02: o lead nasce na escolha da categoria ------------------------
   const criado = await json(
@@ -59,6 +82,7 @@ async function rodarCategoria(categoria: Categoria, makingOf: "Sim" | "Não") {
     }),
   );
 
+  if (ehRateLimit(criado.status)) return null;
   if (criado.status !== 201 || !criado.body?.id) {
     erro(`criacao falhou (HTTP ${criado.status}): ${JSON.stringify(criado.body)}`);
     return null;
@@ -75,7 +99,7 @@ async function rodarCategoria(categoria: Categoria, makingOf: "Sim" | "Não") {
 
   for (let i = 0; i < passos.length; i++) {
     const passo = passos[i];
-    respostas[passo.id] = responder(passo.id, passo.tipo, makingOf);
+    respostas[passo.id] = responder(passo, makingOf, idade);
 
     // A ramificacao muda a lista de passos assim que making_of e respondido.
     passos = passosVisiveis(categoria, respostas);
@@ -152,12 +176,33 @@ async function main() {
 
   for (const categoria of CATEGORIAS) {
     const temRamificacao = passosVisiveis(categoria, {}).some((p) => p.id === "making_of");
-    // Categorias com making of rodam nos dois caminhos.
-    const variantes: ("Sim" | "Não")[] = temRamificacao ? ["Sim", "Não"] : ["Sim"];
+    const temIdade = passosVisiveis(categoria, {}).some((p) => p.id === "idade");
 
-    for (const v of variantes) {
-      const id = await rodarCategoria(categoria, v);
+    // Categorias com making of rodam nos dois caminhos; aniversario roda nas
+    // duas idades, para exercitar as duas artes.
+    const casos: { makingOf: "Sim" | "Não"; idade: string }[] = temIdade
+      ? [
+          { makingOf: "Sim", idade: "8" },
+          { makingOf: "Sim", idade: "30" },
+        ]
+      : temRamificacao
+        ? [
+            { makingOf: "Sim", idade: "30" },
+            { makingOf: "Não", idade: "30" },
+          ]
+        : [{ makingOf: "Sim", idade: "30" }];
+
+    for (const caso of casos) {
+      const id = await rodarCategoria(categoria, caso.makingOf, caso.idade);
       if (id) ids.push(id);
+
+      if (temIdade) {
+        const esperada = Number(caso.idade) <= 14 ? "aniversario_infantil" : "aniversario_adulto";
+        checar(
+          resolverTemplateId(categoria, { idade: caso.idade }) === esperada,
+          `idade ${caso.idade} resolve para ${esperada}`,
+        );
+      }
     }
   }
 
@@ -171,7 +216,8 @@ async function main() {
       body: JSON.stringify({ categoria: "formatura" }),
     }),
   );
-  checar(categoriaInvalida.status === 400, "categoria fora do arvore.json recusada (400)");
+  if (!ehRateLimit(categoriaInvalida.status))
+    checar(categoriaInvalida.status === 400, "categoria fora do arvore.json recusada (400)");
 
   const idInvalido = await json(await fetch(`${BASE}/api/leads/nao-e-uuid`));
   checar(idInvalido.status === 404, "id malformado recusado (404)");
@@ -183,7 +229,8 @@ async function main() {
       body: JSON.stringify({}),
     }),
   );
-  checar(submitVazio.status === 400, "corpo vazio recusado (400)");
+  if (!ehRateLimit(submitVazio.status))
+    checar(submitVazio.status === 400, "corpo vazio recusado (400)");
 
   // Chave que nao existe no arvore.json nao pode entrar no jsonb.
   const novo = await json(
@@ -217,6 +264,13 @@ async function main() {
   );
 
   console.log(`\n${ids.length} leads criados no banco.`);
+  if (avisouLimite) {
+    console.log(
+      "\n\x1b[33m\x1b[1mResultado incompleto: o rate limit cortou parte da execução.\x1b[0m\n" +
+        "Espere 1 minuto e rode de novo para um resultado limpo.\n",
+    );
+    process.exit(1);
+  }
   if (falhas) {
     console.log(`\n\x1b[31m\x1b[1m${falhas} verificação(ões) falharam.\x1b[0m\n`);
     process.exit(1);

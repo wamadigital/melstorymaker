@@ -36,7 +36,7 @@ app/api/admin          Endpoints protegidos: gerar-pdf, enviar
 lib/form               arvore.json + engine de renderização
 lib/pdf                templates.config.ts, gerar.ts, formatadores pt-BR
 lib/mail               adapter.ts, gmail.ts, templates de e-mail
-assets/templates       4 PDFs base exportados do Figma (um por categoria)
+assets/templates       5 PDFs base exportados do Figma (um por ARTE, não por categoria)
 assets/fonts           Fontes da marca (.ttf)
 supabase/schema.sql    Schema completo
 ```
@@ -49,6 +49,7 @@ supabase/schema.sql    Schema completo
 4. Human-in-the-loop: nenhum e-mail sai para o lead sem ação explícita da Mel no painel. Não criar envio automático pós-submit.
 5. Formulário renderizado 100% a partir de `lib/form/arvore.json`. Perguntas nunca hardcoded em componentes. Nova pergunta = mudança no JSON.
 6. Sem lógica de preço. Valores estão desenhados na arte estática dos templates.
+6b. Categoria (4, enum do Postgres) e arte (5, `TemplateId`) são conceitos separados. `aniversario` resolve entre `aniversario_infantil` (14 anos ou menos) e `aniversario_adulto` (15+) via `resolverTemplateId(categoria, respostas)`. Nunca indexar template por categoria, e nunca acrescentar valor ao enum para criar arte nova — isso geraria migration à toa.
 7. Sem banners de cookies, telas de consentimento ou fluxos de LGPD. Decisão de escopo do owner.
 8. Escopo v2 do PRD (seção 19) é proibido no MVP: sem tracking de abertura, sem agenda, sem contrato/pagamento, sem analytics de funil, sem notificações em tempo real.
 9. Admin tem usuária única (Mel), criada via dashboard do Supabase. Nunca criar tela ou endpoint de signup.
@@ -67,7 +68,7 @@ supabase/schema.sql    Schema completo
 1. pdf-lib usa origem no canto INFERIOR esquerdo da página. Converter coordenadas vindas do Figma (origem superior esquerda): `y_pdf = alturaPagina - y_figma - tamanhoFonte`.
 2. Chamar `pdfDoc.registerFontkit(fontkit)` ANTES de embutir qualquer fonte custom.
 3. Campo com `maxLargura`: reduzir o tamanho da fonte proporcionalmente até caber. Nunca quebrar linha em campo de nome.
-4. Criar a rota de calibração `/admin/debug-template?categoria=X` (grid de coordenadas a cada 20pt sobre o PDF base) ANTES de calibrar o primeiro template. Calibrar sem ela é proibido.
+4. Criar a rota de calibração `/admin/debug-template?template=X` (grid de coordenadas a cada 20pt sobre o PDF base) ANTES de calibrar o primeiro template. Calibrar sem ela é proibido. O parâmetro é o `TemplateId`, não a categoria: `aniversario` sozinho é ambíguo.
 5. Formatação sempre via `lib/pdf/formatadores.ts`: data por extenso pt-BR ("14 de março de 2026"), hora no padrão "19h30".
 6. Regerar PDF sobrescreve `{leadId}.pdf` no bucket `propostas` (URL estável para o link do WhatsApp). Preview no painel usa query param de cache-bust.
 
@@ -75,7 +76,7 @@ supabase/schema.sql    Schema completo
 
 - Domínio em pt-BR: categorias, status, chaves do jsonb e do `arvore.json` (`aguardando_revisao`, `making_of`, `local_festa`). Código e infra em inglês: variáveis, funções, componentes, commits.
 - Toda string visível ao usuário em pt-BR. Copies do e-mail e do WhatsApp: usar exatamente as da seção 14 do PRD, sem reescrever o tom da Mel.
-- Um componente por tipo de pergunta (`texto`, `data`, `hora`, `escolha_unica`, `email`, `telefone`), todos consumindo o schema do `arvore.json`.
+- Um componente por tipo de pergunta (`texto`, `data`, `hora`, `escolha_unica`, `email`, `telefone`, `numero`), todos consumindo o schema do `arvore.json`.
 - Sem dependências novas sem justificativa de 1 linha no PR. O bundle de `/formulario` é sagrado: LCP < 2.5s em 4G.
 - Mobile-first de verdade: desenvolver em viewport 360px. Cenário real de uso é o navegador in-app do WhatsApp.
 - Datas no banco em ISO; formatação pt-BR só na borda (UI e PDF).
@@ -85,7 +86,7 @@ supabase/schema.sql    Schema completo
 - Commits pequenos, mensagens em inglês, padrão convencional (`feat:`, `fix:`, `chore:`).
 - Mudança de arte (PDFs base ou coordenadas em `templates.config.ts`): PR dedicada contendo só isso.
 - Feature só está pronta depois de rodar o cenário da Definition of Done (PRD seção 18) para a categoria afetada.
-- Antes de deploy final: testar manualmente as 4 categorias, incluindo a ramificação `making_of` com "Sim" e com "Não", e a retomada de lead incompleto.
+- Antes de deploy final: testar manualmente as 4 categorias e as 5 artes (aniversário com idade ≤14 e ≥15), incluindo a ramificação `making_of` com "Sim" e com "Não", e a retomada de lead incompleto.
 - Ao corrigir um bug causado por premissa errada sobre o projeto, registrar a regra correta neste arquivo na mesma PR.
 
 ## Nunca fazer

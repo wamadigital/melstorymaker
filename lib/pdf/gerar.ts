@@ -2,7 +2,8 @@ import "server-only";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { PDFDocument, type PDFFont, type PDFPage } from "pdf-lib";
-import type { Categoria, Respostas } from "@/lib/form/types";
+import { resolverTemplateId } from "@/lib/form/engine";
+import type { Categoria, Respostas, TemplateId } from "@/lib/form/types";
 import { FORMATADORES } from "./formatadores";
 import { carregarFontes, textoSeguro } from "./fontes";
 import { ajustarTamanho, alinharX, converterY, hexParaRgb } from "./geometria";
@@ -12,6 +13,9 @@ export const DIR_TEMPLATES = path.join(process.cwd(), "assets", "templates");
 
 export type ResultadoPdf = {
   bytes: Uint8Array;
+  /** Arte efetivamente usada. O painel mostra para a Mel conferir. */
+  templateId: TemplateId;
+  rotuloTemplate: string;
   /** true quando a arte real ainda nao esta no repo (rodou sobre placeholder). */
   usouPlaceholder: boolean;
   /** true quando alguma fonte da marca faltou e caiu no fallback. */
@@ -60,21 +64,21 @@ function desenharCampo(
  * script enquanto o export do Figma nao chega, para o pipeline nunca travar.
  */
 export async function caminhoTemplate(
-  categoria: Categoria,
+  template: TemplateId,
 ): Promise<{ caminho: string; placeholder: boolean }> {
-  const real = path.join(process.cwd(), templates[categoria].basePdf);
+  const real = path.join(process.cwd(), templates[template].basePdf);
   try {
     await fs.access(real);
     return { caminho: real, placeholder: false };
   } catch {
-    const provisorio = path.join(DIR_TEMPLATES, `${categoria}.placeholder.pdf`);
+    const provisorio = path.join(DIR_TEMPLATES, `${template}.placeholder.pdf`);
     try {
       await fs.access(provisorio);
       return { caminho: provisorio, placeholder: true };
     } catch {
       throw new Error(
-        `Template da categoria "${categoria}" nao encontrado. Coloque a arte em ` +
-          `${templates[categoria].basePdf} ou rode \`npm run templates:placeholder\`.`,
+        `Arte "${template}" nao encontrada. Coloque o PDF em ` +
+          `${templates[template].basePdf} ou rode \`npm run templates:placeholder\`.`,
       );
     }
   }
@@ -85,11 +89,14 @@ export async function gerarProposta(
   categoria: Categoria,
   respostas: Respostas,
 ): Promise<ResultadoPdf> {
-  const config = templates[categoria];
-  const { caminho, placeholder } = await caminhoTemplate(categoria);
+  // A arte sai das RESPOSTAS, nao so da categoria: aniversario resolve entre
+  // infantil e adulto conforme a idade.
+  const templateId = resolverTemplateId(categoria, respostas);
+  const config = templates[templateId];
+  const { caminho, placeholder } = await caminhoTemplate(templateId);
 
   const pdfDoc = await PDFDocument.load(await fs.readFile(caminho));
-  const fontes = await carregarFontes(pdfDoc, fontesUsadas(categoria));
+  const fontes = await carregarFontes(pdfDoc, fontesUsadas(templateId));
   const paginas = pdfDoc.getPages();
   const contexto = { respostas };
 
@@ -98,7 +105,7 @@ export async function gerarProposta(
     if (!page) {
       console.warn(
         `[pdf] campo "${campo.chave}" aponta para a pagina ${campo.pagina}, ` +
-          `mas ${categoria} tem ${paginas.length}. Campo ignorado.`,
+          `mas ${templateId} tem ${paginas.length}. Campo ignorado.`,
       );
       continue;
     }
@@ -112,6 +119,8 @@ export async function gerarProposta(
 
   return {
     bytes: await pdfDoc.save(),
+    templateId,
+    rotuloTemplate: config.rotulo,
     usouPlaceholder: placeholder,
     usouFallbackDeFonte: fontes.usouFallback,
   };

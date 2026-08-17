@@ -24,6 +24,7 @@ export function DetalheLead({ lead }: { lead: Lead }) {
   const [pdfUrl, setPdfUrl] = useState(lead.pdf_url);
   const [pdfGeradoEm, setPdfGeradoEm] = useState(lead.pdf_gerado_em);
   const [enviadoEm, setEnviadoEm] = useState(lead.enviado_em);
+  const [rotuloArte, setRotuloArte] = useState<string | null>(null);
 
   const [acao, setAcao] = useState<null | "salvar" | "gerar" | "enviar">(null);
   const [aviso, setAviso] = useState<Aviso | null>(null);
@@ -69,6 +70,7 @@ export function DetalheLead({ lead }: { lead: Lead }) {
 
       setPdfUrl(json.pdf_url);
       setPdfGeradoEm(json.pdf_gerado_em);
+      setRotuloArte(json.rotuloTemplate ?? null);
 
       // A Mel precisa saber quando o preview NAO representa a arte final.
       const ressalvas = [
@@ -76,10 +78,14 @@ export function DetalheLead({ lead }: { lead: Lead }) {
         json.usouFallbackDeFonte && "as fontes da marca ainda não estão no repo",
       ].filter(Boolean);
 
+      // Em aniversario a arte depende da idade respondida: dizer qual saiu
+      // deixa a Mel corrigir antes de enviar, em vez de descobrir depois.
+      const arte = json.rotuloTemplate ? `Arte: ${json.rotuloTemplate}.` : "";
+
       setAviso(
         ressalvas.length
-          ? { tom: "atencao", texto: `Proposta gerada, mas ${ressalvas.join(" e ")}.` }
-          : { tom: "ok", texto: "Proposta gerada." },
+          ? { tom: "atencao", texto: `Proposta gerada. ${arte} Mas ${ressalvas.join(" e ")}.` }
+          : { tom: "ok", texto: `Proposta gerada. ${arte}` },
       );
       router.refresh();
     } catch (e) {
@@ -273,6 +279,12 @@ export function DetalheLead({ lead }: { lead: Lead }) {
             <dt>WhatsApp do lead:</dt>
             <dd className="text-foreground">{whatsapp || "não informado"}</dd>
           </div>
+          {rotuloArte && (
+            <div className="flex gap-2">
+              <dt>Arte usada:</dt>
+              <dd className="text-foreground">{rotuloArte}</dd>
+            </div>
+          )}
           {pdfGeradoEm && (
             <div className="flex gap-2">
               <dt>Proposta gerada em:</dt>

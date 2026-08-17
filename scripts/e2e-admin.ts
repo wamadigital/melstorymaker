@@ -100,7 +100,14 @@ async function main() {
   if (env.status !== 200) console.log("   ", JSON.stringify(ej));
   else {
     checar(ej.comAnexo === true, "e-mail saiu com o PDF em anexo");
-    checar(ej.dryRun === false, "envio REAL (dry-run desligado)");
+    // Nao exigir dry-run desligado: rodar com a trava ligada e o padrao seguro.
+    // O que importa e a rota ter funcionado; o modo so precisa ficar explicito.
+    if (ej.dryRun) {
+      console.log("  \x1b[33m!\x1b[0m MAIL_DRY_RUN=1: e-mail foi para o log, não para a caixa.");
+      console.log("    Para enviar de verdade: MAIL_DRY_RUN=0 no .env.local e reinicie o dev.");
+    } else {
+      ok("envio REAL — confira a caixa de entrada");
+    }
   }
 
   // 8. status final

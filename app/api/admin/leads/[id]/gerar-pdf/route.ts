@@ -60,6 +60,10 @@ export async function POST(_req: Request, { params }: Ctx) {
       ok: true,
       pdf_url,
       pdf_gerado_em,
+      // Qual arte foi escolhida. Em aniversario isso depende da idade, entao a
+      // Mel precisa poder conferir se saiu a infantil ou a de adulto.
+      templateId: resultado.templateId,
+      rotuloTemplate: resultado.rotuloTemplate,
       // O painel avisa a Mel quando o PDF nao esta fiel a arte final.
       usouPlaceholder: resultado.usouPlaceholder,
       usouFallbackDeFonte: resultado.usouFallbackDeFonte,

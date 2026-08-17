@@ -11,9 +11,12 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 
-const CATEGORIAS = {
+// Uma arte por TemplateId, nao por categoria: aniversario tem duas, escolhidas
+// pela idade (14 ou menos = infantil).
+const ARTES = {
   debutante: "Festa de 15 anos",
-  aniversario: "Aniversário",
+  aniversario_infantil: "Aniversário infantil",
+  aniversario_adulto: "Aniversário adulto",
   casamento: "Casamento",
   corporativo: "Evento corporativo",
 };
@@ -27,7 +30,7 @@ const PAGINAS = 3;
 const dir = path.join(process.cwd(), "assets", "templates");
 await fs.mkdir(dir, { recursive: true });
 
-for (const [categoria, rotulo] of Object.entries(CATEGORIAS)) {
+for (const [arte, rotulo] of Object.entries(ARTES)) {
   const doc = await PDFDocument.create();
   const serif = await doc.embedFont(StandardFonts.TimesRoman);
   const sans = await doc.embedFont(StandardFonts.Helvetica);
@@ -68,12 +71,12 @@ for (const [categoria, rotulo] of Object.entries(CATEGORIAS)) {
     });
   }
 
-  const destino = path.join(dir, `${categoria}.placeholder.pdf`);
+  const destino = path.join(dir, `${arte}.placeholder.pdf`);
   await fs.writeFile(destino, await doc.save());
   console.log(`✓ ${path.relative(process.cwd(), destino)}`);
 }
 
 console.log(
-  `\n${Object.keys(CATEGORIAS).length} placeholders em ${LARGURA}x${ALTURA}pt. ` +
-    `Calibre em /admin/debug-template?categoria=casamento`,
+  `\n${Object.keys(ARTES).length} placeholders em ${LARGURA}x${ALTURA}pt. ` +
+    `Calibre em /admin/debug-template?template=casamento`,
 );

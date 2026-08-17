@@ -14,7 +14,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { PDFDocument } from "pdf-lib";
 import { passosVisiveis } from "@/lib/form/engine";
-import { CATEGORIAS, type Categoria, type Respostas } from "@/lib/form/types";
+import { CATEGORIAS, TEMPLATES, type Categoria, type Respostas } from "@/lib/form/types";
 import { gerarProposta } from "@/lib/pdf/gerar";
 
 const AMOSTRAS: Record<Categoria, Respostas> = {
@@ -32,6 +32,8 @@ const AMOSTRAS: Record<Categoria, Respostas> = {
   },
   aniversario: {
     nome: "João",
+    // 8 anos: deve resolver para a arte infantil.
+    idade: "8",
     data: "2026-12-01",
     // Hora cheia: deve sair "20h", nao "20h00".
     horario: "20:00",
@@ -52,6 +54,7 @@ const AMOSTRAS: Record<Categoria, Respostas> = {
   },
   corporativo: {
     nome: "Acme Tecnologia Ltda",
+    tipo_evento: "Confraternização de fim de ano",
     data: "2026-05-20",
     horario: "09:00",
     local: "Centro de Convenções Rebouças",
@@ -90,7 +93,8 @@ async function main() {
     const kb = (r.bytes.length / 1024).toFixed(0);
 
     console.log(
-      `✓ ${categoria.padEnd(12)} ${String(relido.getPageCount()).padStart(2)} pág  ` +
+      `✓ ${categoria.padEnd(12)} → ${r.templateId.padEnd(20)} ` +
+        `${String(relido.getPageCount()).padStart(2)} pág  ` +
         `${kb.padStart(4)}kB  ${String(ms).padStart(4)}ms` +
         `${r.usouPlaceholder ? "  [placeholder]" : ""}` +
         `${r.usouFallbackDeFonte ? "  [fonte fallback]" : ""}`,
@@ -110,9 +114,10 @@ async function main() {
   // /admin/debug-template devolve -- util para conferir sem precisar de sessao.
   if (process.argv.includes("--grid")) {
     const { gerarPdfCalibracao } = await import("@/lib/pdf/grid");
-    for (const categoria of CATEGORIAS) {
-      await fs.writeFile(path.join(saida, `grid-${categoria}.pdf`), await gerarPdfCalibracao(categoria));
-      console.log(`✓ grid-${categoria}.pdf`);
+    // Itera sobre as ARTES, nao sobre as categorias: aniversario tem duas.
+    for (const template of TEMPLATES) {
+      await fs.writeFile(path.join(saida, `grid-${template}.pdf`), await gerarPdfCalibracao(template));
+      console.log(`✓ grid-${template}.pdf`);
     }
   }
 

@@ -1,7 +1,7 @@
 import "server-only";
 import fs from "node:fs/promises";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
-import type { Categoria } from "@/lib/form/types";
+import type { TemplateId } from "@/lib/form/types";
 import { carregarFontes, textoSeguro } from "./fontes";
 import { caminhoTemplate } from "./gerar";
 import { ajustarTamanho, alinharX, converterY, hexParaRgb } from "./geometria";
@@ -24,6 +24,7 @@ const PASSO_ROTULO = 100;
 
 const EXEMPLOS: Record<string, string> = {
   nome: "Maria Eduarda & João Vitor",
+  tipo_evento: "Confraternização de fim de ano",
   data: "14 de março de 2026",
   horario: "19h30",
   local: "Espaço Villa Bisutti",
@@ -32,13 +33,13 @@ const EXEMPLOS: Record<string, string> = {
   local_making_of: "Hotel Fasano",
 };
 
-export async function gerarPdfCalibracao(categoria: Categoria): Promise<Uint8Array> {
-  const config = templates[categoria];
-  const { caminho, placeholder } = await caminhoTemplate(categoria);
+export async function gerarPdfCalibracao(template: TemplateId): Promise<Uint8Array> {
+  const config = templates[template];
+  const { caminho, placeholder } = await caminhoTemplate(template);
 
   const pdfDoc = await PDFDocument.load(await fs.readFile(caminho));
   const mono = await pdfDoc.embedFont(StandardFonts.Courier);
-  const daMarca = await carregarFontes(pdfDoc, fontesUsadas(categoria));
+  const daMarca = await carregarFontes(pdfDoc, fontesUsadas(template));
 
   const cinza = rgb(0.75, 0.75, 0.8);
   const azul = rgb(0.1, 0.35, 0.9);
@@ -83,7 +84,7 @@ export async function gerarPdfCalibracao(categoria: Categoria): Promise<Uint8Arr
     }
 
     page.drawText(
-      `${categoria} | pagina ${indice} | ${Math.round(width)}x${Math.round(height)}pt | ` +
+      `${template} | pagina ${indice} | ${Math.round(width)}x${Math.round(height)}pt | ` +
         `f=figma(topo) p=pdf(base)${placeholder ? " | PLACEHOLDER" : ""}`,
       { x: 4, y: 4, size: 7, font: mono, color: magenta },
     );

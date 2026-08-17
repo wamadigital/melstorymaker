@@ -1,4 +1,4 @@
-import type { Categoria } from "@/lib/form/types";
+import type { TemplateId } from "@/lib/form/types";
 import type { NomeFormatador } from "./formatadores";
 import type { NomeFonte } from "./fontes";
 
@@ -25,6 +25,8 @@ export type CampoTemplate = {
 
 export type TemplateConfig = {
   basePdf: string;
+  /** Nome legivel da arte, exibido no painel para a Mel conferir. */
+  rotulo: string;
   /**
    * De onde vieram os numeros de x/y.
    *
@@ -49,245 +51,145 @@ export type TemplateConfig = {
 
 const COR_TINTA = "#3A2E2A";
 
+/** Campos que toda arte tem, para nao repetir cinco vezes o mesmo bloco. */
+function camposComuns(): CampoTemplate[] {
+  return [
+    {
+      chave: "data",
+      fonte: "respostas.data",
+      pagina: 1,
+      x: 90,
+      y: 300,
+      font: "BrandSans-Regular",
+      tamanho: 14,
+      cor: COR_TINTA,
+      formato: "data_extenso",
+    },
+    {
+      chave: "horario",
+      fonte: "respostas.horario",
+      pagina: 1,
+      x: 90,
+      y: 330,
+      font: "BrandSans-Regular",
+      tamanho: 14,
+      cor: COR_TINTA,
+      formato: "hora_br",
+    },
+  ];
+}
+
+function campoNome(font: NomeFonte = "BrandSerif-Bold", tamanho = 32): CampoTemplate {
+  return {
+    chave: "nome",
+    fonte: "respostas.nome",
+    pagina: 0,
+    x: 297,
+    y: 420,
+    font,
+    tamanho,
+    cor: COR_TINTA,
+    maxLargura: 420,
+    alinhamento: "centro",
+  };
+}
+
+function campoLocal(chave: string, y: number): CampoTemplate {
+  return {
+    chave,
+    fonte: `respostas.${chave}`,
+    pagina: 1,
+    x: 90,
+    y,
+    font: "BrandSans-Regular",
+    tamanho: 14,
+    cor: COR_TINTA,
+    maxLargura: 380,
+  };
+}
+
 /**
  * PROVISORIO ate a arte real do Figma entrar no repo.
  *
  * Os numeros abaixo posicionam texto legivel sobre os PDFs placeholder para o
  * pipeline rodar ponta a ponta. Eles NAO correspondem a arte da Mel. A
- * calibracao de verdade se faz em /admin/debug-template?categoria=X, e entra em
+ * calibracao de verdade se faz em /admin/debug-template?template=X, e entra em
  * PR dedicada contendo so assets + este arquivo.
+ *
+ * Indexado por TemplateId, nao por Categoria: `aniversario` e uma categoria so
+ * no banco, mas resolve entre duas artes conforme a idade.
  */
-export const templates: Record<Categoria, TemplateConfig> = {
+export const templates: Record<TemplateId, TemplateConfig> = {
   debutante: {
     basePdf: "assets/templates/debutante.pdf",
+    rotulo: "Festa de 15 anos",
     origemCoordenadas: "figma",
     escala: 1,
-    campos: [
-      {
-        chave: "nome",
-        fonte: "respostas.nome",
-        pagina: 0,
-        x: 297,
-        y: 420,
-        font: "BrandSerif-Bold",
-        tamanho: 32,
-        cor: COR_TINTA,
-        maxLargura: 420,
-        alinhamento: "centro",
-      },
-      {
-        chave: "data",
-        fonte: "respostas.data",
-        pagina: 1,
-        x: 90,
-        y: 300,
-        font: "BrandSans-Regular",
-        tamanho: 14,
-        cor: COR_TINTA,
-        formato: "data_extenso",
-      },
-      {
-        chave: "horario",
-        fonte: "respostas.horario",
-        pagina: 1,
-        x: 90,
-        y: 330,
-        font: "BrandSans-Regular",
-        tamanho: 14,
-        cor: COR_TINTA,
-        formato: "hora_br",
-      },
-      {
-        chave: "local",
-        fonte: "respostas.local",
-        pagina: 1,
-        x: 90,
-        y: 360,
-        font: "BrandSans-Regular",
-        tamanho: 14,
-        cor: COR_TINTA,
-        maxLargura: 380,
-      },
-    ],
+    campos: [campoNome(), ...camposComuns(), campoLocal("local", 360)],
   },
 
-  aniversario: {
-    basePdf: "assets/templates/aniversario.pdf",
+  aniversario_infantil: {
+    basePdf: "assets/templates/aniversario_infantil.pdf",
+    rotulo: "Aniversário infantil (até 14 anos)",
     origemCoordenadas: "figma",
     escala: 1,
-    campos: [
-      {
-        chave: "nome",
-        fonte: "respostas.nome",
-        pagina: 0,
-        x: 297,
-        y: 420,
-        font: "BrandSerif-Bold",
-        tamanho: 32,
-        cor: COR_TINTA,
-        maxLargura: 420,
-        alinhamento: "centro",
-      },
-      {
-        chave: "data",
-        fonte: "respostas.data",
-        pagina: 1,
-        x: 90,
-        y: 300,
-        font: "BrandSans-Regular",
-        tamanho: 14,
-        cor: COR_TINTA,
-        formato: "data_extenso",
-      },
-      {
-        chave: "horario",
-        fonte: "respostas.horario",
-        pagina: 1,
-        x: 90,
-        y: 330,
-        font: "BrandSans-Regular",
-        tamanho: 14,
-        cor: COR_TINTA,
-        formato: "hora_br",
-      },
-      {
-        chave: "local",
-        fonte: "respostas.local",
-        pagina: 1,
-        x: 90,
-        y: 360,
-        font: "BrandSans-Regular",
-        tamanho: 14,
-        cor: COR_TINTA,
-        maxLargura: 380,
-      },
-    ],
+    campos: [campoNome(), ...camposComuns(), campoLocal("local", 360)],
   },
 
-  // Casamento e a unica categoria com dois locais separados na arte.
+  aniversario_adulto: {
+    basePdf: "assets/templates/aniversario_adulto.pdf",
+    rotulo: "Aniversário adulto (15 anos ou mais)",
+    origemCoordenadas: "figma",
+    escala: 1,
+    campos: [campoNome(), ...camposComuns(), campoLocal("local", 360)],
+  },
+
+  // Unica arte com dois locais separados.
   casamento: {
     basePdf: "assets/templates/casamento.pdf",
+    rotulo: "Casamento",
     origemCoordenadas: "figma",
     escala: 1,
     campos: [
-      {
-        chave: "nome",
-        fonte: "respostas.nome",
-        pagina: 0,
-        x: 297,
-        y: 420,
-        font: "BrandSerif-Bold",
-        tamanho: 32,
-        cor: COR_TINTA,
-        maxLargura: 420,
-        alinhamento: "centro",
-      },
-      {
-        chave: "data",
-        fonte: "respostas.data",
-        pagina: 1,
-        x: 90,
-        y: 300,
-        font: "BrandSans-Regular",
-        tamanho: 14,
-        cor: COR_TINTA,
-        formato: "data_extenso",
-      },
-      {
-        chave: "horario",
-        fonte: "respostas.horario",
-        pagina: 1,
-        x: 90,
-        y: 330,
-        font: "BrandSans-Regular",
-        tamanho: 14,
-        cor: COR_TINTA,
-        formato: "hora_br",
-      },
-      {
-        chave: "local_cerimonia",
-        fonte: "respostas.local_cerimonia",
-        pagina: 1,
-        x: 90,
-        y: 360,
-        font: "BrandSans-Regular",
-        tamanho: 14,
-        cor: COR_TINTA,
-        maxLargura: 380,
-      },
-      {
-        chave: "local_festa",
-        fonte: "respostas.local_festa",
-        pagina: 1,
-        x: 90,
-        y: 390,
-        font: "BrandSans-Regular",
-        tamanho: 14,
-        cor: COR_TINTA,
-        maxLargura: 380,
-      },
+      campoNome(),
+      ...camposComuns(),
+      campoLocal("local_cerimonia", 360),
+      campoLocal("local_festa", 390),
     ],
   },
 
   corporativo: {
     basePdf: "assets/templates/corporativo.pdf",
+    rotulo: "Evento corporativo",
     origemCoordenadas: "figma",
     escala: 1,
     campos: [
+      campoNome("BrandSans-Bold", 28),
+      // Coordenada provisoria: a posicao real sai da arte do Figma, onde este
+      // campo vai existir como variavel.
       {
-        chave: "nome",
-        fonte: "respostas.nome",
+        chave: "tipo_evento",
+        fonte: "respostas.tipo_evento",
         pagina: 0,
         x: 297,
-        y: 420,
-        font: "BrandSans-Bold",
-        tamanho: 28,
+        y: 470,
+        font: "BrandSans-Regular",
+        tamanho: 16,
         cor: COR_TINTA,
         maxLargura: 420,
         alinhamento: "centro",
       },
-      {
-        chave: "data",
-        fonte: "respostas.data",
-        pagina: 1,
-        x: 90,
-        y: 300,
-        font: "BrandSans-Regular",
-        tamanho: 14,
-        cor: COR_TINTA,
-        formato: "data_extenso",
-      },
-      {
-        chave: "horario",
-        fonte: "respostas.horario",
-        pagina: 1,
-        x: 90,
-        y: 330,
-        font: "BrandSans-Regular",
-        tamanho: 14,
-        cor: COR_TINTA,
-        formato: "hora_br",
-      },
-      {
-        chave: "local",
-        fonte: "respostas.local",
-        pagina: 1,
-        x: 90,
-        y: 360,
-        font: "BrandSans-Regular",
-        tamanho: 14,
-        cor: COR_TINTA,
-        maxLargura: 380,
-      },
+      ...camposComuns(),
+      campoLocal("local", 360),
     ],
   },
 };
 
 /**
- * `making_of` e `entrega` nao sao impressos: a arte de cada categoria nao tem
- * espaco reservado para eles. Aparecem no painel, como contexto para a Mel. Se
- * um dia a arte ganhar esse espaco, basta acrescentar o campo aqui.
+ * `idade`, `making_of` e `entrega` nao sao impressos: servem para escolher a
+ * arte ou para contexto da Mel no painel. Se a arte de alguma categoria ganhar
+ * espaco para eles, basta acrescentar o campo aqui.
  */
-export function fontesUsadas(categoria: Categoria): NomeFonte[] {
-  return [...new Set(templates[categoria].campos.map((c) => c.font))];
+export function fontesUsadas(template: TemplateId): NomeFonte[] {
+  return [...new Set(templates[template].campos.map((c) => c.font))];
 }

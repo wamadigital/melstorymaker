@@ -54,6 +54,16 @@ export function validarResposta(passo: Passo, valor: string, hoje = new Date()):
     case "hora":
       return RE_HORA.test(v) ? null : "Escolhe um horário válido.";
 
+    case "numero": {
+      if (!/^\d+$/.test(v)) return "Digita só o número, por favor.";
+      const n = Number.parseInt(v, 10);
+      const min = typeof passo.min === "number" ? passo.min : undefined;
+      const max = typeof passo.max === "number" ? passo.max : undefined;
+      if (min !== undefined && n < min) return `Precisa ser ${min} ou mais.`;
+      if (max !== undefined && n > max) return `Precisa ser ${max} ou menos.`;
+      return null;
+    }
+
     case "escolha_unica": {
       const validos = normalizarOpcoes(passo.opcoes).map((o) => o.valor);
       return validos.includes(v) ? null : "Escolhe uma das opções.";

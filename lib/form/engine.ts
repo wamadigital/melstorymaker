@@ -1,5 +1,14 @@
 import arvoreJson from "./arvore.json";
-import type { Arvore, Categoria, Opcao, OpcaoBruta, Passo, Respostas } from "./types";
+import {
+  IDADE_MAXIMA_INFANTIL,
+  type Arvore,
+  type Categoria,
+  type Opcao,
+  type OpcaoBruta,
+  type Passo,
+  type Respostas,
+  type TemplateId,
+} from "./types";
 
 export const arvore = arvoreJson as unknown as Arvore;
 
@@ -99,10 +108,32 @@ export function limparRespostasOrfas(categoria: Categoria, respostas: Respostas)
 }
 
 /**
+ * Qual arte o PDF usa.
+ *
+ * NAO e a mesma coisa que a categoria: `aniversario` e uma categoria so no
+ * banco, mas resolve entre duas artes conforme a idade. Separar os conceitos e
+ * o que permite acrescentar arte sem tocar no enum do Postgres.
+ *
+ * Idade ausente ou ilegivel cai em `aniversario_adulto` -- e a arte mais
+ * neutra, e o painel mostra para a Mel qual foi usada, entao um lead
+ * incompleto nunca gera uma proposta infantil por acidente.
+ */
+export function resolverTemplateId(categoria: Categoria, respostas: Respostas): TemplateId {
+  if (categoria !== "aniversario") return categoria;
+
+  const idade = Number.parseInt((respostas.idade ?? "").trim(), 10);
+  if (!Number.isFinite(idade)) return "aniversario_adulto";
+
+  return idade <= IDADE_MAXIMA_INFANTIL ? "aniversario_infantil" : "aniversario_adulto";
+}
+
+/**
  * Data minima para o input, em ISO local. `new Date().toISOString()` daria a
  * data em UTC e, depois das 21h no horario de Brasilia, ja seria "amanha".
  */
 export function dataMinima(passo: Passo, hoje = new Date()): string | undefined {
+  // `min` tambem carrega numero (tipo "numero"); aqui so interessa string.
+  if (typeof passo.min === "number") return undefined;
   if (passo.min !== "hoje") return passo.min;
   const ano = hoje.getFullYear();
   const mes = String(hoje.getMonth() + 1).padStart(2, "0");

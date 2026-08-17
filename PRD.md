@@ -41,7 +41,7 @@ Estas decisões já foram tomadas e não devem ser reabertas durante o desenvolv
 
 ### Dentro do MVP
 
-1. Formulário público multi-etapas em `/formulario` com 4 categorias e ramificações
+1. Formulário público multi-etapas em `/formulario` com 4 categorias (5 artes) e ramificações
 2. Autosave de respostas parciais (lead incompleto fica salvo)
 3. Painel admin protegido por login para a Mel
 4. Geração de PDF personalizado por categoria (arte exportada do Figma + campos dinâmicos)
@@ -117,6 +117,7 @@ Fonte única de verdade em `/lib/form/arvore.json`. O engine renderiza a partir 
     ],
     "aniversario": [
       { "id": "nome", "tipo": "texto", "pergunta": "Nome do(a) aniversariante ✨", "obrigatorio": true },
+      { "id": "idade", "tipo": "numero", "pergunta": "Quantos anos vai completar? ✨", "obrigatorio": true, "min": 1, "max": 120 },
       { "id": "data", "tipo": "data", "pergunta": "Data da festa", "obrigatorio": true, "min": "hoje" },
       { "id": "horario", "tipo": "hora", "pergunta": "Horário do convite", "obrigatorio": true },
       { "id": "local", "tipo": "texto", "pergunta": "Local da festa", "obrigatorio": true },
@@ -134,6 +135,7 @@ Fonte única de verdade em `/lib/form/arvore.json`. O engine renderiza a partir 
     ],
     "corporativo": [
       { "id": "nome", "tipo": "texto", "pergunta": "Nome da empresa", "obrigatorio": true },
+      { "id": "tipo_evento", "tipo": "texto", "pergunta": "Que tipo de evento vamos cobrir?", "obrigatorio": true },
       { "id": "data", "tipo": "data", "pergunta": "Data do evento", "obrigatorio": true, "min": "hoje" },
       { "id": "horario", "tipo": "hora", "pergunta": "Horário do evento", "obrigatorio": true },
       { "id": "local", "tipo": "texto", "pergunta": "Local do evento", "obrigatorio": true }
@@ -157,6 +159,7 @@ Regras do engine:
 2. A ordem do array é a ordem das telas.
 3. Depois do último passo do fluxo da categoria, o engine sempre injeta os passos de `contato` e encerra em `confirmacao`.
 4. `cta_whatsapp` da confirmação abre `https://wa.me/{MEL_WHATSAPP}` (env var), mantendo a conversa quente.
+5. **Categoria e arte não são a mesma coisa.** `aniversario` é uma categoria só no banco, mas resolve entre duas artes conforme a resposta de `idade`: **14 anos ou menos = infantil, 15 ou mais = adulto**. São 4 categorias e 5 artes. Acrescentar arte não mexe no enum do Postgres, logo não gera migration.
 
 ## 7. Requisitos funcionais
 
@@ -219,12 +222,15 @@ Estados do lead:
 ### Insumos (exportados do Figma, versionados no repo)
 
 ```
-/assets/templates/debutante.pdf      3-4 páginas, arte final, espaços em branco nos campos dinâmicos
-/assets/templates/aniversario.pdf
+/assets/templates/debutante.pdf              3-4 páginas, arte final, espaços em branco nos campos dinâmicos
+/assets/templates/aniversario_infantil.pdf   até 14 anos
+/assets/templates/aniversario_adulto.pdf     15 anos ou mais
 /assets/templates/casamento.pdf
 /assets/templates/corporativo.pdf
-/assets/fonts/*.ttf                  Fontes da marca (necessárias pro pdf-lib desenhar texto idêntico ao design)
+/assets/fonts/*.ttf                          Fontes da marca (necessárias pro pdf-lib desenhar texto idêntico ao design)
 ```
+
+São **5 artes para 4 categorias**: o nome do arquivo é o `TemplateId`, não a categoria.
 
 Exportar do Figma com imagens comprimidas. Alvo: cada PDF base abaixo de 4MB (vai por anexo de e-mail).
 
@@ -253,10 +259,11 @@ export const templates: Record<Categoria, TemplateConfig> = {
 Notas de implementação (importantes pro agente de código):
 
 1. **Origem do eixo Y no pdf-lib é o canto inferior esquerdo da página.** Coordenadas do Figma (origem superior esquerda) precisam ser convertidas: `y_pdf = alturaPagina - y_figma - tamanhoFonte`.
-2. Criar rota de calibração `/admin/debug-template?categoria=X` que gera o PDF base com um grid de coordenadas a cada 20pt sobreposto. Corta o tempo de ajuste fino de horas para minutos.
+2. Criar rota de calibração `/admin/debug-template?template=X` que gera o PDF base com um grid de coordenadas a cada 20pt sobreposto. Corta o tempo de ajuste fino de horas para minutos. O parâmetro é o `TemplateId` (5 valores), não a categoria.
 3. Registrar fontkit e embutir as fontes da marca antes de desenhar qualquer texto.
 4. `maxLargura`: se o texto exceder, reduzir o tamanho da fonte proporcionalmente até caber (nunca quebrar linha em campo de nome).
-5. Respostas de making of e entrega não são impressas no PDF por padrão. Elas aparecem no painel para contexto da Mel. Se a arte de alguma categoria tiver espaço pra isso, é só adicionar o campo no config.
+5. Respostas de `idade`, `making_of` e `entrega` não são impressas no PDF: a idade serve para escolher a arte, as outras aparecem no painel como contexto da Mel. `tipo_evento` (corporativo) É impresso — a arte reserva espaço para ele.
+6. A resolução da arte é `resolverTemplateId(categoria, respostas)`, não um acesso direto por categoria. Idade ausente ou ilegível cai em `aniversario_adulto`, e o painel mostra à Mel qual arte foi usada — um lead incompleto nunca gera proposta infantil por acidente.
 
 ### Armazenamento
 
@@ -453,7 +460,7 @@ Regra do `nome_display`: debutante/aniversariante/noivos/empresa conforme o camp
 
 ## 15. Insumos necessários antes de codar (checklist Henrique/Mel)
 
-1. [ ] 4 PDFs base exportados do Figma (com espaços em branco nos campos dinâmicos, < 4MB cada)
+1. [ ] 5 PDFs base exportados do Figma (com espaços em branco nos campos dinâmicos, < 4MB cada): `debutante`, `aniversario_infantil`, `aniversario_adulto`, `casamento`, `corporativo`
 2. [ ] Arquivos .ttf/.otf das fontes da marca
 3. [ ] Paleta de cores da marca (hex)
 4. [ ] Acesso ao DNS de melstorymaker.com.br no painel do Registro.br

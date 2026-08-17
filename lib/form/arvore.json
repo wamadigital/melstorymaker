@@ -26,6 +26,7 @@
     ],
     "aniversario": [
       { "id": "nome", "tipo": "texto", "pergunta": "Nome do(a) aniversariante ✨", "obrigatorio": true },
+      { "id": "idade", "tipo": "numero", "pergunta": "Quantos anos vai completar? ✨", "obrigatorio": true, "min": 1, "max": 120 },
       { "id": "data", "tipo": "data", "pergunta": "Data da festa", "obrigatorio": true, "min": "hoje" },
       { "id": "horario", "tipo": "hora", "pergunta": "Horário do convite", "obrigatorio": true },
       { "id": "local", "tipo": "texto", "pergunta": "Local da festa", "obrigatorio": true },
@@ -43,6 +44,7 @@
     ],
     "corporativo": [
       { "id": "nome", "tipo": "texto", "pergunta": "Nome da empresa", "obrigatorio": true },
+      { "id": "tipo_evento", "tipo": "texto", "pergunta": "Que tipo de evento vamos cobrir?", "obrigatorio": true },
       { "id": "data", "tipo": "data", "pergunta": "Data do evento", "obrigatorio": true, "min": "hoje" },
       { "id": "horario", "tipo": "hora", "pergunta": "Horário do evento", "obrigatorio": true },
       { "id": "local", "tipo": "texto", "pergunta": "Local do evento", "obrigatorio": true }

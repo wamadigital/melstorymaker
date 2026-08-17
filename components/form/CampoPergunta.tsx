@@ -4,6 +4,7 @@ import { CampoData } from "./campos/CampoData";
 import { CampoEmail } from "./campos/CampoEmail";
 import { CampoEscolhaUnica } from "./campos/CampoEscolhaUnica";
 import { CampoHora } from "./campos/CampoHora";
+import { CampoNumero } from "./campos/CampoNumero";
 import { CampoTelefone } from "./campos/CampoTelefone";
 import { CampoTexto } from "./campos/CampoTexto";
 import type { CampoProps } from "./tipos";
@@ -18,6 +19,7 @@ const POR_TIPO: Record<TipoPergunta, React.ComponentType<CampoProps>> = {
   escolha_unica: CampoEscolhaUnica,
   email: CampoEmail,
   telefone: CampoTelefone,
+  numero: CampoNumero,
 };
 
 export function CampoPergunta(props: CampoProps) {
