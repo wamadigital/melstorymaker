@@ -9,6 +9,7 @@ Especificação do produto: [PRD.md](PRD.md). Contrato de como trabalhar no repo
 ```bash
 npm install
 cp .env.example .env.local      # preencha os valores (ver abaixo)
+npm run infra:verificar         # testa cada chave de verdade e diz o que falta
 npm run templates:placeholder   # PDFs base provisórios, enquanto a arte real não chega
 npm run dev
 ```
@@ -26,6 +27,7 @@ Mantenha `MAIL_DRY_RUN=1` em desenvolvimento: o e-mail vai para o log em vez da 
 | `npm run lint` | ESLint |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm test` | Testes do engine, formatadores, geometria do PDF, WhatsApp e e-mail |
+| `npm run infra:verificar` | Diagnostica o `.env.local`: banco, RLS, bucket, usuária da Mel e domínio no Resend. Não imprime segredo |
 | `npm run templates:placeholder` | Regera os 4 PDFs base provisórios |
 | `npm run pdf:verificar` | Gera uma proposta por categoria em `.pdf-verificacao/` e confere os limites do PRD |
 | `npm run pdf:verificar -- --grid` | Idem + os PDFs de calibração, sem precisar de sessão |
