@@ -32,6 +32,10 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
+
+# PDFs base placeholder gerados por script (a arte real do Figma e versionada)
+/assets/templates/*.placeholder.pdf
 
 # vercel
 .vercel
@@ -39,3 +43,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# saida do npm run pdf:verificar
+/.pdf-verificacao

@@ -1,0 +1,97 @@
+# CLAUDE.md | Sistema de Propostas Mel Simão
+
+Contrato operacional deste repo. A especificação completa (requisitos, árvore do formulário, critérios de aceite) está em `PRD.md`, que é a fonte de verdade do produto. Este arquivo define como trabalhar aqui. Em conflito entre os dois, o PRD define O QUE, este arquivo define COMO.
+
+## Contexto em 2 linhas
+
+MVP: lead preenche formulário multi-etapas estilo Typeform em `/formulario`, sistema gera PDF fiel à arte do Figma, Mel aprova no painel `/admin` e envia por e-mail + WhatsApp. Prazo de 2 dias, custo de infra R$ 0 (free tiers). Produção: `https://melstorymaker.com.br` (DNS gerenciado no Registro.br).
+
+## Stack (travada, não sugerir alternativas)
+
+- Next.js 14+ App Router, TypeScript strict
+- Tailwind + shadcn/ui + Framer Motion (só nas transições do form)
+- Supabase: Postgres, Auth, Storage
+- pdf-lib + @pdf-lib/fontkit
+- Resend (principal) + Nodemailer/Gmail SMTP (contingência), ambos atrás de MailAdapter
+- Deploy: Vercel
+
+## Comandos
+
+```bash
+npm run dev          # ambiente local
+npm run build        # build de produção (rodar antes de todo commit relevante)
+npm run lint         # ESLint
+npx tsc --noEmit     # checagem de tipos
+```
+
+Schema do banco: aplicar `supabase/schema.sql` manualmente no SQL Editor do Supabase. Não usar migrations automáticas neste MVP.
+
+## Mapa do repo
+
+```
+app/formulario         Form público multi-etapas
+app/admin              Login, lista de leads, detalhe
+app/api/leads          Endpoints públicos: criar, autosave, submit
+app/api/admin          Endpoints protegidos: gerar-pdf, enviar
+lib/form               arvore.json + engine de renderização
+lib/pdf                templates.config.ts, gerar.ts, formatadores pt-BR
+lib/mail               adapter.ts, gmail.ts, templates de e-mail
+assets/templates       4 PDFs base exportados do Figma (um por categoria)
+assets/fonts           Fontes da marca (.ttf)
+supabase/schema.sql    Schema completo
+```
+
+## Decisões travadas (NUNCA reabrir nem "melhorar")
+
+1. PDF gerado com pdf-lib sobre os PDFs base do Figma. Nunca Puppeteer, Chromium, headless browser ou API do Figma em runtime.
+2. E-mail sempre pela interface `MailAdapter`, com dois providers: `ResendAdapter` (principal, remetente `mel@melstorymaker.com.br`) e `GmailAdapter` (contingência). Seleção exclusivamente via env `MAIL_PROVIDER`. Nunca chamar Resend ou Nodemailer direto de uma rota.
+3. WhatsApp = links `wa.me` gerados no painel. Nenhuma API de WhatsApp (Twilio, Z-API, Evolution, Baileys).
+4. Human-in-the-loop: nenhum e-mail sai para o lead sem ação explícita da Mel no painel. Não criar envio automático pós-submit.
+5. Formulário renderizado 100% a partir de `lib/form/arvore.json`. Perguntas nunca hardcoded em componentes. Nova pergunta = mudança no JSON.
+6. Sem lógica de preço. Valores estão desenhados na arte estática dos templates.
+7. Sem banners de cookies, telas de consentimento ou fluxos de LGPD. Decisão de escopo do owner.
+8. Escopo v2 do PRD (seção 19) é proibido no MVP: sem tracking de abertura, sem agenda, sem contrato/pagamento, sem analytics de funil, sem notificações em tempo real.
+9. Admin tem usuária única (Mel), criada via dashboard do Supabase. Nunca criar tela ou endpoint de signup.
+
+## Dados e segurança
+
+- O client NUNCA fala direto com o Supabase para leads. Todo acesso via route handlers usando `SUPABASE_SERVICE_ROLE_KEY` (server-side only).
+- RLS ativado na tabela `leads` com zero policies públicas. Se um acesso falhar por RLS, a correção é no route handler, nunca criar policy pública.
+- `respostas` é jsonb: mudança na árvore de perguntas não gera migration.
+- Colunas promovidas (`nome_display`, `data_evento`, `email`, `whatsapp`) são atualizadas no autosave, junto com o jsonb.
+- Transições de status apenas nos endpoints definidos: `incompleto` (criação) > `aguardando_revisao` (submit) > `enviado` (envio de e-mail).
+- Nunca commitar `.env`, App Password ou service role key. Nunca expor a service role no bundle do client.
+
+## PDF: gotchas obrigatórios
+
+1. pdf-lib usa origem no canto INFERIOR esquerdo da página. Converter coordenadas vindas do Figma (origem superior esquerda): `y_pdf = alturaPagina - y_figma - tamanhoFonte`.
+2. Chamar `pdfDoc.registerFontkit(fontkit)` ANTES de embutir qualquer fonte custom.
+3. Campo com `maxLargura`: reduzir o tamanho da fonte proporcionalmente até caber. Nunca quebrar linha em campo de nome.
+4. Criar a rota de calibração `/admin/debug-template?categoria=X` (grid de coordenadas a cada 20pt sobre o PDF base) ANTES de calibrar o primeiro template. Calibrar sem ela é proibido.
+5. Formatação sempre via `lib/pdf/formatadores.ts`: data por extenso pt-BR ("14 de março de 2026"), hora no padrão "19h30".
+6. Regerar PDF sobrescreve `{leadId}.pdf` no bucket `propostas` (URL estável para o link do WhatsApp). Preview no painel usa query param de cache-bust.
+
+## Convenções de código
+
+- Domínio em pt-BR: categorias, status, chaves do jsonb e do `arvore.json` (`aguardando_revisao`, `making_of`, `local_festa`). Código e infra em inglês: variáveis, funções, componentes, commits.
+- Toda string visível ao usuário em pt-BR. Copies do e-mail e do WhatsApp: usar exatamente as da seção 14 do PRD, sem reescrever o tom da Mel.
+- Um componente por tipo de pergunta (`texto`, `data`, `hora`, `escolha_unica`, `email`, `telefone`), todos consumindo o schema do `arvore.json`.
+- Sem dependências novas sem justificativa de 1 linha no PR. O bundle de `/formulario` é sagrado: LCP < 2.5s em 4G.
+- Mobile-first de verdade: desenvolver em viewport 360px. Cenário real de uso é o navegador in-app do WhatsApp.
+- Datas no banco em ISO; formatação pt-BR só na borda (UI e PDF).
+
+## Workflow
+
+- Commits pequenos, mensagens em inglês, padrão convencional (`feat:`, `fix:`, `chore:`).
+- Mudança de arte (PDFs base ou coordenadas em `templates.config.ts`): PR dedicada contendo só isso.
+- Feature só está pronta depois de rodar o cenário da Definition of Done (PRD seção 18) para a categoria afetada.
+- Antes de deploy final: testar manualmente as 4 categorias, incluindo a ramificação `making_of` com "Sim" e com "Não", e a retomada de lead incompleto.
+- Ao corrigir um bug causado por premissa errada sobre o projeto, registrar a regra correta neste arquivo na mesma PR.
+
+## Nunca fazer
+
+- Nunca inventar perguntas, opções ou textos fora do `arvore.json` e do PRD.
+- Nunca adicionar checagem de agenda, validação de conflito de datas ou disponibilidade.
+- Nunca enviar e-mail em ambiente de desenvolvimento sem flag explícita (`MAIL_DRY_RUN=1` loga em vez de enviar).
+- Nunca transformar o formulário em página única com todos os campos. Uma pergunta por tela é requisito de produto.
+- Nunca remover o autosave ou condicionar a criação do lead ao término do formulário. Lead parcial é lead.

@@ -1,36 +1,87 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Sistema de Propostas | Mel Simão Storymaker
 
-## Getting Started
+Lead preenche o formulário em `/formulario`, o sistema gera o PDF sobre a arte do Figma, a Mel aprova em `/admin` e envia por e-mail + WhatsApp.
 
-First, run the development server:
+Especificação do produto: [PRD.md](PRD.md). Contrato de como trabalhar no repo: [CLAUDE.md](CLAUDE.md).
+
+## Rodar local
 
 ```bash
+npm install
+cp .env.example .env.local      # preencha os valores (ver abaixo)
+npm run templates:placeholder   # PDFs base provisórios, enquanto a arte real não chega
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+O formulário abre em http://localhost:3000/formulario e o painel em http://localhost:3000/admin.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Mantenha `MAIL_DRY_RUN=1` em desenvolvimento: o e-mail vai para o log em vez da caixa do lead.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Comandos
 
-## Learn More
+| Comando | O que faz |
+|---|---|
+| `npm run dev` | Ambiente local |
+| `npm run build` | Build de produção — rodar antes de todo commit relevante |
+| `npm run lint` | ESLint |
+| `npm run typecheck` | `tsc --noEmit` |
+| `npm test` | Testes do engine, formatadores, geometria do PDF, WhatsApp e e-mail |
+| `npm run templates:placeholder` | Regera os 4 PDFs base provisórios |
+| `npm run pdf:verificar` | Gera uma proposta por categoria em `.pdf-verificacao/` e confere os limites do PRD |
+| `npm run pdf:verificar -- --grid` | Idem + os PDFs de calibração, sem precisar de sessão |
 
-To learn more about Next.js, take a look at the following resources:
+## Setup da infra (uma vez)
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### 1. Supabase
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+1. Criar o projeto.
+2. SQL Editor → colar e rodar [supabase/schema.sql](supabase/schema.sql) inteiro. Ele cria os enums, a tabela `leads`, os índices, liga o RLS **sem policies** e cria o bucket público `propostas`.
+3. Authentication → Users → **Add user**: e-mail e senha da Mel. Não existe tela de signup no sistema, e não deve existir.
+4. Settings → API: copiar `URL`, `anon key` e `service_role key` para o `.env.local`.
 
-## Deploy on Vercel
+> A tabela `leads` tem RLS ligado e nenhuma policy. Isso é proposital: todo acesso passa por route handlers usando a service role. Se algo falhar por RLS, a correção é no route handler — nunca criar policy pública.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### 2. Resend
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. Criar a conta e adicionar o domínio `melstorymaker.com.br`.
+2. Copiar os registros DNS que o painel exibir (SPF, DKIM e MX de retorno) para o Registro.br. **Não** hardcodar valores: o painel do Resend é a fonte de verdade.
+3. Gerar a API key → `RESEND_API_KEY`.
+4. `MAIL_REPLY_TO` = Gmail que a Mel já usa. Não é preciso criar caixa de e-mail no domínio: o Resend só precisa do domínio verificado para enviar, e as respostas voltam pelo reply-to.
+
+Se o DNS não verificar a tempo, a contingência já está pronta: `MAIL_PROVIDER=gmail` com `GMAIL_USER` + `GMAIL_APP_PASSWORD` (exige 2FA ativo na conta Google). Zero mudança de código.
+
+### 3. Vercel
+
+1. Importar o repositório.
+2. Cadastrar todas as variáveis do `.env.example`, com `MAIL_DRY_RUN=0` e `APP_URL=https://melstorymaker.com.br`.
+3. Adicionar o domínio e criar no Registro.br exatamente os registros que a Vercel exibir.
+
+## Como está organizado
+
+```
+app/formulario         Form público multi-etapas
+app/admin              Login, lista, detalhe, rota de calibração
+app/api/leads          Endpoints públicos: criar, retomar, autosave, submit
+app/api/admin          Endpoints protegidos: salvar, gerar-pdf, enviar
+lib/form               arvore.json + engine + validação
+lib/pdf                templates.config.ts, gerar.ts, geometria, grid, formatadores
+lib/mail               adapter.ts + resend.ts + gmail.ts + templates (copies do PRD)
+lib/supabase           admin.ts (service role), server.ts e client.ts (só sessão)
+assets/templates       PDFs base exportados do Figma
+assets/fonts           Fontes da marca (.ttf)
+supabase/schema.sql    Schema completo
+```
+
+## Calibrar um template
+
+Ordem obrigatória — a rota de grid existe para não calibrar no olho:
+
+1. Colocar o PDF exportado do Figma em `assets/templates/{categoria}.pdf` e as fontes em `assets/fonts/`.
+2. Abrir `/admin/debug-template?categoria=casamento`. O PDF vem com grid a cada 20pt, rótulos a cada 100pt e os campos atuais desenhados com dado de exemplo.
+3. Ler as coordenadas e ajustar [lib/pdf/templates.config.ts](lib/pdf/templates.config.ts).
+
+Os rótulos do eixo Y trazem duas leituras: **`f`** é a coordenada como o Figma mostra (origem no topo) e **`p`** é a do pdf-lib (origem embaixo). Cada template declara em qual sistema seus números estão, no campo `origemCoordenadas` — o valor lido direto do grid é `"pdf"`, o copiado do painel do Figma é `"figma"`.
+
+Se o frame do Figma não tiver as mesmas dimensões da página exportada, ajuste `escala` (= largura da página em pt ÷ largura do frame). Ela se aplica a x, y e ao tamanho da fonte.
+
+Mudança de arte sai em PR dedicada contendo só assets + `templates.config.ts`.
