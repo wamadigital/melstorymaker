@@ -41,15 +41,26 @@ create index if not exists leads_created_idx on leads (created_at desc);
 
 -- updated_at ---------------------------------------------------------------
 
+-- `set search_path` fixo nao e detalhe: sem ele, quem conseguir criar um objeto
+-- num schema que venha antes no search_path sequestra a resolucao de now()
+-- dentro do trigger. O linter do Supabase acusa isso como
+-- function_search_path_mutable.
 create or replace function set_updated_at()
 returns trigger
 language plpgsql
+security invoker
+set search_path = pg_catalog
 as $$
 begin
   new.updated_at = now();
   return new;
 end;
 $$;
+
+-- Funcao de trigger nao precisa ser chamavel via /rest/v1/rpc. O Supabase
+-- concede execute para anon e authenticated por padrao em tudo que esta em
+-- public; aqui isso so aumenta superficie sem servir para nada.
+revoke execute on function set_updated_at() from anon, authenticated, public;
 
 drop trigger if exists leads_set_updated_at on leads;
 create trigger leads_set_updated_at

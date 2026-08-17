@@ -11,7 +11,8 @@
     "test": "node --import tsx --test \"lib/**/*.test.ts\"",
     "templates:placeholder": "node scripts/placeholder-templates.mjs",
     "pdf:verificar": "node --conditions=react-server --import tsx scripts/verificar-pdf.ts",
-    "infra:verificar": "node --env-file=.env.local --import tsx scripts/verificar-infra.ts"
+    "infra:verificar": "node --env-file=.env.local --import tsx scripts/verificar-infra.ts",
+    "admin:criar": "node --env-file=.env.local --import tsx scripts/criar-admin.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
