@@ -325,18 +325,40 @@ test("adulto gera sem o nome do aniversariante, porque a arte não o usa", async
   assert.equal(r.templateId, "aniversario_adulto");
 });
 
-test("as artes reais seguem o padrão de capa; só falta o corporativo", () => {
-  // Quando o corporativo entrar, ele passa a aparecer em `prontas` e este teste
-  // cobre as cinco. Enquanto isso, a asserção de baixo é o lembrete do que falta.
-  const prontas = TEMPLATES.filter((t) => t !== "corporativo");
-
-  for (const t of prontas) {
+test("as CINCO artes seguem o padrão de capa, nenhuma em placeholder", () => {
+  for (const t of TEMPLATES) {
     assert.deepEqual(
       templates[t].campos.map((c) => c.chave),
       ["cabecalho", "nome"],
       `${t} fora do padrão de capa`,
     );
   }
+  assert.equal(TEMPLATES.length, 5);
+});
 
-  assert.equal(prontas.length, 4, "esperava 4 artes reais");
+test("cada arte tem a sua composição de cabeçalho, medida no Figma", () => {
+  const esperado: Record<string, string> = {
+    casamento: "{noivos} | {data}",
+    debutante: "15 ANOS DA {debutante} | {data}",
+    aniversario_infantil: "ANIVERSÁRIO {aniversariante} | {data}",
+    // Sem o nome: é assim na arte. Ver o comentário no templates.config.ts.
+    aniversario_adulto: "ANIVERSÁRIO | {data}",
+    // Usa tipo_evento, não empresa — `empresa` não existe nesta arte.
+    corporativo: "{tipo_evento} | {data}",
+  };
+
+  for (const t of TEMPLATES) {
+    assert.equal(templates[t].campos[0].composicao, esperado[t], `${t}`);
+  }
+});
+
+test("nenhuma arte imprime empresa, horário ou local", async () => {
+  // Todos continuam sendo perguntados e visíveis no painel; nenhum entra no PDF.
+  const naoImpressos = ["empresa", "horario", "local", "local_cerimonia", "local_festa"];
+  for (const t of TEMPLATES) {
+    const chaves = templates[t].campos.flatMap(chavesDoCampo);
+    for (const k of naoImpressos) {
+      assert.ok(!chaves.includes(k), `${t} imprime ${k}`);
+    }
+  }
 });

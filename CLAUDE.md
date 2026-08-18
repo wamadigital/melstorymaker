@@ -37,6 +37,7 @@ lib/form               arvore.json + engine de renderização
 lib/pdf                templates.config.ts, gerar.ts, formatadores pt-BR
 lib/mail               adapter.ts, gmail.ts, templates de e-mail
 assets/templates       5 PDFs base exportados do Figma (um por ARTE, não por categoria)
+scripts/preparar-arte  Exporta > comprime (Ghostscript) > une as páginas de uma arte
 assets/fonts           Fontes da marca (.ttf)
 supabase/schema.sql    Schema completo
 ```
@@ -69,6 +70,8 @@ supabase/schema.sql    Schema completo
 2. Chamar `pdfDoc.registerFontkit(fontkit)` ANTES de embutir qualquer fonte custom.
 3. Campo com `maxLargura`: reduzir o tamanho da fonte proporcionalmente até caber. Nunca quebrar linha em campo de nome.
 4. Criar a rota de calibração `/admin/debug-template?template=X` (grid de coordenadas a cada 20pt sobre o PDF base) ANTES de calibrar o primeiro template. Calibrar sem ela é proibido. O parâmetro é o `TemplateId`, não a categoria: `aniversario` sozinho é ambíguo.
+4b. **Preparo da arte** (mudança de arte = PR dedicada): esvaziar os placeholders no Figma (manter só `Olá,` no bloco de saudação, ocultar o cabeçalho), exportar cada frame com `download_assets` em PDF e rodar `npm run arte:preparar -- <template> <pasta>`. O Ghostscript roda SÓ nesse preparo; em produção continua apenas pdf-lib. Sem a compressão a arte estoura o anexo de e-mail — uma página de galeria exportou com 11,4 MB.
+4c. As cinco capas compartilham o mesmo desenho, montado por `camposCapa()` em `templates.config.ts`. Arte nova = uma chamada, variando a composição do cabeçalho e o `x` do nome. As páginas são 1240x1754 pt, iguais ao frame em px, então `escala: 1`.
 5. Formatação sempre via `lib/pdf/formatadores.ts`: **data em DD/MM/AAAA** ("14/03/2026") em TODOS os PDFs, hora no padrão "19h30". O formatador `data_extenso` continua disponível no registry, mas nenhuma arte usa.
 5b. **Campo do config vazio aborta a geração.** Todo campo de `templates.config.ts` é obrigatório salvo `opcional: true`. Faltando qualquer um, `gerarProposta` lança `CamposFaltandoError` com a lista, a rota devolve 422 e nada é gravado no banco nem no Storage. Nunca pular campo vazio em silêncio: PDF com buraco onde deveria estar o nome do lead é pior do que PDF nenhum. Pela mesma razão, `resolverTemplateId` devolve `null` em vez de escolher uma arte padrão quando a idade falta.
 6. Regerar PDF sobrescreve `{leadId}.pdf` no bucket `propostas` (URL estável para o link do WhatsApp). Preview no painel usa query param de cache-bust.

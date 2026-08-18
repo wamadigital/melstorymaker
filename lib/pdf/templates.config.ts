@@ -71,60 +71,6 @@ export type TemplateConfig = {
   campos: CampoTemplate[];
 };
 
-const COR_TINTA = "#3A2E2A";
-
-/** Campos que toda arte tem, para nao repetir cinco vezes o mesmo bloco. */
-function camposComuns(): CampoTemplate[] {
-  return [
-    {
-      chave: "data",
-      fonte: "respostas.data",
-      pagina: 1,
-      x: 90,
-      y: 300,
-      font: "DMSans-Regular",
-      tamanho: 14,
-      cor: COR_TINTA,
-      formato: "data_curta",
-    },
-    {
-      chave: "horario",
-      fonte: "respostas.horario",
-      pagina: 1,
-      x: 90,
-      y: 330,
-      font: "DMSans-Regular",
-      tamanho: 14,
-      cor: COR_TINTA,
-      formato: "hora_br",
-    },
-  ];
-}
-
-/**
- * Campo do SUJEITO do evento -- a debutante, o aniversariante, os noivos ou a
- * empresa. Nao e o `nome`, que guarda quem preencheu o formulario e nao entra
- * na arte. `chave` casa com a variavel de mesmo nome no Figma.
- */
-function campoSujeito(
-  chave: "debutante" | "aniversariante" | "noivos" | "empresa",
-  font: NomeFonte = "DMSans-Bold",
-  tamanho = 32,
-): CampoTemplate {
-  return {
-    chave,
-    fonte: `respostas.${chave}`,
-    pagina: 0,
-    x: 297,
-    y: 420,
-    font,
-    tamanho,
-    cor: COR_TINTA,
-    maxLargura: 420,
-    alinhamento: "centro",
-  };
-}
-
 /**
  * Os dois campos dinamicos da CAPA, que todas as cinco artes compartilham.
  *
@@ -191,25 +137,8 @@ export function chavesDoCampo(campo: CampoTemplate): string[] {
   return caminho.startsWith("respostas.") ? [caminho.slice("respostas.".length)] : [];
 }
 
-function campoLocal(chave: string, y: number): CampoTemplate {
-  return {
-    chave,
-    fonte: `respostas.${chave}`,
-    pagina: 1,
-    x: 90,
-    y,
-    font: "DMSans-Regular",
-    tamanho: 14,
-    cor: COR_TINTA,
-    maxLargura: 380,
-  };
-}
-
 /**
- * `casamento` e `debutante` ja usam a ARTE REAL, medida no Figma. As tres
- * restantes ainda rodam sobre placeholder, com coordenadas provisorias que NAO
- * correspondem a arte da Mel -- entram no mesmo padrao de `camposCapa` assim
- * que forem exportadas.
+ * As CINCO artes reais, exportadas do Figma. Nenhuma roda mais sobre placeholder.
  *
  * A pagina exportada tem 1240x1754 pt, exatamente o tamanho do frame em px,
  * entao `escala: 1` e as coordenadas do painel do Figma valem direto.
@@ -218,6 +147,11 @@ function campoLocal(chave: string, y: number): CampoTemplate {
  *
  * Indexado por TemplateId, nao por Categoria: `aniversario` e uma categoria so
  * no banco, mas resolve entre duas artes conforme a idade.
+ *
+ * Todas seguem o mesmo desenho de capa (`camposCapa`); o que varia esta na
+ * chamada de cada uma. Nenhuma arte imprime `horario`, `local` ou os campos de
+ * making of: eles seguem sendo perguntados e ficam visiveis no painel, como
+ * contexto para a Mel planejar.
  */
 export const templates: Record<TemplateId, TemplateConfig> = {
   // ARTE REAL — frame debutante_01, node 835:2. Seis paginas; so a capa tem
@@ -286,30 +220,24 @@ export const templates: Record<TemplateId, TemplateConfig> = {
     }),
   },
 
+  /**
+   * ARTE REAL — frame corporativo_01, node 1119:3277. Seis paginas.
+   *
+   * O cabecalho e "{{tipo_evento}} | {{data}}": varri os 6 frames e `empresa`
+   * NAO aparece em lugar nenhum da arte. Ela continua sendo perguntada e serve
+   * ao `nome_display` (lista do painel) e a copy do e-mail corporativo
+   * ("Obrigada pelo interesse da {empresa}") -- so nao e impressa no PDF.
+   */
   corporativo: {
     basePdf: "assets/templates/corporativo.pdf",
     rotulo: "Evento corporativo",
     origemCoordenadas: "figma",
     escala: 1,
-    campos: [
-      campoSujeito("empresa", "DMSans-Bold", 28),
-      // Coordenada provisoria: a posicao real sai da arte do Figma, onde este
-      // campo vai existir como variavel.
-      {
-        chave: "tipo_evento",
-        fonte: "respostas.tipo_evento",
-        pagina: 0,
-        x: 297,
-        y: 470,
-        font: "DMSans-Regular",
-        tamanho: 16,
-        cor: COR_TINTA,
-        maxLargura: 420,
-        alinhamento: "centro",
-      },
-      ...camposComuns(),
-      campoLocal("local", 360),
-    ],
+    campos: camposCapa({
+      composicao: "{tipo_evento} | {data}",
+      xNome: 205,
+      xCabecalho: 1151,
+    }),
   },
 };
 
