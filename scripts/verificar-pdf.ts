@@ -3,9 +3,14 @@
  *
  *   npm run pdf:verificar
  *
- * Gera uma proposta por categoria com dados de exemplo, reabre cada arquivo
- * para provar que e um PDF valido e confere os limites do PRD (10s de geracao,
- * 5MB de arquivo). Os PDFs ficam em .pdf-verificacao/ para inspecao visual.
+ * Gera uma proposta por ARTE com dados de exemplo, reabre cada arquivo para
+ * provar que e um PDF valido e confere os limites do PRD (10s de geracao, 5MB
+ * de arquivo). Os PDFs ficam em .pdf-verificacao/ para inspecao visual.
+ *
+ * Sao 5 cenarios, nao 4: aniversario rende duas artes conforme a idade, e a
+ * infantil precisa ser aberta de verdade aqui. Os testes unitarios cobrem
+ * `resolverTemplateId`, mas so este script prova que o arquivo
+ * aniversario_infantil.pdf existe, abre e recebe o texto no lugar certo.
  *
  * A flag --conditions=react-server (ver package.json) faz o pacote "server-only"
  * resolver para um modulo vazio, permitindo importar o gerar.ts fora do Next.
@@ -34,7 +39,7 @@ const AMOSTRAS: Record<Categoria, Respostas> = {
   aniversario: {
     nome: "Lúcia",
     aniversariante: "João",
-    // 30 anos: resolve para a arte ADULTA. A infantil e coberta pelos testes.
+    // 30 anos: resolve para a arte ADULTA. A infantil vem em CENARIOS, abaixo.
     idade: "30",
     data: "2026-12-01",
     // Hora cheia: deve sair "20h", nao "20h00".
@@ -66,6 +71,23 @@ const AMOSTRAS: Record<Categoria, Respostas> = {
   },
 };
 
+/**
+ * Um cenario por ARTE. As 4 categorias cobrem 4 delas; a quinta e o
+ * aniversario infantil, que so aparece quando a idade e <= 14.
+ */
+const CENARIOS: { rotulo: string; categoria: Categoria; respostas: Respostas }[] = [
+  ...CATEGORIAS.map((categoria) => ({
+    rotulo: categoria,
+    categoria,
+    respostas: AMOSTRAS[categoria],
+  })),
+  {
+    rotulo: "aniversario (8 anos)",
+    categoria: "aniversario",
+    respostas: { ...AMOSTRAS.aniversario, aniversariante: "Bento", idade: "8" },
+  },
+];
+
 const LIMITE_MS = 10_000;
 const LIMITE_BYTES = 5 * 1024 * 1024;
 
@@ -75,29 +97,31 @@ async function main() {
 
   let falhas = 0;
 
-  for (const categoria of CATEGORIAS) {
-    const respostas = AMOSTRAS[categoria];
+  const artesGeradas = new Set<string>();
 
+  for (const { rotulo, categoria, respostas } of CENARIOS) {
     const faltando = passosVisiveis(categoria, respostas)
       .filter((p) => p.obrigatorio && !respostas[p.id])
       .map((p) => p.id);
     if (faltando.length) {
-      console.error(`✗ ${categoria}: amostra incompleta, faltam ${faltando.join(", ")}`);
+      console.error(`✗ ${rotulo}: amostra incompleta, faltam ${faltando.join(", ")}`);
       falhas++;
     }
 
     const t0 = performance.now();
     const r = await gerarProposta(categoria, respostas);
     const ms = Math.round(performance.now() - t0);
+    artesGeradas.add(r.templateId);
 
-    await fs.writeFile(path.join(saida, `${categoria}.pdf`), r.bytes);
+    // Nomear pela ARTE: dois cenarios de aniversario nao podem se sobrescrever.
+    await fs.writeFile(path.join(saida, `${r.templateId}.pdf`), r.bytes);
 
     // Reabrir prova que a saida e um PDF valido, nao bytes soltos.
     const relido = await PDFDocument.load(r.bytes);
     const kb = (r.bytes.length / 1024).toFixed(0);
 
     console.log(
-      `✓ ${categoria.padEnd(12)} → ${r.templateId.padEnd(20)} ` +
+      `✓ ${rotulo.padEnd(21)} → ${r.templateId.padEnd(20)} ` +
         `${String(relido.getPageCount()).padStart(2)} pág  ` +
         `${kb.padStart(4)}kB  ${String(ms).padStart(4)}ms` +
         `${r.usouPlaceholder ? "  [placeholder]" : ""}` +
@@ -105,13 +129,21 @@ async function main() {
     );
 
     if (ms > LIMITE_MS) {
-      console.error(`✗ ${categoria}: geração acima do limite de 10s do PRD`);
+      console.error(`✗ ${rotulo}: geração acima do limite de 10s do PRD`);
       falhas++;
     }
     if (r.bytes.length > LIMITE_BYTES) {
-      console.error(`✗ ${categoria}: PDF acima do limite de 5MB do PRD`);
+      console.error(`✗ ${rotulo}: PDF acima do limite de 5MB do PRD`);
       falhas++;
     }
+  }
+
+  // Trava contra regressao: se alguem criar uma arte nova e esquecer o cenario,
+  // ela passaria despercebida aqui.
+  const semCenario = TEMPLATES.filter((t) => !artesGeradas.has(t));
+  if (semCenario.length) {
+    console.error(`\n✗ artes sem cenário neste script: ${semCenario.join(", ")}`);
+    falhas++;
   }
 
   // --grid gera tambem os PDFs de calibracao, os mesmos que a rota

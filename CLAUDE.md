@@ -92,6 +92,7 @@ supabase/schema.sql    Schema completo
 - Mudança de arte (PDFs base ou coordenadas em `templates.config.ts`): PR dedicada contendo só isso.
 - Feature só está pronta depois de rodar o cenário da Definition of Done (PRD seção 18) para a categoria afetada.
 - Antes de deploy final: testar manualmente as 4 categorias e as 5 artes (aniversário com idade ≤14 e ≥15), incluindo a ramificação `making_of` com "Sim" e com "Não", e a retomada de lead incompleto.
+- `npm run pdf:verificar` cobre **uma arte por cenário, as 5**, e falha se algum `TemplateId` ficar sem cenário. Arte nova sem cenário = script vermelho, de propósito: senão dá para acrescentar uma arte e nunca abri-la em teste nenhum.
 - Ao corrigir um bug causado por premissa errada sobre o projeto, registrar a regra correta neste arquivo na mesma PR.
 
 ## Nunca fazer
