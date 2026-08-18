@@ -18,10 +18,20 @@ import { templates } from "@/lib/pdf/templates.config";
 const ids = (categoria: Parameters<typeof passosVisiveis>[0], r = {}) =>
   passosVisiveis(categoria, r).map((p) => p.id);
 
-test("contato e sempre injetado no fim de todo fluxo", () => {
+test("contato e sempre injetado no fim de todo fluxo, WhatsApp antes do e-mail", () => {
   for (const cat of ["debutante", "aniversario", "casamento", "corporativo"] as const) {
     const lista = ids(cat);
-    assert.deepEqual(lista.slice(-2), ["contato_email", "contato_whatsapp"]);
+    // A ordem importa: a proposta chega pelo WhatsApp, entao ele vem primeiro.
+    assert.deepEqual(lista.slice(-2), ["contato_whatsapp", "contato_email"]);
+  }
+});
+
+test("os dois contatos sao obrigatorios: sem eles nao ha como entregar a proposta", () => {
+  for (const cat of ["debutante", "aniversario", "casamento", "corporativo"] as const) {
+    const contato = passosVisiveis(cat, {}).slice(-2);
+    for (const passo of contato) {
+      assert.equal(passo.obrigatorio, true, `${cat}/${passo.id} deveria ser obrigatorio`);
+    }
   }
 });
 
@@ -61,8 +71,8 @@ test("corporativo nao tem making of nem entrega", () => {
     "data",
     "horario",
     "local",
-    "contato_email",
     "contato_whatsapp",
+    "contato_email",
   ]);
 });
 

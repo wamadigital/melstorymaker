@@ -251,17 +251,17 @@
   },
   "contato": [
     {
-      "id": "contato_email",
-      "tipo": "email",
-      "pergunta": "Qual o seu melhor e-mail? É pra lá que vai a proposta ✨",
-      "obrigatorio": true
-    },
-    {
       "id": "contato_whatsapp",
       "tipo": "telefone",
-      "pergunta": "E o seu WhatsApp? (opcional)",
-      "obrigatorio": false,
+      "pergunta": "Qual o seu WhatsApp? É por lá que a proposta chega ✨",
+      "obrigatorio": true,
       "mascara": "(00) 00000-0000"
+    },
+    {
+      "id": "contato_email",
+      "tipo": "email",
+      "pergunta": "E o seu melhor e-mail?",
+      "obrigatorio": true
     }
   ],
   "confirmacao": {

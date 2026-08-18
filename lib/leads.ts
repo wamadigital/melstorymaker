@@ -2,6 +2,7 @@
 // client para montar o link do WhatsApp, e nao ha segredo aqui.
 import { somenteDigitos } from "@/lib/form/validacao";
 import type { Categoria, Lead, Respostas } from "@/lib/form/types";
+import { nomeProprio } from "@/lib/pdf/formatadores";
 
 /**
  * Quem preenche o formulario e quem o evento homenageia sao pessoas diferentes:
@@ -56,9 +57,13 @@ export function nomeDisplay(lead: Pick<Lead, "categoria" | "nome_display" | "res
 /**
  * Primeira palavra do nome de QUEM PREENCHEU. Usado no "Oi, {primeiro_nome}!"
  * da mensagem de WhatsApp -- que e dirigida a pessoa que vai ler, nao ao casal.
+ *
+ * Passa por nomeProprio pelo mesmo motivo da capa: quem digita "MARIA" no
+ * celular nao quer ser cumprimentada aos gritos.
  */
 export function primeiroNome(lead: Pick<Lead, "respostas">): string {
-  return (nomeContato(lead.respostas ?? {}).split(/\s+/)[0] ?? "").trim();
+  const primeiro = (nomeContato(lead.respostas ?? {}).split(/\s+/)[0] ?? "").trim();
+  return nomeProprio(primeiro);
 }
 
 /** Corporativo tem copy de e-mail propria; as outras tres compartilham a pessoal. */

@@ -47,9 +47,12 @@ const AMOSTRAS: Record<Categoria, Respostas> = {
     local: "Casa da vovó",
     entrega: "Em até 1 semana",
     contato_email: "lead@example.com",
+    contato_whatsapp: "(19) 99999-8888",
   },
   casamento: {
-    nome: "Lúcia",
+    // Caixa alta de proposito: o lead digita assim no celular e a capa tem
+    // de sair "Olá, Lúcia Helena!", nunca "Olá, LÚCIA HELENA!".
+    nome: "LÚCIA HELENA DE SOUZA",
     noivos: "Ana & João",
     data: "2026-08-31",
     horario: "16:00",
@@ -59,6 +62,7 @@ const AMOSTRAS: Record<Categoria, Respostas> = {
     making_of: "Não",
     entrega: "Em tempo real",
     contato_email: "lead@example.com",
+    contato_whatsapp: "(11) 98888-7777",
   },
   corporativo: {
     nome: "Lúcia",
@@ -68,6 +72,7 @@ const AMOSTRAS: Record<Categoria, Respostas> = {
     horario: "09:00",
     local: "Centro de Convenções Rebouças",
     contato_email: "contato@acme.com",
+    contato_whatsapp: "(11) 3333-4444",
   },
 };
 

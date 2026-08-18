@@ -12,6 +12,50 @@ export function somenteDigitos(v: string): string {
   return v.replace(/\D/g, "");
 }
 
+/**
+ * DDDs que existem de fato no Brasil. Serve para pegar erro de digitacao
+ * obvio (00, 10, 20...), nao para auditar o numero: se o DDD existe e o
+ * tamanho bate, passa. Preferimos deixar um numero errado entrar a barrar um
+ * lead legitimo -- a Mel liga e confere, o formulario nao e a Receita Federal.
+ */
+const DDDS = new Set([
+  11, 12, 13, 14, 15, 16, 17, 18, 19,
+  21, 22, 24, 27, 28,
+  31, 32, 33, 34, 35, 37, 38,
+  41, 42, 43, 44, 45, 46, 47, 48, 49,
+  51, 53, 54, 55,
+  61, 62, 63, 64, 65, 66, 67, 68, 69,
+  71, 73, 74, 75, 77, 79,
+  81, 82, 83, 84, 85, 86, 87, 88, 89,
+  91, 92, 93, 94, 95, 96, 97, 98, 99,
+]);
+
+/**
+ * Checagem simples de telefone brasileiro. Retorna a mensagem de erro ou null.
+ *
+ * Aceita com ou sem o 55 na frente (lead que cola o numero internacional),
+ * celular de 11 digitos e fixo de 10 -- WhatsApp Business roda em fixo, entao
+ * barrar 10 digitos travaria empresa de verdade no fluxo corporativo.
+ */
+export function validarTelefoneBr(valor: string): string | null {
+  let d = somenteDigitos(valor);
+  // DDI colado na frente: 55 + DDD + numero.
+  if ((d.length === 12 || d.length === 13) && d.startsWith("55")) d = d.slice(2);
+
+  if (d.length !== 10 && d.length !== 11) {
+    return "O WhatsApp precisa ter DDD + número. Ex: (19) 99999-9999";
+  }
+  if (!DDDS.has(Number.parseInt(d.slice(0, 2), 10))) {
+    return "Esse DDD não existe. Confere pra mim?";
+  }
+  // Celular no Brasil comeca com 9 desde 2016. So exigimos isso quando o
+  // numero TEM 11 digitos; com 10, e fixo e a regra nao se aplica.
+  if (d.length === 11 && d[2] !== "9") {
+    return "Número de celular começa com 9 depois do DDD.";
+  }
+  return null;
+}
+
 /** Aplica a mascara (00) 00000-0000 progressivamente, enquanto o lead digita. */
 export function mascararTelefone(v: string): string {
   const d = somenteDigitos(v).slice(0, 11);
@@ -35,13 +79,8 @@ export function validarResposta(passo: Passo, valor: string, hoje = new Date()):
     case "email":
       return RE_EMAIL.test(v) ? null : "Confere pra mim? Esse e-mail parece incompleto.";
 
-    case "telefone": {
-      const d = somenteDigitos(v);
-      // Celular BR: DDD + 9 digitos. Fixo com 10 tambem passa.
-      return d.length === 10 || d.length === 11
-        ? null
-        : "O WhatsApp precisa ter DDD + número. Ex: (19) 99999-9999";
-    }
+    case "telefone":
+      return validarTelefoneBr(v);
 
     case "data": {
       if (!RE_DATA_ISO.test(v)) return "Escolhe uma data válida.";
