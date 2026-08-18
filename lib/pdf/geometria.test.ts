@@ -5,6 +5,18 @@ import { ajustarTamanho, alinharX, converterY, hexParaRgb } from "./geometria";
 
 const A4_ALTURA = 841.89;
 
+/**
+ * Fonte de mentira com largura previsivel: cada caractere ocupa
+ * `porCaractere` x tamanho. `ajustarTamanho` so consulta widthOfTextAtSize,
+ * entao isso basta -- e deixa a conta do teste exata, em vez de depender das
+ * metricas da Helvetica.
+ */
+function fontFalsa(porCaractere: number) {
+  return {
+    widthOfTextAtSize: (t: string, tamanho: number) => t.length * porCaractere * tamanho,
+  } as unknown as Parameters<typeof ajustarTamanho>[0];
+}
+
 async function fonte() {
   const doc = await PDFDocument.create();
   return doc.embedFont(StandardFonts.Helvetica);
@@ -78,4 +90,47 @@ test("hex curto e hex invalido nao derrubam a geracao", () => {
   assert.equal(preto.red, 0);
   assert.equal(preto.green, 0);
   assert.equal(preto.blue, 0);
+});
+
+// --------------------------------------------------------- recuo preventivo
+
+test("recuo preventivo: texto folgado mantém o tamanho cheio", () => {
+  const font = fontFalsa(1); // 1pt de largura por caractere por pt de tamanho
+  // 10 chars a 10pt = 100 de largura, contra 1000 de limite: 10% do espaço.
+  assert.equal(ajustarTamanho(font, "0123456789", 10, 1000, 2), 10);
+});
+
+test("recuo preventivo: passando de 90% da largura, tira os 2pt", () => {
+  const font = fontFalsa(1);
+  // 95 chars a 10pt = 950, contra 1000: 95% -> entra no recuo, vai a 8pt.
+  const texto = "x".repeat(95);
+  assert.equal(ajustarTamanho(font, texto, 10, 1000, 2), 8);
+});
+
+test("recuo preventivo não é atalho para estourar: o ajuste proporcional segura", () => {
+  const font = fontFalsa(1);
+  // 150 chars a 10pt = 1500. O recuo leva a 8pt = 1200, ainda acima de 1000,
+  // entao o proporcional fecha a conta em 6,6pt e o texto cabe.
+  const texto = "y".repeat(150);
+  const t = ajustarTamanho(font, texto, 10, 1000, 2);
+  assert.ok(t < 8, `esperava menos que 8pt, veio ${t}`);
+  assert.ok(
+    font.widthOfTextAtSize(texto, t) <= 1000,
+    `deveria caber em 1000, ocupou ${font.widthOfTextAtSize(texto, t)}`,
+  );
+});
+
+test("o piso de 6pt vence o encaixe: nome absurdo é problema da Mel, não da fonte", () => {
+  const font = fontFalsa(1);
+  // 200 chars exigiriam 5pt para caber. O piso segura em 6 e o texto estoura de
+  // proposito -- encolher mais viraria uma linha ilegivel, e o caso real (alguem
+  // colando um paragrafo no campo de nome) se resolve editando no painel.
+  const t = ajustarTamanho(font, "y".repeat(200), 10, 1000, 2);
+  assert.equal(t, 6);
+});
+
+test("sem recuo declarado, o comportamento antigo não muda", () => {
+  const font = fontFalsa(1);
+  const texto = "z".repeat(95);
+  assert.equal(ajustarTamanho(font, texto, 10, 1000), 10);
 });

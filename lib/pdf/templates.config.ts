@@ -32,6 +32,20 @@ export type CampoTemplate = {
   cor: string;
   /** Se o texto exceder, a fonte encolhe ate caber. Nunca quebra linha. */
   maxLargura?: number;
+  /**
+   * Desconta estes pt assim que o texto passa de 90% de `maxLargura`, ou seja,
+   * ANTES de estourar. Serve ao cabecalho da capa, cujo tamanho varia com o
+   * nome digitado pelo lead. Exige `maxLargura`.
+   */
+  recuoPreventivo?: number;
+  /**
+   * Sobe o texto para CAIXA ALTA na hora de desenhar (com
+   * `toLocaleUpperCase("pt-BR")`, entao acento vai junto: "josé" -> "JOSÉ").
+   *
+   * Fica aqui, e nao no `arvore.json`, porque e decisao da ARTE: o que o lead
+   * digitou continua intacto no banco, no painel e no e-mail.
+   */
+  caixaAlta?: boolean;
   formato?: NomeFormatador;
   /** Padrao: "esquerda". Em campo centralizado, x e o centro do bloco. */
   alinhamento?: Alinhamento;
@@ -111,6 +125,12 @@ function camposCapa(opcoes: {
       cor: BRANCO,
       maxLargura: 900,
       alinhamento: "direita",
+      // A arte pede o cabecalho todo em caixa alta. So ELE: a saudacao logo
+      // abaixo ("Olá, Fulana!") mantem o nome como o lead escreveu.
+      caixaAlta: true,
+      // Caixa alta e mais larga que caixa baixa, entao o nome longo passa a
+      // encostar na borda antes. 2pt a menos resolvem sem que se perceba.
+      recuoPreventivo: 2,
     },
     {
       chave: "nome",

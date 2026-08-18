@@ -83,7 +83,9 @@ function desenharCampo(
   font: PDFFont,
   formatado: string,
 ) {
-  const texto = textoSeguro(font, formatado.trim());
+  // Caixa alta ANTES do textoSeguro: e a forma final que vai medida e desenhada.
+  const bruto = campo.caixaAlta ? formatado.toLocaleUpperCase("pt-BR") : formatado;
+  const texto = textoSeguro(font, bruto.trim());
   if (!texto) return;
 
   const { height } = page.getSize();
@@ -91,7 +93,7 @@ function desenharCampo(
 
   const tamanhoBase = campo.tamanho * escala;
   const maxLargura = campo.maxLargura ? campo.maxLargura * escala : undefined;
-  const tamanho = ajustarTamanho(font, texto, tamanhoBase, maxLargura);
+  const tamanho = ajustarTamanho(font, texto, tamanhoBase, maxLargura, campo.recuoPreventivo);
 
   page.drawText(texto, {
     x: alinharX(campo.x * escala, font.widthOfTextAtSize(texto, tamanho), campo.alinhamento),
