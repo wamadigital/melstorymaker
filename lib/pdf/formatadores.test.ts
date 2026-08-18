@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { dataCurta, dataExtenso, horaBr } from "./formatadores";
+import { dataCurta, dataExtenso, horaBr, nomeProprio } from "./formatadores";
 
 test("data por extenso em pt-BR (RF-15)", () => {
   assert.equal(dataExtenso("2026-03-14"), "14 de março de 2026");
@@ -44,4 +44,34 @@ test("hora invalida vira string vazia", () => {
 test("data curta para o painel", () => {
   assert.equal(dataCurta("2026-03-14"), "14/03/2026");
   assert.equal(dataCurta(null), "");
+});
+
+// ------------------------------------------------------------- nome proprio
+
+test("nome próprio: os exemplos que a Mel pediu", () => {
+  assert.equal(nomeProprio("MARIA FERNANDA"), "Maria Fernanda");
+  assert.equal(nomeProprio("césar"), "César");
+  assert.equal(nomeProprio("rafa & gui"), "Rafa & Gui");
+});
+
+test("nome próprio: partícula fica minúscula no meio, mas não no começo", () => {
+  assert.equal(
+    nomeProprio("MARIA EDUARDA ALBUQUERQUE DO NASCIMENTO"),
+    "Maria Eduarda Albuquerque do Nascimento",
+  );
+  assert.equal(nomeProprio("ana e beatriz"), "Ana e Beatriz");
+  // Primeira palavra sobe mesmo sendo partícula: é o nome da empresa.
+  assert.equal(nomeProprio("da silva consultoria"), "Da Silva Consultoria");
+});
+
+test("nome próprio: acento sobe certo e hífen/apóstrofo não engolem a inicial", () => {
+  assert.equal(nomeProprio("joão"), "João");
+  assert.equal(nomeProprio("ANA-MARIA"), "Ana-Maria");
+  assert.equal(nomeProprio("d'ávila"), "D'Ávila");
+});
+
+test("nome próprio: espaço sobrando não vira palavra vazia", () => {
+  assert.equal(nomeProprio("  ana   paula  "), "Ana Paula");
+  assert.equal(nomeProprio(""), "");
+  assert.equal(nomeProprio(null), "");
 });

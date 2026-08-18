@@ -79,10 +79,48 @@ export function dataHoraLocal(iso: string | null | undefined): string {
  * `data_extenso` continua aqui por ser a forma que o PRD descrevia antes e por
  * seguir valendo para qualquer arte que peca a data escrita.
  */
+/**
+ * Particulas que ficam em minuscula no meio do nome. "Maria Eduarda do
+ * Nascimento", nao "Maria Eduarda Do Nascimento" -- a segunda forma denuncia
+ * capitalizacao automatica e some com o cuidado que a arte tem.
+ * Na PRIMEIRA palavra elas sobem normalmente ("Da Silva Consultoria").
+ */
+const PARTICULAS = new Set(["de", "da", "do", "das", "dos", "e", "di", "du"]);
+
+/** Sobe a inicial da palavra, respeitando hifen e apostrofo. */
+function capitalizarPalavra(palavra: string): string {
+  return palavra.replace(/(^|[-'\u2019])(\p{L})/gu, (_, separador: string, letra: string) =>
+    separador + letra.toLocaleUpperCase("pt-BR"),
+  );
+}
+
+/**
+ * Nome proprio: inicial maiuscula, resto minusculo.
+ *
+ *   "MARIA FERNANDA"  -> "Maria Fernanda"
+ *   "césar"           -> "César"
+ *   "rafa & gui"      -> "Rafa & Gui"
+ *
+ * Existe porque o lead digita como quer -- tudo em caixa alta no celular, tudo
+ * minusculo com pressa -- e o nome dele aparece grande na capa da proposta. O
+ * banco guarda o que foi digitado; isto e so a forma de exibir.
+ */
+export function nomeProprio(valor: string | null | undefined): string {
+  const bruto = (valor ?? "").trim();
+  if (!bruto) return "";
+
+  return bruto
+    .toLocaleLowerCase("pt-BR")
+    .split(/\s+/)
+    .map((palavra, i) => (i > 0 && PARTICULAS.has(palavra) ? palavra : capitalizarPalavra(palavra)))
+    .join(" ");
+}
+
 export const FORMATADORES = {
   data_curta: dataCurta,
   data_extenso: dataExtenso,
   hora_br: horaBr,
+  nome_proprio: nomeProprio,
 } as const;
 
 export type NomeFormatador = keyof typeof FORMATADORES;

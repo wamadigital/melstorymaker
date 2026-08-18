@@ -137,6 +137,9 @@ function camposCapa(opcoes: {
       // Composicao por causa do "!": no Figma a linha era "{{nome}}!" e a
       // exclamacao faz parte da saudacao, nao do nome digitado pelo lead.
       composicao: "{nome}!",
+      // O lead digita como quer; na capa o nome dele sai sempre "Maria
+      // Fernanda", nunca "MARIA FERNANDA" nem "maria fernanda".
+      formatos: { nome: "nome_proprio" },
       pagina: 0,
       x: opcoes.xNome,
       y: 488.5,
