@@ -14,7 +14,8 @@ import type { Respostas } from "@/lib/form/types";
  */
 
 const CASAMENTO_COMPLETO: Respostas = {
-  nome: "Ana & João",
+  nome: "Lúcia",
+  noivos: "Ana & João",
   data: "2027-08-31",
   horario: "16:00",
   local_cerimonia: "Igreja Nossa Senhora do Brasil",
@@ -44,20 +45,20 @@ test("com tudo preenchido, gera normalmente", async () => {
 });
 
 test("nome em branco RECUSA a geração em vez de deixar buraco na arte", async () => {
-  const campos = await esperarFalta("casamento", { ...CASAMENTO_COMPLETO, nome: "" });
+  const campos = await esperarFalta("casamento", { ...CASAMENTO_COMPLETO, noivos: "" });
   assert.equal(campos.length, 1);
   assert.match(campos[0], /noivos/i);
 });
 
 test("espaço em branco não conta como resposta", async () => {
-  const campos = await esperarFalta("casamento", { ...CASAMENTO_COMPLETO, nome: "   " });
+  const campos = await esperarFalta("casamento", { ...CASAMENTO_COMPLETO, noivos: "   " });
   assert.equal(campos.length, 1);
 });
 
 test("reclama de TODOS os campos faltando de uma vez, não um por vez", async () => {
   const campos = await esperarFalta("casamento", {
     ...CASAMENTO_COMPLETO,
-    nome: "",
+    noivos: "",
     data: "",
     local_festa: "",
   });
@@ -66,7 +67,8 @@ test("reclama de TODOS os campos faltando de uma vez, não um por vez", async ()
 
 test("aniversário sem idade recusa: não dá para saber qual arte usar", async () => {
   const campos = await esperarFalta("aniversario", {
-    nome: "João",
+    nome: "Lúcia",
+    aniversariante: "João",
     data: "2027-12-01",
     horario: "20:00",
     local: "Casa da vovó",
@@ -77,7 +79,8 @@ test("aniversário sem idade recusa: não dá para saber qual arte usar", async 
 
 test("aniversário com idade escolhe a arte e gera", async () => {
   const base: Respostas = {
-    nome: "João",
+    nome: "Lúcia",
+    aniversariante: "João",
     data: "2027-12-01",
     horario: "20:00",
     local: "Casa da vovó",
@@ -91,7 +94,8 @@ test("aniversário com idade escolhe a arte e gera", async () => {
 
 test("corporativo exige o tipo de evento, que é impresso na arte", async () => {
   const campos = await esperarFalta("corporativo", {
-    nome: "Acme Ltda",
+    nome: "Lúcia",
+    empresa: "Acme Ltda",
     data: "2027-05-20",
     horario: "09:00",
     local: "Centro de Convenções",

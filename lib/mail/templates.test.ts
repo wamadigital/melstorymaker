@@ -3,6 +3,8 @@ import { test } from "node:test";
 import { montarEmail } from "./templates";
 
 const base = {
+  // Quem preencheu (recebe o e-mail) e o casal sao pessoas diferentes.
+  nomeContato: "Lúcia",
   nomeDisplay: "Ana & João",
   pdfUrl: "https://x.test/propostas/abc.pdf",
   linkWhatsAppMel: "https://wa.me/5519999998888",
@@ -11,7 +13,7 @@ const base = {
 
 test("assunto pessoal traz o nome, conforme a copy do PRD", () => {
   const email = montarEmail("casamento", base);
-  assert.equal(email.subject, "Sua proposta chegou, Ana & João ✨ | Mel Simão Storymaker");
+  assert.equal(email.subject, "Sua proposta chegou, Lúcia ✨ | Mel Simão Storymaker");
 });
 
 test("corporativo usa a copy propria, sem nome no assunto", () => {
@@ -49,15 +51,22 @@ test("sem anexo, o e-mail nao promete um anexo que nao existe", () => {
 test("nome com HTML e escapado (o lead digita o que quiser)", () => {
   const email = montarEmail("casamento", {
     ...base,
-    nomeDisplay: '<img src=x onerror="alert(1)">',
+    nomeContato: '<img src=x onerror="alert(1)">',
   });
   assert.ok(!email.html.includes("<img"));
   assert.ok(email.html.includes("&lt;img"));
 });
 
 test("o & de 'Ana & Joao' vira entidade no HTML", () => {
-  const email = montarEmail("casamento", base);
+  const email = montarEmail("casamento", { ...base, nomeContato: "Ana & João" });
   assert.ok(email.html.includes("Ana &amp; João"));
   // No texto puro continua sendo um & normal.
   assert.ok(email.text.includes("Ana & João"));
+});
+
+test("o e-mail pessoal cumprimenta quem preencheu, não o casal", () => {
+  const email = montarEmail("casamento", base);
+  assert.ok(email.text.startsWith("Oi, Lúcia!"));
+  // O nome do casal nao aparece: a proposta em anexo ja fala por ela.
+  assert.ok(!email.text.includes("Ana & João"));
 });

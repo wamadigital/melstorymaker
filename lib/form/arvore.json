@@ -16,7 +16,8 @@
   },
   "fluxos": {
     "debutante": [
-      { "id": "nome", "tipo": "texto", "pergunta": "Nome da debutante ✨", "obrigatorio": true },
+      { "id": "nome", "tipo": "texto", "pergunta": "Como você se chama? ✨", "obrigatorio": true },
+      { "id": "debutante", "tipo": "texto", "pergunta": "Nome da debutante ✨", "obrigatorio": true },
       { "id": "data", "tipo": "data", "pergunta": "Data da festa", "obrigatorio": true, "min": "hoje" },
       { "id": "horario", "tipo": "hora", "pergunta": "Horário do convite", "obrigatorio": true },
       { "id": "local", "tipo": "texto", "pergunta": "Local da festa", "obrigatorio": true },
@@ -25,7 +26,8 @@
       { "id": "entrega", "tipo": "escolha_unica", "pergunta": "Como você prefere a entrega?", "opcoes": ["Em tempo real", "Em até 1 semana"], "obrigatorio": true }
     ],
     "aniversario": [
-      { "id": "nome", "tipo": "texto", "pergunta": "Nome do(a) aniversariante ✨", "obrigatorio": true },
+      { "id": "nome", "tipo": "texto", "pergunta": "Como você se chama? ✨", "obrigatorio": true },
+      { "id": "aniversariante", "tipo": "texto", "pergunta": "Nome do(a) aniversariante ✨", "obrigatorio": true },
       { "id": "idade", "tipo": "numero", "pergunta": "Quantos anos vai completar? ✨", "obrigatorio": true, "min": 1, "max": 120 },
       { "id": "data", "tipo": "data", "pergunta": "Data da festa", "obrigatorio": true, "min": "hoje" },
       { "id": "horario", "tipo": "hora", "pergunta": "Horário do convite", "obrigatorio": true },
@@ -33,7 +35,8 @@
       { "id": "entrega", "tipo": "escolha_unica", "pergunta": "Como você prefere a entrega?", "opcoes": ["Em tempo real", "Em até 1 semana"], "obrigatorio": true }
     ],
     "casamento": [
-      { "id": "nome", "tipo": "texto", "pergunta": "Nome dos noivos ✨", "placeholder": "Ex: Ana & João", "obrigatorio": true },
+      { "id": "nome", "tipo": "texto", "pergunta": "Como você se chama? ✨", "obrigatorio": true },
+      { "id": "noivos", "tipo": "texto", "pergunta": "Nome dos noivos ✨", "placeholder": "Ex: Ana & João", "obrigatorio": true },
       { "id": "data", "tipo": "data", "pergunta": "Data do casamento", "obrigatorio": true, "min": "hoje" },
       { "id": "horario", "tipo": "hora", "pergunta": "Horário do convite", "obrigatorio": true },
       { "id": "local_cerimonia", "tipo": "texto", "pergunta": "Local da cerimônia", "obrigatorio": true },
@@ -43,7 +46,8 @@
       { "id": "entrega", "tipo": "escolha_unica", "pergunta": "Como você prefere a entrega?", "opcoes": ["Em tempo real", "Em até 1 semana"], "obrigatorio": true }
     ],
     "corporativo": [
-      { "id": "nome", "tipo": "texto", "pergunta": "Nome da empresa", "obrigatorio": true },
+      { "id": "nome", "tipo": "texto", "pergunta": "Como você se chama? ✨", "obrigatorio": true },
+      { "id": "empresa", "tipo": "texto", "pergunta": "Nome da empresa", "obrigatorio": true },
       { "id": "tipo_evento", "tipo": "texto", "pergunta": "Que tipo de evento vamos cobrir?", "obrigatorio": true },
       { "id": "data", "tipo": "data", "pergunta": "Data do evento", "obrigatorio": true, "min": "hoje" },
       { "id": "horario", "tipo": "hora", "pergunta": "Horário do evento", "obrigatorio": true },

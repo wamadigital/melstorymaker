@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { normalizarOpcoes, passosVisiveis } from "@/lib/form/engine";
 import type { Lead, Respostas, Status } from "@/lib/form/types";
-import { primeiroNome } from "@/lib/leads";
+import { primeiroNome, sujeitoDoEvento } from "@/lib/leads";
 import { CLASSE_STATUS, ROTULO_STATUS, rotuloCategoria } from "@/lib/admin/rotulos";
 import { dataHoraLocal } from "@/lib/pdf/formatadores";
 import { linkPropostaWhatsApp } from "@/lib/whatsapp";
@@ -32,7 +32,8 @@ export function DetalheLead({ lead }: { lead: Lead }) {
   const passos = passosVisiveis(lead.categoria, respostas);
   const email = respostas.contato_email ?? lead.email ?? "";
   const whatsapp = respostas.contato_whatsapp ?? lead.whatsapp ?? "";
-  const nome = respostas.nome ?? lead.nome_display ?? "";
+  const sujeito = sujeitoDoEvento(lead.categoria, respostas) || lead.nome_display || "";
+  const contato = respostas.nome ?? "";
 
   // Cache-bust: sem isso o iframe mostra o PDF antigo depois de regerar, porque
   // a URL do Storage e sempre a mesma (de proposito, para o link do WhatsApp).
@@ -133,7 +134,7 @@ export function DetalheLead({ lead }: { lead: Lead }) {
     <div className="space-y-8">
       <header className="space-y-2">
         <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-2xl font-semibold">{nome || "Sem nome"}</h1>
+          <h1 className="text-2xl font-semibold">{sujeito || "Sem nome"}</h1>
           <span
             className={cn(
               "rounded-full border px-2.5 py-0.5 text-xs font-medium",
@@ -145,6 +146,7 @@ export function DetalheLead({ lead }: { lead: Lead }) {
         </div>
         <p className="text-sm text-muted-foreground">
           {rotuloCategoria(lead.categoria)} · recebido em {dataHoraLocal(lead.created_at)}
+          {contato && <> · preenchido por {contato}</>}
         </p>
       </header>
 
@@ -257,7 +259,7 @@ export function DetalheLead({ lead }: { lead: Lead }) {
           {pdfUrl && (
             <>
               <a
-                href={linkPropostaWhatsApp(whatsapp, primeiroNome({ nome_display: nome, respostas }), pdfUrl)}
+                href={linkPropostaWhatsApp(whatsapp, primeiroNome({ respostas }), pdfUrl)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex h-9 items-center rounded-lg border border-border bg-background px-3 text-sm font-medium hover:bg-muted"

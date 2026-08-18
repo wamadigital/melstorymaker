@@ -87,10 +87,19 @@ function camposComuns(): CampoTemplate[] {
   ];
 }
 
-function campoNome(font: NomeFonte = "BrandSerif-Bold", tamanho = 32): CampoTemplate {
+/**
+ * Campo do SUJEITO do evento -- a debutante, o aniversariante, os noivos ou a
+ * empresa. Nao e o `nome`, que guarda quem preencheu o formulario e nao entra
+ * na arte. `chave` casa com a variavel de mesmo nome no Figma.
+ */
+function campoSujeito(
+  chave: "debutante" | "aniversariante" | "noivos" | "empresa",
+  font: NomeFonte = "BrandSerif-Bold",
+  tamanho = 32,
+): CampoTemplate {
   return {
-    chave: "nome",
-    fonte: "respostas.nome",
+    chave,
+    fonte: `respostas.${chave}`,
     pagina: 0,
     x: 297,
     y: 420,
@@ -133,7 +142,7 @@ export const templates: Record<TemplateId, TemplateConfig> = {
     rotulo: "Festa de 15 anos",
     origemCoordenadas: "figma",
     escala: 1,
-    campos: [campoNome(), ...camposComuns(), campoLocal("local", 360)],
+    campos: [campoSujeito("debutante"), ...camposComuns(), campoLocal("local", 360)],
   },
 
   aniversario_infantil: {
@@ -141,7 +150,7 @@ export const templates: Record<TemplateId, TemplateConfig> = {
     rotulo: "Aniversário infantil (até 14 anos)",
     origemCoordenadas: "figma",
     escala: 1,
-    campos: [campoNome(), ...camposComuns(), campoLocal("local", 360)],
+    campos: [campoSujeito("aniversariante"), ...camposComuns(), campoLocal("local", 360)],
   },
 
   aniversario_adulto: {
@@ -149,7 +158,7 @@ export const templates: Record<TemplateId, TemplateConfig> = {
     rotulo: "Aniversário adulto (15 anos ou mais)",
     origemCoordenadas: "figma",
     escala: 1,
-    campos: [campoNome(), ...camposComuns(), campoLocal("local", 360)],
+    campos: [campoSujeito("aniversariante"), ...camposComuns(), campoLocal("local", 360)],
   },
 
   // Unica arte com dois locais separados.
@@ -159,7 +168,7 @@ export const templates: Record<TemplateId, TemplateConfig> = {
     origemCoordenadas: "figma",
     escala: 1,
     campos: [
-      campoNome(),
+      campoSujeito("noivos"),
       ...camposComuns(),
       campoLocal("local_cerimonia", 360),
       campoLocal("local_festa", 390),
@@ -172,7 +181,7 @@ export const templates: Record<TemplateId, TemplateConfig> = {
     origemCoordenadas: "figma",
     escala: 1,
     campos: [
-      campoNome("BrandSans-Bold", 28),
+      campoSujeito("empresa", "BrandSans-Bold", 28),
       // Coordenada provisoria: a posicao real sai da arte do Figma, onde este
       // campo vai existir como variavel.
       {
@@ -194,8 +203,9 @@ export const templates: Record<TemplateId, TemplateConfig> = {
 };
 
 /**
- * `idade`, `making_of` e `entrega` nao sao impressos: servem para escolher a
- * arte ou para contexto da Mel no painel. Se a arte de alguma categoria ganhar
+ * `nome` (quem preencheu), `idade`, `making_of` e `entrega` nao sao impressos:
+ * servem para escolher a arte, para cumprimentar no e-mail ou como contexto da
+ * Mel no painel. Se a arte de alguma categoria ganhar
  * espaco para eles, basta acrescentar o campo aqui.
  */
 export function fontesUsadas(template: TemplateId): NomeFonte[] {

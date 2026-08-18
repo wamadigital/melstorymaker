@@ -4,7 +4,7 @@ import { getSessaoAdmin } from "@/lib/supabase/server";
 import { env } from "@/lib/env";
 import { criarMailAdapter } from "@/lib/mail/adapter";
 import { LIMITE_ANEXO_BYTES, montarEmail, NOME_ANEXO } from "@/lib/mail/templates";
-import { nomeDisplay } from "@/lib/leads";
+import { nomeContato, nomeDisplay } from "@/lib/leads";
 import { linkWhatsAppMel } from "@/lib/whatsapp";
 import type { Lead } from "@/lib/form/types";
 
@@ -63,6 +63,7 @@ export async function POST(_req: Request, { params }: Ctx) {
     const comAnexo = bytes.length <= LIMITE_ANEXO_BYTES;
 
     const email = montarEmail(lead.categoria, {
+      nomeContato: nomeContato(lead.respostas ?? {}),
       nomeDisplay: nomeDisplay(lead),
       pdfUrl: lead.pdf_url,
       linkWhatsAppMel: linkWhatsAppMel(env.MEL_WHATSAPP),

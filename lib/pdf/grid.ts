@@ -23,7 +23,10 @@ const PASSO_GRID = 20;
 const PASSO_ROTULO = 100;
 
 const EXEMPLOS: Record<string, string> = {
-  nome: "Maria Eduarda & João Vitor",
+  debutante: "Maria Eduarda Albuquerque",
+  aniversariante: "João Vitor",
+  noivos: "Ana & João",
+  empresa: "Acme Tecnologia Ltda",
   tipo_evento: "Confraternização de fim de ano",
   data: "14 de março de 2026",
   horario: "19h30",

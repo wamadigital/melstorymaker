@@ -20,7 +20,8 @@ import { gerarProposta } from "@/lib/pdf/gerar";
 const AMOSTRAS: Record<Categoria, Respostas> = {
   debutante: {
     // Nome longo de proposito: exercita o auto-shrink do maxLargura.
-    nome: "Maria Eduarda Albuquerque do Nascimento",
+    nome: "Lúcia",
+    debutante: "Maria Eduarda Albuquerque do Nascimento",
     data: "2026-03-14",
     horario: "19:30",
     local: "Espaço Villa Bisutti",
@@ -31,7 +32,8 @@ const AMOSTRAS: Record<Categoria, Respostas> = {
     contato_whatsapp: "(19) 99999-8888",
   },
   aniversario: {
-    nome: "João",
+    nome: "Lúcia",
+    aniversariante: "João",
     // 8 anos: deve resolver para a arte infantil.
     idade: "8",
     data: "2026-12-01",
@@ -42,7 +44,8 @@ const AMOSTRAS: Record<Categoria, Respostas> = {
     contato_email: "lead@example.com",
   },
   casamento: {
-    nome: "Ana & João",
+    nome: "Lúcia",
+    noivos: "Ana & João",
     data: "2026-08-31",
     horario: "16:00",
     local_cerimonia: "Igreja Nossa Senhora do Brasil",
@@ -53,7 +56,8 @@ const AMOSTRAS: Record<Categoria, Respostas> = {
     contato_email: "lead@example.com",
   },
   corporativo: {
-    nome: "Acme Tecnologia Ltda",
+    nome: "Lúcia",
+    empresa: "Acme Tecnologia Ltda",
     tipo_evento: "Confraternização de fim de ano",
     data: "2026-05-20",
     horario: "09:00",

@@ -5,6 +5,9 @@ import type { Categoria } from "@/lib/form/types";
  */
 
 export type DadosEmail = {
+  /** Quem preencheu o formulario. E quem recebe e le este e-mail. */
+  nomeContato: string;
+  /** Sujeito do evento. Usado so na copy corporativa ("interesse da {empresa}"). */
   nomeDisplay: string;
   pdfUrl: string;
   linkWhatsAppMel: string;
@@ -53,7 +56,10 @@ function link(url: string, rotulo?: string): string {
 
 /** Categorias pessoais: debutante, aniversario e casamento. */
 function emailPessoal(d: DadosEmail): EmailPronto {
-  const nome = d.nomeDisplay || "tudo bem";
+  // Cumprimenta QUEM PREENCHEU, nao o sujeito do evento: quem abre este e-mail
+  // pode ser a cerimonialista ou a mae da debutante, e dirigir a mensagem aos
+  // noivos soaria como e-mail de robo que nao sabe com quem esta falando.
+  const nome = d.nomeContato || "tudo bem";
 
   const fraseProposta = d.comAnexo
     ? `Sua proposta personalizada está em anexo (e também nesse link, se preferir: ${d.pdfUrl}).`

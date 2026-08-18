@@ -48,7 +48,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
 
   const { error } = await supabaseAdmin()
     .from("leads")
-    .update({ respostas, ...colunasPromovidas(respostas) })
+    .update({ respostas, ...colunasPromovidas(lead.categoria, respostas) })
     .eq("id", id);
 
   if (error) {

@@ -58,7 +58,13 @@ function responder(passo: Passo, makingOf: "Sim" | "Não", idade: string): strin
     case "numero":
       return String(typeof passo.min === "number" ? passo.min : 1);
     case "texto":
-      return passo.id === "nome" ? "Ana & João Teste" : `Local de ${passo.id}`;
+      if (passo.id === "nome") return "Lúcia Teste";
+      if (passo.id === "noivos") return "Ana & João";
+      if (passo.id === "debutante") return "Maria Eduarda";
+      if (passo.id === "aniversariante") return "João Vitor";
+      if (passo.id === "empresa") return "Acme Tecnologia Ltda";
+      if (passo.id === "tipo_evento") return "Confraternização de fim de ano";
+      return `Local de ${passo.id}`;
     default:
       return "x";
   }

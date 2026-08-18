@@ -60,7 +60,7 @@ export async function POST(req: Request, { params }: Ctx) {
 
   const { error } = await supabaseAdmin()
     .from("leads")
-    .update({ status: "aguardando_revisao", ...colunasPromovidas(respostas) })
+    .update({ status: "aguardando_revisao", ...colunasPromovidas(lead.categoria, respostas) })
     .eq("id", id)
     .eq("status", "incompleto");
 

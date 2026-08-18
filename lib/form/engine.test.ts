@@ -11,7 +11,8 @@ import {
   resolverTemplateId,
 } from "./engine";
 import { mascararTelefone, validarResposta } from "./validacao";
-import { TEMPLATES, type Passo } from "./types";
+import { CATEGORIAS, TEMPLATES, type Passo } from "./types";
+import { colunasPromovidas, nomeContato, primeiroNome, sujeitoDoEvento } from "@/lib/leads";
 import { templates } from "@/lib/pdf/templates.config";
 
 const ids = (categoria: Parameters<typeof passosVisiveis>[0], r = {}) =>
@@ -55,6 +56,7 @@ test("corporativo nao tem making of nem entrega", () => {
   assert.ok(!lista.includes("entrega"));
   assert.deepEqual(lista, [
     "nome",
+    "empresa",
     "tipo_evento",
     "data",
     "horario",
@@ -75,10 +77,10 @@ test("idsValidos inclui o passo escondido, para o autosave nao rejeitar a respos
 });
 
 test("limparRespostasOrfas descarta o local do making of ao trocar para Nao", () => {
-  const sujo = { making_of: "Não", local_making_of: "Casa da noiva", nome: "Ana & João" };
+  const sujo = { making_of: "Não", local_making_of: "Casa da noiva", noivos: "Ana & João" };
   const limpo = limparRespostasOrfas("casamento", sujo);
   assert.equal(limpo.local_making_of, undefined);
-  assert.equal(limpo.nome, "Ana & João");
+  assert.equal(limpo.noivos, "Ana & João");
 });
 
 test("normalizarOpcoes aceita as duas formas do arvore.json", () => {
@@ -118,17 +120,47 @@ test("mascara de telefone BR", () => {
   assert.equal(mascararTelefone(""), "");
 });
 
-test("aniversario ganhou a pergunta de idade, antes da data", () => {
+test("aniversario pergunta idade logo depois do aniversariante", () => {
   const lista = ids("aniversario");
-  assert.ok(lista.includes("idade"));
-  assert.equal(lista.indexOf("idade"), lista.indexOf("nome") + 1);
+  assert.equal(lista.indexOf("idade"), lista.indexOf("aniversariante") + 1);
   assert.equal(lista.indexOf("data"), lista.indexOf("idade") + 1);
 });
 
 test("corporativo ganhou a pergunta de tipo de evento", () => {
   const lista = ids("corporativo");
-  assert.ok(lista.includes("tipo_evento"));
-  assert.equal(lista.indexOf("tipo_evento"), lista.indexOf("nome") + 1);
+  assert.equal(lista.indexOf("tipo_evento"), lista.indexOf("empresa") + 1);
+});
+
+test("`nome` é sempre a PRIMEIRA pergunta, em todos os fluxos", () => {
+  // Quem preenche nem sempre e quem o evento homenageia: a cerimonialista
+  // preenche o casamento, a mae preenche os 15 anos da filha.
+  for (const cat of CATEGORIAS) {
+    assert.equal(ids(cat)[0], "nome", `${cat} nao comeca por nome`);
+  }
+});
+
+test("cada categoria tem a sua variável de sujeito do evento", () => {
+  assert.equal(ids("debutante")[1], "debutante");
+  assert.equal(ids("aniversario")[1], "aniversariante");
+  assert.equal(ids("casamento")[1], "noivos");
+  assert.equal(ids("corporativo")[1], "empresa");
+});
+
+test("nome_display guarda o sujeito do evento, não quem preencheu", () => {
+  const r = { nome: "Lúcia", noivos: "Ana & João", data: "2027-08-31" };
+  assert.equal(colunasPromovidas("casamento", r).nome_display, "Ana & João");
+  assert.equal(sujeitoDoEvento("casamento", r), "Ana & João");
+  assert.equal(nomeContato(r), "Lúcia");
+  // O WhatsApp cumprimenta quem vai ler a mensagem.
+  assert.equal(primeiroNome({ respostas: r }), "Lúcia");
+});
+
+test("o sujeito de cada categoria sai da chave certa", () => {
+  assert.equal(sujeitoDoEvento("debutante", { debutante: "Maria" }), "Maria");
+  assert.equal(sujeitoDoEvento("aniversario", { aniversariante: "João" }), "João");
+  assert.equal(sujeitoDoEvento("corporativo", { empresa: "Acme" }), "Acme");
+  // A chave de outra categoria nao vaza.
+  assert.equal(sujeitoDoEvento("casamento", { debutante: "Maria" }), "");
 });
 
 test("o corte da arte é exatamente 14 para infantil e 15 para adulto", () => {

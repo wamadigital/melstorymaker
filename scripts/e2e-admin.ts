@@ -60,7 +60,7 @@ async function main() {
     categoria: "casamento",
     status: "aguardando_revisao",
     respostas: {
-      nome: "Ana & João", data: "2027-08-31", horario: "16:00",
+      nome: "Lúcia", noivos: "Ana & João", data: "2027-08-31", horario: "16:00",
       local_cerimonia: "Igreja Nossa Senhora do Brasil",
       local_festa: "Espaço Villa Bisutti",
       making_of: "Sim", local_making_of: "Hotel Fasano",

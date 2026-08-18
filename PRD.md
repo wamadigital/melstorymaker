@@ -107,7 +107,8 @@ Fonte única de verdade em `/lib/form/arvore.json`. O engine renderiza a partir 
   },
   "fluxos": {
     "debutante": [
-      { "id": "nome", "tipo": "texto", "pergunta": "Nome da debutante ✨", "obrigatorio": true },
+      { "id": "nome", "tipo": "texto", "pergunta": "Como você se chama? ✨", "obrigatorio": true },
+      { "id": "debutante", "tipo": "texto", "pergunta": "Nome da debutante ✨", "obrigatorio": true },
       { "id": "data", "tipo": "data", "pergunta": "Data da festa", "obrigatorio": true, "min": "hoje" },
       { "id": "horario", "tipo": "hora", "pergunta": "Horário do convite", "obrigatorio": true },
       { "id": "local", "tipo": "texto", "pergunta": "Local da festa", "obrigatorio": true },
@@ -116,7 +117,8 @@ Fonte única de verdade em `/lib/form/arvore.json`. O engine renderiza a partir 
       { "id": "entrega", "tipo": "escolha_unica", "pergunta": "Como você prefere a entrega?", "opcoes": ["Em tempo real", "Em até 1 semana"], "obrigatorio": true }
     ],
     "aniversario": [
-      { "id": "nome", "tipo": "texto", "pergunta": "Nome do(a) aniversariante ✨", "obrigatorio": true },
+      { "id": "nome", "tipo": "texto", "pergunta": "Como você se chama? ✨", "obrigatorio": true },
+      { "id": "aniversariante", "tipo": "texto", "pergunta": "Nome do(a) aniversariante ✨", "obrigatorio": true },
       { "id": "idade", "tipo": "numero", "pergunta": "Quantos anos vai completar? ✨", "obrigatorio": true, "min": 1, "max": 120 },
       { "id": "data", "tipo": "data", "pergunta": "Data da festa", "obrigatorio": true, "min": "hoje" },
       { "id": "horario", "tipo": "hora", "pergunta": "Horário do convite", "obrigatorio": true },
@@ -124,7 +126,8 @@ Fonte única de verdade em `/lib/form/arvore.json`. O engine renderiza a partir 
       { "id": "entrega", "tipo": "escolha_unica", "pergunta": "Como você prefere a entrega?", "opcoes": ["Em tempo real", "Em até 1 semana"], "obrigatorio": true }
     ],
     "casamento": [
-      { "id": "nome", "tipo": "texto", "pergunta": "Nome dos noivos ✨", "placeholder": "Ex: Ana & João", "obrigatorio": true },
+      { "id": "nome", "tipo": "texto", "pergunta": "Como você se chama? ✨", "obrigatorio": true },
+      { "id": "noivos", "tipo": "texto", "pergunta": "Nome dos noivos ✨", "placeholder": "Ex: Ana & João", "obrigatorio": true },
       { "id": "data", "tipo": "data", "pergunta": "Data do casamento", "obrigatorio": true, "min": "hoje" },
       { "id": "horario", "tipo": "hora", "pergunta": "Horário do convite", "obrigatorio": true },
       { "id": "local_cerimonia", "tipo": "texto", "pergunta": "Local da cerimônia", "obrigatorio": true },
@@ -134,7 +137,8 @@ Fonte única de verdade em `/lib/form/arvore.json`. O engine renderiza a partir 
       { "id": "entrega", "tipo": "escolha_unica", "pergunta": "Como você prefere a entrega?", "opcoes": ["Em tempo real", "Em até 1 semana"], "obrigatorio": true }
     ],
     "corporativo": [
-      { "id": "nome", "tipo": "texto", "pergunta": "Nome da empresa", "obrigatorio": true },
+      { "id": "nome", "tipo": "texto", "pergunta": "Como você se chama? ✨", "obrigatorio": true },
+      { "id": "empresa", "tipo": "texto", "pergunta": "Nome da empresa", "obrigatorio": true },
       { "id": "tipo_evento", "tipo": "texto", "pergunta": "Que tipo de evento vamos cobrir?", "obrigatorio": true },
       { "id": "data", "tipo": "data", "pergunta": "Data do evento", "obrigatorio": true, "min": "hoje" },
       { "id": "horario", "tipo": "hora", "pergunta": "Horário do evento", "obrigatorio": true },
@@ -457,7 +461,16 @@ Oi, {primeiro_nome}! ✨ Preparei sua proposta com todo carinho. Dá uma olhada 
 Qualquer dúvida, me chama! 🤍
 ```
 
-Regra do `nome_display`: debutante/aniversariante/noivos/empresa conforme o campo `nome` de cada fluxo. `primeiro_nome` = primeira palavra do `nome_display` (em casamento, usa o primeiro nome do casal).
+**Quem preenche não é quem o evento homenageia.** A cerimonialista preenche o casamento; a mãe preenche os 15 anos da filha. Por isso são dois conceitos:
+
+- `nome` — **sempre** quem está preenchendo o formulário. É a primeira pergunta de todo fluxo, e é quem recebe e lê o e-mail.
+- Sujeito do evento — chave própria por categoria, com o mesmo nome da variável na arte do Figma: `{{debutante}}`, `{{aniversariante}}`, `{{noivos}}`, `{{empresa}}`.
+
+Regras derivadas:
+
+- `nome_display` (coluna promovida, lista do admin e PDF) = **sujeito do evento**. É assim que a Mel identifica um lead: "o casamento da Ana & João".
+- Saudação do e-mail e `primeiro_nome` do WhatsApp = **quem preencheu**. "Oi, Lúcia!" funciona seja ela a noiva, a mãe ou a cerimonialista.
+- A copy corporativa é a exceção: "Obrigada pelo interesse da {empresa}" usa o sujeito, porque a frase é sobre a empresa.
 
 ## 15. Insumos necessários antes de codar (checklist Henrique/Mel)
 

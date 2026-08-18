@@ -119,7 +119,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
 
   const { error } = await supabaseAdmin()
     .from("leads")
-    .update({ categoria, respostas, passo_atual, ...colunasPromovidas(respostas) })
+    .update({ categoria, respostas, passo_atual, ...colunasPromovidas(categoria, respostas) })
     .eq("id", id)
     .eq("status", "incompleto");
 
