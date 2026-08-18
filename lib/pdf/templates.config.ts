@@ -221,7 +221,9 @@ export const templates: Record<TemplateId, TemplateConfig> = {
         // so o nome e dinamico. y = 393,5 (topo do bloco) + 90,5 (altura de
         // uma linha, medida em 181pt para duas).
         chave: "nome",
-        fonte: "respostas.nome",
+        // Composicao, e nao `fonte`, por causa do "!": no Figma a linha era
+        // "{{nome}}!" e a exclamacao faz parte da saudacao, nao do nome.
+        composicao: "{nome}!",
         pagina: 0,
         x: 148.5,
         y: 484,
