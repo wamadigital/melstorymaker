@@ -248,12 +248,28 @@ export const templates: Record<TemplateId, TemplateConfig> = {
     }),
   },
 
+  /**
+   * ARTE REAL — frame aniversario_adulto_01, node 1651:2436. Seis paginas.
+   *
+   * ATENCAO: o cabecalho desta arte e "ANIVERSÁRIO | {{data}}", SEM o nome do
+   * aniversariante -- diferente do infantil, que traz "ANIVERSÁRIO
+   * {{aniversariante}} | {{data}}". A composicao abaixo reproduz a arte como
+   * ela esta. Se a intencao era ter o nome, a correcao e na arte (criar a
+   * variavel no Figma) e aqui, nao so aqui.
+   *
+   * Consequencia: `aniversariante` continua obrigatorio no formulario e
+   * aparece no painel, mas nao e impresso nesta arte.
+   */
   aniversario_adulto: {
     basePdf: "assets/templates/aniversario_adulto.pdf",
     rotulo: "Aniversário adulto (15 anos ou mais)",
     origemCoordenadas: "figma",
     escala: 1,
-    campos: [campoSujeito("aniversariante"), ...camposComuns(), campoLocal("local", 360)],
+    campos: camposCapa({
+      composicao: "ANIVERSÁRIO | {data}",
+      xNome: 205,
+      xCabecalho: 1151,
+    }),
   },
 
   // ARTE REAL — frame casamento_01, node 1084:11243. Sete paginas (tem galeria

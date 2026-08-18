@@ -34,8 +34,8 @@ const AMOSTRAS: Record<Categoria, Respostas> = {
   aniversario: {
     nome: "Lúcia",
     aniversariante: "João",
-    // 8 anos: deve resolver para a arte infantil.
-    idade: "8",
+    // 30 anos: resolve para a arte ADULTA. A infantil e coberta pelos testes.
+    idade: "30",
     data: "2026-12-01",
     // Hora cheia: deve sair "20h", nao "20h00".
     horario: "20:00",

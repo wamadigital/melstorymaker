@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { PDFDocument } from "pdf-lib";
 import { CamposFaltandoError, gerarProposta, textoDoCampo } from "./gerar";
-import type { Respostas } from "@/lib/form/types";
-import { templates } from "./templates.config";
+import { TEMPLATES, type Respostas } from "@/lib/form/types";
+import { chavesDoCampo, templates } from "./templates.config";
 
 /**
  * Estes testes existem por um motivo so: proposta com campo em branco nao pode
@@ -283,4 +283,60 @@ test("as três artes reais compartilham o desenho de capa, variando só x e comp
     assert.equal(campos[0].alinhamento, "direita", `${t}: alinhamento do cabeçalho`);
     assert.equal(campos[1].cor, "#FFFFFF", `${t}: cor do nome`);
   }
+});
+
+// --- aniversário adulto ---------------------------------------------------
+
+test("aniversário com 15 anos ou mais usa a arte adulta real", async () => {
+  const r = await gerarProposta("aniversario", {
+    nome: "Lúcia",
+    aniversariante: "João Vitor",
+    idade: "30",
+    data: "2027-12-01",
+  });
+  assert.equal(r.templateId, "aniversario_adulto");
+  assert.equal(r.usouPlaceholder, false);
+  assert.equal(r.usouFallbackDeFonte, false);
+  const doc = await PDFDocument.load(r.bytes);
+  assert.equal(doc.getPageCount(), 6);
+});
+
+test("a arte adulta NÃO imprime o nome do aniversariante — é assim no Figma", async () => {
+  // O cabeçalho do adulto é "ANIVERSÁRIO | {{data}}", sem a variável, enquanto
+  // o infantil traz o nome. Este teste trava a diferença: se alguém "consertar"
+  // o config sem mexer na arte, o texto sairia de uma variável que não existe
+  // lá — e a proposta ficaria diferente do design aprovado.
+  const adulto = templates.aniversario_adulto.campos[0];
+  const infantil = templates.aniversario_infantil.campos[0];
+
+  assert.equal(adulto.composicao, "ANIVERSÁRIO | {data}");
+  assert.equal(infantil.composicao, "ANIVERSÁRIO {aniversariante} | {data}");
+  assert.ok(!chavesDoCampo(adulto).includes("aniversariante"));
+  assert.ok(chavesDoCampo(infantil).includes("aniversariante"));
+});
+
+test("adulto gera sem o nome do aniversariante, porque a arte não o usa", async () => {
+  // Aqui não é permissividade: o campo simplesmente não faz parte desta arte.
+  const r = await gerarProposta("aniversario", {
+    nome: "Lúcia",
+    idade: "30",
+    data: "2027-12-01",
+  });
+  assert.equal(r.templateId, "aniversario_adulto");
+});
+
+test("as artes reais seguem o padrão de capa; só falta o corporativo", () => {
+  // Quando o corporativo entrar, ele passa a aparecer em `prontas` e este teste
+  // cobre as cinco. Enquanto isso, a asserção de baixo é o lembrete do que falta.
+  const prontas = TEMPLATES.filter((t) => t !== "corporativo");
+
+  for (const t of prontas) {
+    assert.deepEqual(
+      templates[t].campos.map((c) => c.chave),
+      ["cabecalho", "nome"],
+      `${t} fora do padrão de capa`,
+    );
+  }
+
+  assert.equal(prontas.length, 4, "esperava 4 artes reais");
 });
