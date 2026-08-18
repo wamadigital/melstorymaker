@@ -4,7 +4,9 @@
  */
 import { createClient } from "@supabase/supabase-js";
 
-const BASE = "http://localhost:3000";
+// Aceita a URL como 2o argumento para rodar contra producao:
+//   npm run e2e:admin -- voce@email.com https://melstorymaker.com.br
+const BASE = process.argv[3] || "http://localhost:3000";
 const URL_SB = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SERVICE = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;

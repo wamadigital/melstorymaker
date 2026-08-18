@@ -25,6 +25,9 @@ const schema = z
     MEL_WHATSAPP: z
       .string()
       .regex(/^\d{12,13}$/, "deve ser so digitos com DDI. Ex: 5519999999999"),
+    // Nao e lido por nenhuma rota: o link do PDF vem do Storage do Supabase.
+    // Serve aos scripts (e2e) e fica aqui porque o PRD a lista. Se um dia
+    // alguma tela precisar montar URL absoluta, e daqui que ela sai.
     APP_URL: z.string().url(),
   })
   // As credenciais do Gmail so sao exigidas quando o envio e real: com
