@@ -183,7 +183,7 @@ Regras do engine:
 | RF-12 | Envio por e-mail | Botão "Enviar por e-mail" dispara mensagem com PDF anexo + link; `status = enviado` com timestamp |
 | RF-13 | Envio via WhatsApp | Botão abre `wa.me` com mensagem pré-preenchida + link público do PDF; com número do lead vai direto pro contato, sem número abre o seletor de conversa |
 | RF-14 | Regerar PDF após edição | Novo PDF sobrescreve o anterior (mesma URL, cache-bust no preview) |
-| RF-15 | Formatação pt-BR no PDF | Data por extenso ("14 de março de 2026") e horário no padrão "19h30" |
+| RF-15 | Formatação pt-BR no PDF | Data em **DD/MM/AAAA** ("14/03/2026") e horário no padrão "19h30" |
 
 ## 8. Painel admin
 

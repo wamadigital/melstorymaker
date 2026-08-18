@@ -72,7 +72,15 @@ export function dataHoraLocal(iso: string | null | undefined): string {
   return `${dia}/${mes}/${d.getFullYear()} às ${minuto === "00" ? `${hora}h` : `${hora}h${minuto}`}`;
 }
 
+/**
+ * Formatadores disponiveis no templates.config.ts.
+ *
+ * `data_curta` (DD/MM/AAAA) e o padrao das propostas, por decisao do owner.
+ * `data_extenso` continua aqui por ser a forma que o PRD descrevia antes e por
+ * seguir valendo para qualquer arte que peca a data escrita.
+ */
 export const FORMATADORES = {
+  data_curta: dataCurta,
   data_extenso: dataExtenso,
   hora_br: horaBr,
 } as const;

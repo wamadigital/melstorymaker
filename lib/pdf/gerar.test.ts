@@ -124,12 +124,12 @@ test("campo composto junta as respostas e formata cada uma", () => {
   const campo = {
     chave: "cabecalho",
     composicao: "{noivos} | {data}",
-    formatos: { data: "data_extenso" },
+    formatos: { data: "data_curta" },
   } as unknown as Parameters<typeof textoDoCampo>[0];
 
   assert.equal(
     textoDoCampo(campo, { noivos: "Ana & João", data: "2027-08-31" }),
-    "Ana & João | 31 de agosto de 2027",
+    "Ana & João | 31/08/2027",
   );
 });
 

@@ -85,7 +85,7 @@ function camposComuns(): CampoTemplate[] {
       font: "DMSans-Regular",
       tamanho: 14,
       cor: COR_TINTA,
-      formato: "data_extenso",
+      formato: "data_curta",
     },
     {
       chave: "horario",
@@ -206,7 +206,7 @@ export const templates: Record<TemplateId, TemplateConfig> = {
         // borda direita da caixa (782,5 + 368 = 1150,5), nao o inicio.
         chave: "cabecalho",
         composicao: "{noivos} | {data}",
-        formatos: { data: "data_extenso" },
+        formatos: { data: "data_curta" },
         pagina: 0,
         x: 1150.5,
         y: 64,
