@@ -125,6 +125,57 @@ function campoSujeito(
   };
 }
 
+/**
+ * Os dois campos dinamicos da CAPA, que todas as cinco artes compartilham.
+ *
+ * O desenho e sempre o mesmo: um cabecalho no topo alinhado a direita e, no
+ * bloco "Olá,", o nome de quem preencheu na segunda linha. Muda so a
+ * composicao do cabecalho e o x do bloco de saudacao.
+ *
+ * Medido no Figma e igual em todas as artes:
+ *   - borda direita do cabecalho: 1150,5   |  y 64   |  45,522pt Light
+ *   - topo do bloco "Olá,": y 393,5, e cada linha ocupa 95pt, entao a segunda
+ *     linha (o nome) comeca em 488,5       |  73,122pt Light
+ *   - branco, porque os dois ficam sobre a banda taupe
+ */
+function camposCapa(opcoes: {
+  /** Ex: "15 ANOS DA {debutante} | {data}". */
+  composicao: string;
+  /** x do bloco "Olá," — a unica coordenada que varia entre as artes. */
+  xNome: number;
+}): CampoTemplate[] {
+  const BRANCO = "#FFFFFF";
+
+  return [
+    {
+      chave: "cabecalho",
+      composicao: opcoes.composicao,
+      formatos: { data: "data_curta" },
+      pagina: 0,
+      x: 1150.5,
+      y: 64,
+      font: "DMSans-Light",
+      tamanho: 45.52,
+      cor: BRANCO,
+      maxLargura: 900,
+      alinhamento: "direita",
+    },
+    {
+      chave: "nome",
+      // Composicao por causa do "!": no Figma a linha era "{{nome}}!" e a
+      // exclamacao faz parte da saudacao, nao do nome digitado pelo lead.
+      composicao: "{nome}!",
+      pagina: 0,
+      x: opcoes.xNome,
+      y: 488.5,
+      font: "DMSans-Light",
+      tamanho: 73.12,
+      cor: BRANCO,
+      maxLargura: 620,
+    },
+  ];
+}
+
 /** Chaves de resposta que um campo consome, seja simples ou composto. */
 export function chavesDoCampo(campo: CampoTemplate): string[] {
   if (campo.composicao) {
@@ -149,23 +200,32 @@ function campoLocal(chave: string, y: number): CampoTemplate {
 }
 
 /**
- * PROVISORIO ate a arte real do Figma entrar no repo.
+ * `casamento` e `debutante` ja usam a ARTE REAL, medida no Figma. As tres
+ * restantes ainda rodam sobre placeholder, com coordenadas provisorias que NAO
+ * correspondem a arte da Mel -- entram no mesmo padrao de `camposCapa` assim
+ * que forem exportadas.
  *
- * Os numeros abaixo posicionam texto legivel sobre os PDFs placeholder para o
- * pipeline rodar ponta a ponta. Eles NAO correspondem a arte da Mel. A
- * calibracao de verdade se faz em /admin/debug-template?template=X, e entra em
- * PR dedicada contendo so assets + este arquivo.
+ * A pagina exportada tem 1240x1754 pt, exatamente o tamanho do frame em px,
+ * entao `escala: 1` e as coordenadas do painel do Figma valem direto.
+ * Calibracao em /admin/debug-template?template=X, em PR dedicada contendo so
+ * assets + este arquivo.
  *
  * Indexado por TemplateId, nao por Categoria: `aniversario` e uma categoria so
  * no banco, mas resolve entre duas artes conforme a idade.
  */
 export const templates: Record<TemplateId, TemplateConfig> = {
+  // ARTE REAL — frame debutante_01, node 835:2. Seis paginas; so a capa tem
+  // texto dinamico. `horario`, `local`, `making_of` e `entrega` nao entram: a
+  // arte nao reservou espaco. Seguem no painel como contexto para a Mel.
   debutante: {
     basePdf: "assets/templates/debutante.pdf",
     rotulo: "Festa de 15 anos",
     origemCoordenadas: "figma",
     escala: 1,
-    campos: [campoSujeito("debutante"), ...camposComuns(), campoLocal("local", 360)],
+    campos: camposCapa({
+      composicao: "15 ANOS DA {debutante} | {data}",
+      xNome: 205,
+    }),
   },
 
   aniversario_infantil: {
@@ -184,55 +244,18 @@ export const templates: Record<TemplateId, TemplateConfig> = {
     campos: [campoSujeito("aniversariante"), ...camposComuns(), campoLocal("local", 360)],
   },
 
-  /**
-   * ARTE REAL, medida no Figma (frame casamento_01, node 1084:11243).
-   *
-   * A pagina exportada tem 1240x1754 pt, exatamente o tamanho do frame em px,
-   * entao `escala: 1` e as coordenadas do painel do Figma valem direto.
-   *
-   * So a pagina 0 tem texto dinamico; as outras 6 sao estaticas. `horario`,
-   * `local_cerimonia` e `local_festa` NAO entram: a arte nao reservou espaco
-   * para eles. Continuam sendo perguntados e ficam visiveis no painel, como
-   * contexto para a Mel planejar.
-   */
+  // ARTE REAL — frame casamento_01, node 1084:11243. Sete paginas (tem galeria
+  // de fotos, que as outras nao tem); so a capa tem texto dinamico. `horario`,
+  // `local_cerimonia` e `local_festa` nao entram: a arte nao reservou espaco.
   casamento: {
     basePdf: "assets/templates/casamento.pdf",
     rotulo: "Casamento",
     origemCoordenadas: "figma",
     escala: 1,
-    campos: [
-      {
-        // Cabecalho da capa: um unico texto alinhado A DIREITA, entao o x e a
-        // borda direita da caixa (782,5 + 368 = 1150,5), nao o inicio.
-        chave: "cabecalho",
-        composicao: "{noivos} | {data}",
-        formatos: { data: "data_curta" },
-        pagina: 0,
-        x: 1150.5,
-        y: 64,
-        font: "DMSans-Light",
-        tamanho: 45.52,
-        cor: "#FFFFFF",
-        maxLargura: 900,
-        alinhamento: "direita",
-      },
-      {
-        // Segunda linha do bloco "Olá,": o "Olá," continua desenhado na arte,
-        // so o nome e dinamico. y = 393,5 (topo do bloco) + 90,5 (altura de
-        // uma linha, medida em 181pt para duas).
-        chave: "nome",
-        // Composicao, e nao `fonte`, por causa do "!": no Figma a linha era
-        // "{{nome}}!" e a exclamacao faz parte da saudacao, nao do nome.
-        composicao: "{nome}!",
-        pagina: 0,
-        x: 148.5,
-        y: 484,
-        font: "DMSans-Light",
-        tamanho: 73.12,
-        cor: "#FFFFFF",
-        maxLargura: 620,
-      },
-    ],
+    campos: camposCapa({
+      composicao: "{noivos} | {data}",
+      xNome: 148.5,
+    }),
   },
 
   corporativo: {

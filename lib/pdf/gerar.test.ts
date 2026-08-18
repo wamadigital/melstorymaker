@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { PDFDocument } from "pdf-lib";
 import { CamposFaltandoError, gerarProposta, textoDoCampo } from "./gerar";
 import type { Respostas } from "@/lib/form/types";
+import { templates } from "./templates.config";
 
 /**
  * Estes testes existem por um motivo so: proposta com campo em branco nao pode
@@ -159,4 +160,71 @@ test("a arte do casamento não exige horário nem os dois locais", async () => {
     entrega: "Em tempo real",
   });
   assert.equal(r.templateId, "casamento");
+});
+
+// --- debutante ------------------------------------------------------------
+
+const DEBUTANTE_COMPLETO: Respostas = {
+  nome: "Lúcia",
+  debutante: "Maria Eduarda",
+  data: "2027-03-14",
+  horario: "19:30",
+  local: "Espaço Villa Bisutti",
+  making_of: "Não",
+  entrega: "Em tempo real",
+};
+
+test("o cabeçalho do debutante compõe o texto fixo da arte", () => {
+  const campo = {
+    chave: "cabecalho",
+    composicao: "15 ANOS DA {debutante} | {data}",
+    formatos: { data: "data_curta" },
+  } as unknown as Parameters<typeof textoDoCampo>[0];
+
+  assert.equal(
+    textoDoCampo(campo, { debutante: "Maria Eduarda", data: "2027-03-14" }),
+    "15 ANOS DA Maria Eduarda | 14/03/2027",
+  );
+});
+
+test("debutante gera as 6 páginas da arte real", async () => {
+  const r = await gerarProposta("debutante", DEBUTANTE_COMPLETO);
+  assert.equal(r.templateId, "debutante");
+  assert.equal(r.usouPlaceholder, false);
+  assert.equal(r.usouFallbackDeFonte, false);
+  const doc = await PDFDocument.load(r.bytes);
+  assert.equal(doc.getPageCount(), 6);
+});
+
+test("debutante sem o nome da debutante recusa a geração", async () => {
+  const campos = await esperarFalta("debutante", { ...DEBUTANTE_COMPLETO, debutante: "" });
+  assert.match(campos.join(" "), /Nome da debutante/);
+});
+
+test("debutante não exige horário nem local: a arte não os imprime", async () => {
+  const r = await gerarProposta("debutante", {
+    nome: "Lúcia",
+    debutante: "Maria Eduarda",
+    data: "2027-03-14",
+  });
+  assert.equal(r.templateId, "debutante");
+});
+
+test("casamento e debutante compartilham o mesmo desenho de capa", () => {
+  // O que muda entre as artes é só a composição do cabeçalho e o x do nome.
+  // Se alguém quebrar o helper, os dois divergem aqui antes de sair no PDF.
+  const cas = templates.casamento.campos;
+  const deb = templates.debutante.campos;
+
+  assert.deepEqual(
+    cas.map((c) => c.chave),
+    deb.map((c) => c.chave),
+  );
+  for (const chave of ["y", "tamanho", "cor", "font", "alinhamento"] as const) {
+    assert.deepEqual(
+      cas.map((c) => c[chave]),
+      deb.map((c) => c[chave]),
+      `divergiu em ${chave}`,
+    );
+  }
 });

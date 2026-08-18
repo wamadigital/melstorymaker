@@ -20,7 +20,7 @@ import { gerarProposta } from "@/lib/pdf/gerar";
 const AMOSTRAS: Record<Categoria, Respostas> = {
   debutante: {
     // Nome longo de proposito: exercita o auto-shrink do maxLargura.
-    nome: "Lúcia",
+    nome: "Lúcia Fernandes de Albuquerque",
     debutante: "Maria Eduarda Albuquerque do Nascimento",
     data: "2026-03-14",
     horario: "19:30",
