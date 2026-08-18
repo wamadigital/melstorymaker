@@ -35,7 +35,9 @@ if ! vercel whoami --scope "$ESCOPO" >/dev/null 2>&1; then
 fi
 
 echo ""
-echo "  Vinculando ao projeto $PROJETO…"
+# Chaves obrigatorias: a reticencia colada faria o bash ler "PROJETO…" como
+# nome da variavel, e com `set -u` isso aborta o script.
+echo "  Vinculando ao projeto ${PROJETO}..."
 vercel link --yes --project "$PROJETO" --scope "$ESCOPO" >/dev/null
 
 # NEXT_PUBLIC_* precisa existir também em preview/development, senão o build de
@@ -43,8 +45,16 @@ vercel link --yes --project "$PROJETO" --scope "$ESCOPO" >/dev/null
 AMBIENTES_PUBLICOS="production preview development"
 AMBIENTES_SECRETOS="production"
 
+# O `vercel link` injeta VERCEL_OIDC_TOKEN no .env.local. E um token efemero de
+# desenvolvimento que a Vercel emite sozinha em runtime -- defini-lo como
+# variavel de producao mascara o real. O mesmo vale para qualquer VERCEL_*.
+ignorar() {
+  case "$1" in VERCEL_*|TURBO_*) return 0 ;; *) return 1 ;; esac
+}
+
 enviar() {
   local nome="$1" valor="$2" ambientes="$3"
+  ignorar "$nome" && { printf "  \033[33m—\033[0m %-32s injetada pelo CLI, ignorada\n" "$nome"; return; }
   [ -z "$valor" ] && { printf "  \033[33m—\033[0m %-32s vazia, pulada\n" "$nome"; return; }
 
   for amb in $ambientes; do
