@@ -31,6 +31,8 @@ Mantenha `MAIL_DRY_RUN=1` em desenvolvimento: o e-mail vai para o log em vez da 
 | `npm run e2e:formulario` | Fluxo público completo nas 4 categorias e nas duas ramificações, contra as rotas HTTP reais |
 | `npm run e2e:admin -- <email>` | Painel: gera PDF, sobe no Storage e **envia e-mail de verdade** para o endereço informado |
 | `npm run bundle:verificar` | Procura os **valores** dos segredos no bundle do navegador (grep por nome dá falso positivo) |
+| `npm run arte:preparar -- <template> <pasta>` | Comprime e une as páginas exportadas do Figma numa arte base |
+| `npm run vercel:env` | Envia o `.env.local` para a Vercel, com `MAIL_DRY_RUN=0` e `APP_URL` de produção |
 | `npm run admin:criar -- <email>` | Cria a usuária do painel já confirmada, com senha forte gerada |
 | `npm run templates:placeholder` | Regera os 4 PDFs base provisórios |
 | `npm run pdf:verificar` | Gera uma proposta por categoria em `.pdf-verificacao/` e confere os limites do PRD |
@@ -58,9 +60,17 @@ Se o DNS não verificar a tempo, a contingência já está pronta: `MAIL_PROVIDE
 
 ### 3. Vercel
 
-1. Importar o repositório.
-2. Cadastrar todas as variáveis do `.env.example`, com `MAIL_DRY_RUN=0` e `APP_URL=https://melstorymaker.com.br`.
-3. Adicionar o domínio e criar no Registro.br exatamente os registros que a Vercel exibir.
+Projeto: `melstorymaker`, no time `wamadigitals-projects`.
+
+```bash
+vercel login       # uma vez, abre o navegador
+npm run vercel:env # envia as variáveis do .env.local
+vercel --prod --scope wamadigitals-projects
+```
+
+O `vercel:env` aplica dois overrides de propósito: `MAIL_DRY_RUN=0` (em produção o e-mail sai de verdade) e `APP_URL` apontando para o domínio final. As `NEXT_PUBLIC_*` vão também para preview e development — sem isso o build de preview gera bundle sem a URL do Supabase.
+
+Domínio: **Settings → Domains → Add**. A Vercel mostra na hora os registros a criar no Registro.br (DNS → Editar Zona). Não hardcodar esses valores em lugar nenhum: o painel é a fonte de verdade.
 
 ## Como está organizado
 
