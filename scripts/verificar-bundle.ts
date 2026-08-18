@@ -16,7 +16,6 @@ const DIR = ".next/static";
 const SEGREDOS: [string, string][] = [
   ["SUPABASE_SERVICE_ROLE_KEY", process.env.SUPABASE_SERVICE_ROLE_KEY ?? ""],
   ["GMAIL_APP_PASSWORD", process.env.GMAIL_APP_PASSWORD ?? ""],
-  ["RESEND_API_KEY", process.env.RESEND_API_KEY ?? ""],
 ];
 
 function* arquivos(dir: string): Generator<string> {

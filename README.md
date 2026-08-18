@@ -27,7 +27,7 @@ Mantenha `MAIL_DRY_RUN=1` em desenvolvimento: o e-mail vai para o log em vez da 
 | `npm run lint` | ESLint |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm test` | Testes do engine, formatadores, geometria do PDF, WhatsApp e e-mail |
-| `npm run infra:verificar` | Diagnostica o `.env.local`: banco, RLS, bucket, usuária da Mel e SMTP/Resend. Não imprime segredo |
+| `npm run infra:verificar` | Diagnostica o `.env.local`: banco, RLS, bucket, usuária da Mel e SMTP. Não imprime segredo |
 | `npm run e2e:formulario` | Fluxo público completo nas 4 categorias e nas duas ramificações, contra as rotas HTTP reais |
 | `npm run e2e:admin -- <email>` | Painel: gera PDF, sobe no Storage e **envia e-mail de verdade** para o endereço informado |
 | `npm run bundle:verificar` | Procura os **valores** dos segredos no bundle do navegador (grep por nome dá falso positivo) |
@@ -49,14 +49,16 @@ Mantenha `MAIL_DRY_RUN=1` em desenvolvimento: o e-mail vai para o log em vez da 
 
 > A tabela `leads` tem RLS ligado e nenhuma policy. Isso é proposital: todo acesso passa por route handlers usando a service role. Se algo falhar por RLS, a correção é no route handler — nunca criar policy pública.
 
-### 2. Resend
+### 2. E-mail (Gmail)
 
-1. Criar a conta e adicionar o domínio `melstorymaker.com.br`.
-2. Copiar os registros DNS que o painel exibir (SPF, DKIM e MX de retorno) para o Registro.br. **Não** hardcodar valores: o painel do Resend é a fonte de verdade.
-3. Gerar a API key → `RESEND_API_KEY`.
-4. `MAIL_REPLY_TO` = Gmail que a Mel já usa. Não é preciso criar caixa de e-mail no domínio: o Resend só precisa do domínio verificado para enviar, e as respostas voltam pelo reply-to.
+O envio sai pelo Gmail da Mel via SMTP. Sem serviço transacional: a conta Workspace entrega 2.000 destinatários/dia, muito acima do volume, e não custa nada.
 
-Se o DNS não verificar a tempo, a contingência já está pronta: `MAIL_PROVIDER=gmail` com `GMAIL_USER` + `GMAIL_APP_PASSWORD` (exige 2FA ativo na conta Google). Zero mudança de código.
+1. 2FA ativo na conta Google que vai enviar.
+2. Gerar uma **App Password** em `myaccount.google.com` → Segurança → Verificação em duas etapas → Senhas de app. A senha normal não autentica no SMTP.
+3. Colar os 16 caracteres **sem espaços** em `GMAIL_APP_PASSWORD`, e o endereço em `GMAIL_USER`.
+4. `MAIL_REPLY_TO` = caixa que a Mel realmente abre; é para lá que vão as respostas dos leads.
+
+> O Google **reescreve o remetente** para a conta autenticada. Por isso `MAIL_FROM` precisa usar o mesmo endereço de `GMAIL_USER` — só o nome de exibição ("Mel Simão | Storymaker") sobrevive, e é ele que a maioria dos leads vê na caixa de entrada.
 
 ### 3. Vercel
 
@@ -70,7 +72,7 @@ vercel --prod --scope wamadigitals-projects
 
 O `vercel:env` aplica dois overrides de propósito: `MAIL_DRY_RUN=0` (em produção o e-mail sai de verdade) e `APP_URL` apontando para o domínio final. As `NEXT_PUBLIC_*` vão também para preview e development — sem isso o build de preview gera bundle sem a URL do Supabase.
 
-Domínio: **Settings → Domains → Add**. A Vercel mostra na hora os registros a criar no Registro.br (DNS → Editar Zona). Não hardcodar esses valores em lugar nenhum: o painel é a fonte de verdade.
+Domínio: **Settings → Domains → Add**. A Vercel mostra na hora os registros a criar no Registro.br (DNS → Editar Zona). Não hardcodar esses valores em lugar nenhum: o painel é a fonte de verdade. O e-mail não depende desse DNS — sai pelo Gmail.
 
 ## Como está organizado
 
@@ -81,7 +83,7 @@ app/api/leads          Endpoints públicos: criar, retomar, autosave, submit
 app/api/admin          Endpoints protegidos: salvar, gerar-pdf, enviar
 lib/form               arvore.json + engine + validação
 lib/pdf                templates.config.ts, gerar.ts, geometria, grid, formatadores
-lib/mail               adapter.ts + resend.ts + gmail.ts + templates (copies do PRD)
+lib/mail               adapter.ts + gmail.ts + templates (copies do PRD)
 lib/supabase           admin.ts (service role), server.ts e client.ts (só sessão)
 assets/templates       PDFs base exportados do Figma
 assets/fonts           Fontes da marca (.ttf)

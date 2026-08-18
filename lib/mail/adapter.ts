@@ -12,10 +12,13 @@ export type OpcoesEnvio = {
 };
 
 /**
- * Contrato unico de envio (PRD secao 10). Nenhuma rota fala com Resend ou
- * Nodemailer direto: a troca de provider e uma variavel de ambiente, nao um
- * refactor. Se o DNS do Resend nao verificar a tempo, MAIL_PROVIDER=gmail
- * resolve sem tocar em codigo.
+ * Contrato unico de envio (PRD secao 10). Nenhuma rota fala com o Nodemailer
+ * direto: todo e-mail sai por aqui, e por isso a trava do MAIL_DRY_RUN nao tem
+ * como ser contornada por engano.
+ *
+ * O envio e feito pelo Gmail da Mel. O volume nao justifica um servico
+ * transacional pago: a conta Workspace entrega 2.000 destinatarios/dia, muito
+ * acima do que a Mel manda.
  */
 export interface MailAdapter {
   send(opts: OpcoesEnvio): Promise<void>;
@@ -48,17 +51,15 @@ class DryRunAdapter implements MailAdapter {
 }
 
 /**
- * Seleciona o provider. Unico ponto do sistema que decide por onde o e-mail sai.
- * Import dinamico para o provider que nao esta em uso nem ser carregado.
+ * Unico ponto do sistema que decide por onde o e-mail sai.
+ *
+ * A interface `MailAdapter` continua existindo mesmo com um provider so: e ela
+ * que mantem o DryRunAdapter como troca de uma linha e permitiria plugar outro
+ * servico sem tocar em nenhuma rota.
  */
 export async function criarMailAdapter(): Promise<MailAdapter> {
   if (env.MAIL_DRY_RUN) return new DryRunAdapter();
 
-  if (env.MAIL_PROVIDER === "gmail") {
-    const { GmailAdapter } = await import("./gmail");
-    return new GmailAdapter();
-  }
-
-  const { ResendAdapter } = await import("./resend");
-  return new ResendAdapter();
+  const { GmailAdapter } = await import("./gmail");
+  return new GmailAdapter();
 }

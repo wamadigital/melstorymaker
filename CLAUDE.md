@@ -12,7 +12,7 @@ MVP: lead preenche formulário multi-etapas estilo Typeform em `/formulario`, si
 - Tailwind + shadcn/ui + Framer Motion (só nas transições do form)
 - Supabase: Postgres, Auth, Storage
 - pdf-lib + @pdf-lib/fontkit
-- Resend (principal) + Nodemailer/Gmail SMTP (contingência), ambos atrás de MailAdapter
+- Nodemailer + Gmail SMTP, atrás de `MailAdapter`
 - Deploy: Vercel
 
 ## Comandos
@@ -45,7 +45,7 @@ supabase/schema.sql    Schema completo
 ## Decisões travadas (NUNCA reabrir nem "melhorar")
 
 1. PDF gerado com pdf-lib sobre os PDFs base do Figma. Nunca Puppeteer, Chromium, headless browser ou API do Figma em runtime.
-2. E-mail sempre pela interface `MailAdapter`, com dois providers: `ResendAdapter` (principal, remetente `mel@melstorymaker.com.br`) e `GmailAdapter` (contingência). Seleção exclusivamente via env `MAIL_PROVIDER`. Nunca chamar Resend ou Nodemailer direto de uma rota.
+2. E-mail sempre pela interface `MailAdapter`, com `GmailAdapter` (SMTP do Gmail da Mel, App Password) como único provider. Nunca chamar Nodemailer direto de uma rota: é a interface que garante que a trava do `MAIL_DRY_RUN` não seja contornada. **Sem serviço transacional de e-mail** — a conta Workspace entrega 2.000 destinatários/dia e o volume da Mel é muito menor. Não introduzir um sem que o volume mude de ordem de grandeza.
 3. WhatsApp = links `wa.me` gerados no painel. Nenhuma API de WhatsApp (Twilio, Z-API, Evolution, Baileys).
 4. Human-in-the-loop: nenhum e-mail sai para o lead sem ação explícita da Mel no painel. Não criar envio automático pós-submit.
 5. Formulário renderizado 100% a partir de `lib/form/arvore.json`. Perguntas nunca hardcoded em componentes. Nova pergunta = mudança no JSON.
@@ -99,5 +99,6 @@ supabase/schema.sql    Schema completo
 - Nunca inventar perguntas, opções ou textos fora do `arvore.json` e do PRD.
 - Nunca adicionar checagem de agenda, validação de conflito de datas ou disponibilidade.
 - Nunca enviar e-mail em ambiente de desenvolvimento sem flag explícita (`MAIL_DRY_RUN=1` loga em vez de enviar).
+- O Gmail REESCREVE o remetente para a conta autenticada: `MAIL_FROM` precisa usar o mesmo endereço de `GMAIL_USER`. Só o nome de exibição sobrevive.
 - Nunca transformar o formulário em página única com todos os campos. Uma pergunta por tela é requisito de produto.
 - Nunca remover o autosave ou condicionar a criação do lead ao término do formulário. Lead parcial é lead.

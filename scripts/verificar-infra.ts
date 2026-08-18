@@ -3,7 +3,7 @@
  *
  *   npm run infra:verificar
  *
- * Testa cada chave de verdade (banco, storage, auth, Resend) e diz exatamente
+ * Testa cada chave de verdade (banco, storage, auth, SMTP) e diz exatamente
  * o que falta. Nunca imprime segredo: chaves aparecem mascaradas.
  *
  * Le process.env direto, sem passar pelo lib/env.ts, porque aquele modulo
@@ -42,8 +42,6 @@ async function main() {
   const url = ler("NEXT_PUBLIC_SUPABASE_URL");
   const anon = ler("NEXT_PUBLIC_SUPABASE_ANON_KEY");
   const service = ler("SUPABASE_SERVICE_ROLE_KEY");
-  const provider = ler("MAIL_PROVIDER") ?? "resend";
-  const resendKey = ler("RESEND_API_KEY");
   const mailFrom = ler("MAIL_FROM");
   const replyTo = ler("MAIL_REPLY_TO");
   const dryRun = ler("MAIL_DRY_RUN");
@@ -150,116 +148,54 @@ async function main() {
     }
   }
 
-  // ------------------------------------------------------------------- resend
+  // -------------------------------------------------------------------- e-mail
   titulo("3. E-mail");
 
-  if (provider === "gmail") {
-    const gmailUser = ler("GMAIL_USER");
-    const gmailPass = ler("GMAIL_APP_PASSWORD");
+  const gmailUser = ler("GMAIL_USER");
+  const gmailPass = ler("GMAIL_APP_PASSWORD");
 
-    if (!gmailUser || !gmailPass) {
-      // Dizer QUAL falta: "e/ou" obriga quem le a ir conferir os dois.
-      const faltando = [!gmailUser && "GMAIL_USER", !gmailPass && "GMAIL_APP_PASSWORD"]
-        .filter(Boolean)
-        .join(" e ");
-      erro(`MAIL_PROVIDER=gmail mas falta ${faltando}`);
-    } else {
-      ok(`MAIL_PROVIDER=gmail com ${gmailUser}`);
-
-      // O Google exibe a App Password em 4 grupos de 4. Colar com os espacos e
-      // o erro mais comum, e o SMTP so responde "Username and Password not
-      // accepted" -- sem dizer que o problema foi um espaco.
-      if (/\s/.test(gmailPass)) {
-        erro("GMAIL_APP_PASSWORD tem espaço: cole os 16 caracteres sem separação");
-      } else if (gmailPass.length !== 16) {
-        alerta(`GMAIL_APP_PASSWORD tem ${gmailPass.length} caracteres; o normal são 16`);
-      }
-
-      // Autentica de verdade no SMTP. Sem isso o erro so aparece quando a Mel
-      // clica em "Enviar" com um lead real esperando.
-      try {
-        const nodemailer = (await import("nodemailer")).default;
-        await nodemailer
-          .createTransport({
-            host: "smtp.gmail.com",
-            port: 465,
-            secure: true,
-            auth: { user: gmailUser, pass: gmailPass },
-          })
-          .verify();
-        ok("SMTP do Gmail autenticou — o envio real vai funcionar");
-      } catch (e) {
-        const msg = (e as Error).message;
-        if (/Username and Password not accepted|BadCredentials/i.test(msg)) {
-          erro(
-            "SMTP recusou as credenciais. Verifique: 2FA ativo na conta, " +
-              "App Password válida (não a senha normal) e, se for Workspace, " +
-              "se o admin do domínio permite App Passwords",
-          );
-        } else {
-          erro(`SMTP do Gmail falhou: ${msg}`);
-        }
-      }
-    }
-  } else if (!resendKey) {
-    if (emDryRun) alerta("RESEND_API_KEY vazia (ok enquanto MAIL_DRY_RUN=1)");
-    else erro("RESEND_API_KEY vazia e MAIL_DRY_RUN desligado: o envio vai falhar");
+  if (!gmailUser || !gmailPass) {
+    const faltando = [!gmailUser && "GMAIL_USER", !gmailPass && "GMAIL_APP_PASSWORD"]
+      .filter(Boolean)
+      .join(" e ");
+    if (emDryRun) alerta(`falta ${faltando} (ok enquanto MAIL_DRY_RUN=1)`);
+    else erro(`falta ${faltando} e MAIL_DRY_RUN está desligado: o envio vai falhar`);
   } else {
-    ok(`RESEND_API_KEY = ${mascarar(resendKey)}`);
+    ok(`remetente: ${gmailUser}`);
 
+    // O Google exibe a App Password em 4 grupos de 4. Colar com os espacos e o
+    // erro mais comum, e o SMTP so responde "Username and Password not
+    // accepted" -- sem dizer que o problema foi um espaco.
+    if (/\s/.test(gmailPass)) {
+      erro("GMAIL_APP_PASSWORD tem espaço: cole os 16 caracteres sem separação");
+    } else if (gmailPass.length !== 16) {
+      alerta(`GMAIL_APP_PASSWORD tem ${gmailPass.length} caracteres; o normal são 16`);
+    }
+
+    // Autentica de verdade. Sem isso o erro so aparece quando a Mel clica em
+    // "Enviar" com um lead real esperando.
     try {
-      const r = await fetch("https://api.resend.com/domains", {
-        headers: { Authorization: `Bearer ${resendKey}` },
-      });
-
-      // Uma chave com permissao "Sending access" (o correto para producao, por
-      // least privilege) NAO consegue listar dominios e responde 401 com
-      // restricted_api_key. Isso e sinal de chave boa, nao de chave ruim.
-      const corpo = r.ok ? null : await r.text();
-
-      if (!r.ok && corpo?.includes("restricted_api_key")) {
-        ok("RESEND_API_KEY válida, com permissão apenas de envio (least privilege)");
-        alerta(
-          "chave restrita não lista domínios: confira a verificação de " +
-            "melstorymaker.com.br em resend.com/domains. Se ainda não estiver " +
-            "verificado, o envio falha e a saída é MAIL_PROVIDER=gmail",
-        );
-      } else if (r.status === 401 || r.status === 403) {
-        erro("Resend recusou a API key — gere outra em resend.com/api-keys");
-      } else if (!r.ok) {
-        erro(`Resend respondeu ${r.status}`);
-      } else {
-        const json = (await r.json()) as { data?: { name: string; status: string }[] };
-        const dominios = json.data ?? [];
-
-        if (dominios.length === 0) {
-          erro("nenhum domínio no Resend — adicione melstorymaker.com.br em resend.com/domains");
-        }
-
-        for (const d of dominios) {
-          if (d.status === "verified") ok(`domínio ${d.name}: verificado`);
-          else
-            alerta(
-              `domínio ${d.name}: ${d.status} — o envio só funciona depois de verificar ` +
-                `(ou use MAIL_PROVIDER=gmail como contingência)`,
-            );
-        }
-
-        // O remetente precisa usar um dominio que o Resend conhece.
-        const dominioDoFrom = mailFrom?.match(/@([^\s>]+)/)?.[1];
-        if (dominioDoFrom && dominios.length > 0) {
-          if (dominios.some((d) => d.name === dominioDoFrom)) {
-            ok(`MAIL_FROM usa @${dominioDoFrom}, que está cadastrado no Resend`);
-          } else {
-            erro(
-              `MAIL_FROM usa @${dominioDoFrom}, que NÃO está no Resend ` +
-                `(cadastrados: ${dominios.map((d) => d.name).join(", ")})`,
-            );
-          }
-        }
-      }
+      const nodemailer = (await import("nodemailer")).default;
+      await nodemailer
+        .createTransport({
+          host: "smtp.gmail.com",
+          port: 465,
+          secure: true,
+          auth: { user: gmailUser, pass: gmailPass },
+        })
+        .verify();
+      ok("SMTP do Gmail autenticou — o envio real vai funcionar");
     } catch (e) {
-      erro(`não consegui falar com a API do Resend: ${(e as Error).message}`);
+      const msg = (e as Error).message;
+      if (/Username and Password not accepted|BadCredentials/i.test(msg)) {
+        erro(
+          "SMTP recusou as credenciais. Verifique: 2FA ativo na conta, " +
+            "App Password válida (não a senha normal) e, se for Workspace, " +
+            "se o admin do domínio permite App Passwords",
+        );
+      } else {
+        erro(`SMTP do Gmail falhou: ${msg}`);
+      }
     }
   }
 

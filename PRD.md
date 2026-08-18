@@ -31,7 +31,7 @@ Estas decisões já foram tomadas e não devem ser reabertas durante o desenvolv
 1. **Figma é fonte de arte, não runtime.** A arte de cada categoria é exportada do Figma como PDF base. O texto dinâmico é aplicado por cima via `pdf-lib` usando coordenadas fixas. Fidelidade 1:1 com o design original, zero dependência de API do Figma.
 2. **Human-in-the-loop obrigatório.** Nenhuma proposta sai sem a Mel aprovar no painel admin.
 3. **Envio ao lead por e-mail.** Complementado por botão `wa.me` no painel para a Mel encaminhar o link do PDF pelo WhatsApp dela (canal onde o lead já está). Sem API de WhatsApp, custo zero.
-4. **E-mail transacional via Resend com o domínio melstorymaker.com.br.** Domínio já registrado no Registro.br. Remetente: `mel@melstorymaker.com.br`, reply-to no Gmail atual da Mel. Contingência: `GmailAdapter` (Nodemailer + App Password) pronto no repo; se a verificação DNS não concluir dentro do prazo, a troca é o env `MAIL_PROVIDER=gmail`, sem tocar em código.
+4. **E-mail pelo Gmail da Mel, via SMTP.** Nodemailer + App Password, atrás da interface `MailAdapter`. Sem serviço transacional: a conta Google Workspace entrega 2.000 destinatários/dia, muito acima do volume da Mel, e não custa nada. O Google reescreve o remetente para a conta autenticada, então a proposta chega do endereço configurado em `GMAIL_USER`.
 5. **Form engine próprio com árvore declarativa em JSON.** Uma pergunta por tela, estilo Typeform, mobile-first. Sem Typeform/mensalidade.
 6. **Etapa de contato adicionada ao final do formulário.** E-mail obrigatório (sem ele não existe envio), WhatsApp opcional (alimenta o botão de compartilhamento).
 7. **Preço e pacotes ficam na arte estática.** Os valores já estão desenhados na proposta de cada categoria. Nenhuma lógica de precificação no MVP.
@@ -289,11 +289,11 @@ interface MailAdapter {
 }
 ```
 
-Implementação principal: `ResendAdapter` (API do Resend, domínio `melstorymaker.com.br` verificado). Remetente: `Mel Simão | Storymaker <mel@melstorymaker.com.br>`. Reply-to: Gmail atual da Mel, para as respostas dos leads caírem na caixa que ela já usa no dia a dia.
+Implementação única: `GmailAdapter` (Nodemailer, SMTP `smtp.gmail.com:465`, auth via `GMAIL_USER` + `GMAIL_APP_PASSWORD`; exige 2FA ativo na conta Google). A interface existe mesmo com um provider só: é ela que mantém o `DryRunAdapter` como troca de uma linha e permitiria plugar outro serviço sem tocar em nenhuma rota.
 
-Importante: NÃO é necessário criar caixa de e-mail no domínio (Google Workspace, Zoho etc). O Resend só precisa do domínio verificado para enviar; as respostas voltam pro Gmail via reply-to. Custo zero.
+**Por que não um serviço transacional:** o volume não justifica. A conta Workspace da Mel entrega 2.000 destinatários/dia; o plano gratuito dos serviços transacionais fica em torno de 100/dia. Reavaliar só se o volume mudar de ordem de grandeza.
 
-Contingência: `GmailAdapter` (Nodemailer, SMTP `smtp.gmail.com:465`, auth via `GMAIL_USER` + `GMAIL_APP_PASSWORD`; exige 2FA ativo na conta Google da Mel). Seleção do provider via env `MAIL_PROVIDER` (`resend` | `gmail`): se o DNS do Resend não verificar até a tarde do Dia 2, o envio sai pelo Gmail sem mudança de código.
+**Consequência a conhecer:** o Google reescreve o endereço do remetente para a conta autenticada. O nome de exibição (`Mel Simão | Storymaker`) sobrevive e é o que a maioria dos leads vê na caixa de entrada, mas o endereço será o de `GMAIL_USER`.
 
 ### E-mail ao lead
 
@@ -351,7 +351,7 @@ Regras:
 | UI | Tailwind + shadcn/ui + Framer Motion (transições do form) | n/a |
 | Banco/Auth/Storage | Supabase Free | 500MB DB, 1GB Storage, 50k MAU auth |
 | PDF | pdf-lib + @pdf-lib/fontkit | Open source |
-| E-mail | Resend (principal) + Gmail SMTP (contingência), atrás de MailAdapter | Resend: 3.000/mês, 100/dia; Gmail: 500/dia |
+| E-mail | Gmail SMTP (Nodemailer), atrás de MailAdapter | Workspace: 2.000 destinatários/dia |
 | WhatsApp | Links wa.me | Gratuito |
 
 ### Estrutura do repo
@@ -380,9 +380,7 @@ Regras:
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
-MAIL_PROVIDER=resend
-RESEND_API_KEY=
-MAIL_FROM="Mel Simão | Storymaker <mel@melstorymaker.com.br>"
+MAIL_FROM="Mel Simão | Storymaker <mel@wama.digital>"
 MAIL_REPLY_TO=
 MAIL_DRY_RUN=0
 GMAIL_USER=
@@ -397,9 +395,9 @@ Criar no Dia 1 de manhã, para a propagação correr em paralelo ao desenvolvime
 
 1. Apontamento do apex `melstorymaker.com.br` para a Vercel (usar exatamente os registros que o painel da Vercel exibir ao adicionar o domínio ao projeto)
 2. `www` com CNAME para a Vercel + redirect www para apex configurado na própria Vercel
-3. Registros de verificação do Resend (SPF, DKIM e MX de retorno): copiar exatamente os valores gerados ao adicionar o domínio no painel do Resend
+3. Nenhum registro de e-mail é necessário: o envio sai pelo Gmail, que não usa o domínio melstorymaker.com.br
 
-Não hardcodar IPs ou valores de DNS em código ou docs: os painéis da Vercel e do Resend são a fonte de verdade.
+Não hardcodar IPs ou valores de DNS em código ou docs: o painel da Vercel é a fonte de verdade.
 
 ### Rotas públicas x protegidas
 
@@ -478,8 +476,7 @@ Regras derivadas:
 2. [ ] Arquivos .ttf/.otf das fontes da marca
 3. [ ] Paleta de cores da marca (hex)
 4. [ ] Acesso ao DNS de melstorymaker.com.br no painel do Registro.br
-5. [ ] Conta Resend criada, domínio adicionado e API key gerada
-6. [ ] Contingência de e-mail: conta Gmail da Mel com 2FA ativo + App Password gerada
+5. [ ] Conta Google da Mel com 2FA ativo + App Password gerada (é por ela que o e-mail sai)
 7. [ ] Número de WhatsApp da Mel (formato internacional)
 8. [ ] E-mail e senha para a conta admin da Mel no Supabase Auth
 
@@ -490,7 +487,7 @@ Regras derivadas:
 | Ajuste fino das coordenadas do texto no PDF consumir tempo | Atraso no D2 | Rota de calibração com grid (item 2 da seção 9); conversão automatizada Figma > pdf-lib |
 | PDFs exportados do Figma muito pesados | Anexo rejeitado / e-mail lento | Comprimir imagens no export; fallback: enviar só o link se > 8MB |
 | Navegador in-app do WhatsApp com bugs de viewport/teclado | Form quebrado no cenário principal | Testar nele no primeiro deploy, não no último |
-| DNS não propagar a tempo (domínio recém-registrado no Registro.br pode levar horas) | Envio pelo Resend bloqueado no Dia 2 | Registros DNS criados logo no Dia 1 de manhã; GmailAdapter pronto como contingência, troca via env MAIL_PROVIDER |
+| DNS não propagar a tempo (domínio recém-registrado no Registro.br pode levar horas) | Site fora do ar no domínio final | Registros DNS criados logo no Dia 1 de manhã; o envio de e-mail não depende do DNS, porque sai pelo Gmail |
 | Texto do lead maior que o espaço da arte (nomes longos) | PDF desalinhado | Auto-shrink de fonte via `maxLargura` |
 
 ## 17. Milestones (2 dias)
@@ -498,7 +495,7 @@ Regras derivadas:
 ### Dia 1
 
 Manhã:
-1. DNS no Registro.br: apontar melstorymaker.com.br para a Vercel + criar os registros de verificação do Resend (a propagação corre em paralelo ao resto do dia)
+1. DNS no Registro.br: apontar melstorymaker.com.br para a Vercel (a propagação corre em paralelo ao resto do dia)
 2. Setup do repo (Next + TS + Tailwind + shadcn), projeto Supabase, `schema.sql` aplicado, usuária admin criada
 3. Route handlers de leads (criar, autosave, submit) com service role
 
@@ -516,7 +513,7 @@ Manhã:
 10. Admin: login, lista com filtros, detalhe com edição
 
 Tarde:
-11. Preview do PDF, envio por e-mail (Resend verificado, ou fallback Gmail via MAIL_PROVIDER), botão wa.me
+11. Preview do PDF, envio por e-mail pelo Gmail, botão wa.me
 12. Polimento visual do form (marca da Mel)
 13. Teste ponta a ponta das 4 categorias + ramificações
 14. Deploy final + walkthrough gravado pra Mel
@@ -537,7 +534,7 @@ O MVP está pronto quando este cenário roda sem intervenção técnica:
 
 ## 19. Roadmap v2 (não implementar agora)
 
-1. Tracking de abertura de e-mail e da proposta (webhooks do Resend)
+1. Tracking de abertura de e-mail e da proposta (exigiria migrar para um serviço transacional)
 2. Aceite da proposta na própria página (proposta como link web, PDF como derivado)
 3. Contrato e sinal (Stripe/Pix)
 4. Notificação de novo lead pra Mel
