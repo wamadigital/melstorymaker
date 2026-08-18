@@ -142,10 +142,16 @@ test("o corte da arte é exatamente 14 para infantil e 15 para adulto", () => {
   assert.equal(resolverTemplateId("aniversario", { idade: "80" }), "aniversario_adulto");
 });
 
-test("idade ausente ou ilegível cai em adulto, nunca em infantil por acidente", () => {
-  assert.equal(resolverTemplateId("aniversario", {}), "aniversario_adulto");
-  assert.equal(resolverTemplateId("aniversario", { idade: "" }), "aniversario_adulto");
-  assert.equal(resolverTemplateId("aniversario", { idade: "abc" }), "aniversario_adulto");
+test("idade ausente ou ilegível não escolhe arte nenhuma", () => {
+  // Devolver null e nao uma arte padrao e o ponto: chutar aqui geraria uma
+  // proposta infantil para um aniversario de 40 anos, e a Mel so descobriria
+  // depois de enviar. A geracao transforma este null em erro com a lista.
+  assert.equal(resolverTemplateId("aniversario", {}), null);
+  assert.equal(resolverTemplateId("aniversario", { idade: "" }), null);
+  assert.equal(resolverTemplateId("aniversario", { idade: "   " }), null);
+  assert.equal(resolverTemplateId("aniversario", { idade: "abc" }), null);
+  assert.equal(resolverTemplateId("aniversario", { idade: "8.5" }), null);
+  assert.equal(resolverTemplateId("aniversario", { idade: "-3" }), null);
 });
 
 test("as outras categorias mapeiam direto para a arte de mesmo nome", () => {

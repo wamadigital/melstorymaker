@@ -263,7 +263,8 @@ Notas de implementação (importantes pro agente de código):
 3. Registrar fontkit e embutir as fontes da marca antes de desenhar qualquer texto.
 4. `maxLargura`: se o texto exceder, reduzir o tamanho da fonte proporcionalmente até caber (nunca quebrar linha em campo de nome).
 5. Respostas de `idade`, `making_of` e `entrega` não são impressas no PDF: a idade serve para escolher a arte, as outras aparecem no painel como contexto da Mel. `tipo_evento` (corporativo) É impresso — a arte reserva espaço para ele.
-6. A resolução da arte é `resolverTemplateId(categoria, respostas)`, não um acesso direto por categoria. Idade ausente ou ilegível cai em `aniversario_adulto`, e o painel mostra à Mel qual arte foi usada — um lead incompleto nunca gera proposta infantil por acidente.
+6. A resolução da arte é `resolverTemplateId(categoria, respostas)`, não um acesso direto por categoria. Idade ausente ou ilegível devolve `null` e a geração é **recusada**, em vez de chutar uma arte — o painel mostra à Mel qual arte foi usada quando dá certo, e o que falta quando não dá.
+7. **Geração recusa dado incompleto.** Qualquer campo do template sem resposta aborta com HTTP 422 e a lista de perguntas faltantes; nada é gravado. Proposta com espaço em branco no lugar do nome não pode chegar ao lead.
 
 ### Armazenamento
 

@@ -108,23 +108,26 @@ export function limparRespostasOrfas(categoria: Categoria, respostas: Respostas)
 }
 
 /**
- * Qual arte o PDF usa.
+ * Qual arte o PDF usa, ou `null` quando nao da para decidir.
  *
  * NAO e a mesma coisa que a categoria: `aniversario` e uma categoria so no
  * banco, mas resolve entre duas artes conforme a idade. Separar os conceitos e
  * o que permite acrescentar arte sem tocar no enum do Postgres.
  *
- * Idade ausente ou ilegivel cai em `aniversario_adulto` -- e a arte mais
- * neutra, e o painel mostra para a Mel qual foi usada, entao um lead
- * incompleto nunca gera uma proposta infantil por acidente.
+ * Devolve `null` -- em vez de escolher uma arte padrao -- quando a idade falta
+ * ou nao e numero. Chutar aqui produziria uma proposta com a arte errada, que
+ * e pior do que nao produzir proposta nenhuma: a Mel so descobriria depois de
+ * enviar. Quem chama decide o que fazer com o null; na geracao, e erro.
  */
-export function resolverTemplateId(categoria: Categoria, respostas: Respostas): TemplateId {
+export function resolverTemplateId(categoria: Categoria, respostas: Respostas): TemplateId | null {
   if (categoria !== "aniversario") return categoria;
 
-  const idade = Number.parseInt((respostas.idade ?? "").trim(), 10);
-  if (!Number.isFinite(idade)) return "aniversario_adulto";
+  const bruto = (respostas.idade ?? "").trim();
+  if (!/^\d+$/.test(bruto)) return null;
 
-  return idade <= IDADE_MAXIMA_INFANTIL ? "aniversario_infantil" : "aniversario_adulto";
+  return Number.parseInt(bruto, 10) <= IDADE_MAXIMA_INFANTIL
+    ? "aniversario_infantil"
+    : "aniversario_adulto";
 }
 
 /**

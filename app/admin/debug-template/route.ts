@@ -38,7 +38,13 @@ export async function GET(req: Request) {
         { status: 400 },
       );
     }
-    template = resolverTemplateId(categoria, {});
+    // `aniversario` ja saiu no if acima, entao aqui a categoria sempre tem
+    // arte de mesmo nome. O null so existe para o caso ambiguo.
+    const resolvido = resolverTemplateId(categoria, {});
+    if (!resolvido) {
+      return NextResponse.json({ erro: `Categoria "${categoria}" é ambígua.` }, { status: 400 });
+    }
+    template = resolvido;
   } else {
     return NextResponse.json(
       { erro: `Use ?template= com um destes: ${TEMPLATES.join(" | ")}` },

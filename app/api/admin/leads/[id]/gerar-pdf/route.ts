@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { BUCKET_PROPOSTAS, supabaseAdmin, urlPublicaProposta } from "@/lib/supabase/admin";
 import { getSessaoAdmin } from "@/lib/supabase/server";
-import { gerarProposta } from "@/lib/pdf/gerar";
+import { CamposFaltandoError, gerarProposta } from "@/lib/pdf/gerar";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -70,6 +70,15 @@ export async function POST(_req: Request, { params }: Ctx) {
       tamanhoBytes: resultado.bytes.length,
     });
   } catch (e) {
+    // Dado faltando nao e falha do sistema: e algo que a Mel resolve na tela.
+    // 422 com a lista, para o painel dizer exatamente o que preencher.
+    if (e instanceof CamposFaltandoError) {
+      return NextResponse.json(
+        { erro: "Faltam respostas para gerar a proposta.", campos: e.campos },
+        { status: 422 },
+      );
+    }
+
     console.error("[admin] falha ao gerar PDF", e);
     return NextResponse.json({ erro: (e as Error).message }, { status: 500 });
   }

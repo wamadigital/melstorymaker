@@ -21,6 +21,14 @@ export type CampoTemplate = {
   formato?: NomeFormatador;
   /** Padrao: "esquerda". Em campo centralizado, x e o centro do bloco. */
   alinhamento?: Alinhamento;
+  /**
+   * Padrao: false, ou seja, TODO campo do config e obrigatorio.
+   *
+   * Campo obrigatorio vazio faz a geracao falhar com a lista do que falta, em
+   * vez de sair um PDF com um buraco onde deveria estar o nome do lead. So
+   * marque `opcional` se a arte de fato funciona sem aquele texto.
+   */
+  opcional?: boolean;
 };
 
 export type TemplateConfig = {

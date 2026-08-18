@@ -2,7 +2,7 @@ import "server-only";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { PDFDocument, type PDFFont, type PDFPage } from "pdf-lib";
-import { resolverTemplateId } from "@/lib/form/engine";
+import { passoPorId, resolverTemplateId } from "@/lib/form/engine";
 import type { Categoria, Respostas, TemplateId } from "@/lib/form/types";
 import { FORMATADORES } from "./formatadores";
 import { carregarFontes, textoSeguro } from "./fontes";
@@ -21,6 +21,24 @@ export type ResultadoPdf = {
   /** true quando alguma fonte da marca faltou e caiu no fallback. */
   usouFallbackDeFonte: boolean;
 };
+
+/**
+ * Erro de dado faltando, distinto de erro tecnico.
+ *
+ * A rota converte isto em 422 com a lista de campos, para a Mel preencher no
+ * painel e tentar de novo -- em vez de um 500 generico que nao diz o que fazer.
+ */
+export class CamposFaltandoError extends Error {
+  constructor(readonly campos: string[]) {
+    super(`Faltam respostas para gerar a proposta: ${campos.join(", ")}`);
+    this.name = "CamposFaltandoError";
+  }
+}
+
+/** Rotulo legivel do campo, tirado da propria pergunta do arvore.json. */
+function rotuloCampo(categoria: Categoria, chave: string): string {
+  return passoPorId(categoria, chave)?.pergunta ?? chave;
+}
 
 /** Resolve "respostas.nome" no contexto do lead. */
 function resolver(caminho: string, contexto: Record<string, unknown>): string {
@@ -92,7 +110,25 @@ export async function gerarProposta(
   // A arte sai das RESPOSTAS, nao so da categoria: aniversario resolve entre
   // infantil e adulto conforme a idade.
   const templateId = resolverTemplateId(categoria, respostas);
+
+  // Sem idade nao da para saber qual arte usar. Chutar produziria uma proposta
+  // infantil para um aniversario de 40 anos, e a Mel so veria depois de enviar.
+  if (!templateId) {
+    throw new CamposFaltandoError([rotuloCampo(categoria, "idade")]);
+  }
+
   const config = templates[templateId];
+
+  // Campo obrigatorio vazio nao pode virar espaco em branco na arte: e assim
+  // que sai uma proposta sem o nome dos noivos. Junta TODOS os faltantes antes
+  // de reclamar, para a Mel resolver de uma vez em vez de um por vez.
+  const faltando = config.campos
+    .filter((c) => !c.opcional && !resolver(c.fonte, { respostas }).trim())
+    .map((c) => rotuloCampo(categoria, c.chave));
+
+  if (faltando.length > 0) {
+    throw new CamposFaltandoError([...new Set(faltando)]);
+  }
   const { caminho, placeholder } = await caminhoTemplate(templateId);
 
   const pdfDoc = await PDFDocument.load(await fs.readFile(caminho));
@@ -111,7 +147,8 @@ export async function gerarProposta(
     }
 
     const bruto = resolver(campo.fonte, contexto);
-    // Campo vazio nao e erro: making_of = "Nao" deixa local_making_of sem valor.
+    // Obrigatorio vazio ja foi barrado acima; chegar aqui vazio so acontece
+    // com campo marcado como opcional.
     if (!bruto) continue;
 
     desenharCampo(page, campo, config, fontes.obter(campo.font), bruto);

@@ -66,6 +66,16 @@ export function DetalheLead({ lead }: { lead: Lead }) {
     try {
       const r = await fetch(`/api/admin/leads/${lead.id}/gerar-pdf`, { method: "POST" });
       const json = await r.json();
+
+      // 422 = falta resposta. Listar os campos pelo nome da pergunta é o que
+      // transforma "deu erro" em "preencha isto aqui e tente de novo".
+      if (r.status === 422 && Array.isArray(json.campos)) {
+        setAviso({
+          tom: "atencao",
+          texto: `Não dá pra gerar ainda. Preencha e salve: ${json.campos.join(", ")}.`,
+        });
+        return;
+      }
       if (!r.ok) throw new Error(json.erro ?? "Falha ao gerar.");
 
       setPdfUrl(json.pdf_url);
