@@ -2,11 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, domAnimation, LazyMotion, m, useReducedMotion } from "framer-motion";
-import { ArrowLeft, Loader2, WifiOff } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, ChevronDown, ChevronUp, Loader2, WifiOff } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { BarraProgresso } from "@/components/form/BarraProgresso";
 import { CampoPergunta } from "@/components/form/CampoPergunta";
+import { OpcaoEscolha } from "@/components/form/OpcaoEscolha";
 import {
   arvore,
   limparRespostasOrfas,
@@ -249,14 +250,25 @@ export function FormularioClient({ whatsappMel }: { whatsappMel: string }) {
 
   const desloc = semMovimento ? 0 : 24;
   const transicao = { duration: semMovimento ? 0 : 0.25, ease: [0.22, 1, 0.36, 1] as const };
+  // Deslize VERTICAL, como no Typeform: avancar traz a proxima pergunta de
+  // baixo para cima; voltar, de cima para baixo. E o mesmo eixo das setas de
+  // navegacao no canto da tela.
   const variantes = {
-    entra: { opacity: 0, x: direcao * desloc },
-    ativo: { opacity: 1, x: 0 },
-    sai: { opacity: 0, x: direcao * -desloc },
+    entra: { opacity: 0, y: direcao * desloc },
+    ativo: { opacity: 1, y: 0 },
+    sai: { opacity: 0, y: direcao * -desloc },
   };
 
   const marcador =
     categoria && passo ? progresso(categoria, respostas, passo.id) : { atual: 1, total: 1 };
+
+  // Na ultima pergunta avancar() significa SUBMETER. A seta "Proxima pergunta"
+  // do cluster fixo e navegacao, nao envio: fica desabilitada ali, como no
+  // Typeform. Enviar continua sendo so o botao "Enviar" e o Enter no campo.
+  const ehUltimoPasso =
+    tela === "pergunta" && !!categoria && !!passo
+      ? !proximoPasso(categoria, respostas, passo.id)
+      : false;
 
   return (
     <LazyMotion features={domAnimation} strict>
@@ -268,6 +280,7 @@ export function FormularioClient({ whatsappMel }: { whatsappMel: string }) {
               variant="ghost"
               size="icon"
               onClick={voltar}
+              disabled={ocupado}
               aria-label="Voltar"
               className="-ml-2 shrink-0"
             >
@@ -278,6 +291,15 @@ export function FormularioClient({ whatsappMel }: { whatsappMel: string }) {
               {marcador.atual}/{marcador.total}
             </span>
           </header>
+        )}
+
+        {/* Persistente fora do AnimatePresence: o conteudo muda a cada passo e
+            o role="status" anuncia a nova pergunta ao leitor de tela, que de
+            outro modo nao percebe a troca de tela animada. */}
+        {tela === "pergunta" && passo && (
+          <span className="sr-only" role="status">
+            Pergunta {marcador.atual} de {marcador.total}: {passo.pergunta}
+          </span>
         )}
 
         <main className="flex flex-1 flex-col justify-center">
@@ -304,7 +326,7 @@ export function FormularioClient({ whatsappMel }: { whatsappMel: string }) {
                     // Enquanto a retomada esta em voo, entrar aqui criaria um
                     // lead novo por cima de um que ja existe.
                     disabled={retomando}
-                    className="mt-2 h-14 rounded-2xl text-lg"
+                    className="mt-2 h-12 self-center px-8 text-lg font-bold"
                     onClick={() => {
                       setDirecao(1);
                       setTela("categoria");
@@ -318,54 +340,72 @@ export function FormularioClient({ whatsappMel }: { whatsappMel: string }) {
 
               {tela === "categoria" && (
                 <div className="flex flex-col gap-7">
-                  <h2 className="text-3xl leading-tight font-semibold text-balance">
+                  <h2 className="text-2xl leading-snug font-normal text-balance md:text-3xl">
                     {arvore.categoria.pergunta}
                   </h2>
-                  <div className="flex flex-col gap-3">
-                    {normalizarOpcoes(arvore.categoria.opcoes).map((opcao) => (
-                      <button
+                  <div className="flex w-full max-w-md flex-col gap-2.5">
+                    {normalizarOpcoes(arvore.categoria.opcoes).map((opcao, i) => (
+                      <OpcaoEscolha
                         key={opcao.valor}
-                        type="button"
+                        letra={String.fromCharCode(65 + i)}
+                        rotulo={opcao.rotulo}
                         disabled={ocupado}
                         onClick={() => escolherCategoria(opcao.valor)}
-                        className="min-h-14 w-full rounded-2xl border border-border bg-card px-5 py-4 text-left text-lg transition-colors hover:border-primary/40 hover:bg-accent active:scale-[0.99] disabled:opacity-60"
-                      >
-                        {opcao.rotulo}
-                      </button>
+                      />
                     ))}
                   </div>
                 </div>
               )}
 
               {tela === "pergunta" && passo && (
-                <div className="flex flex-col gap-7">
-                  <h2 className="text-3xl leading-tight font-semibold text-balance">
-                    {passo.pergunta}
-                  </h2>
+                // items-baseline alinha o numero com a PRIMEIRA linha da
+                // pergunta em qualquer tamanho de fonte -- e o layout do
+                // Typeform: "3 ->" a esquerda, conteudo indentado a direita.
+                <div className="flex items-baseline gap-2.5">
+                  <span
+                    aria-hidden="true"
+                    className="inline-flex shrink-0 items-center gap-0.5 text-sm font-medium tabular-nums"
+                  >
+                    {marcador.atual}
+                    <ArrowRight className="size-3.5 translate-y-px" />
+                  </span>
 
-                  <CampoPergunta
-                    passo={passo}
-                    valor={rascunho}
-                    erro={erro}
-                    onChange={(v) => {
-                      setRascunho(v);
-                      if (erro) setErro(null);
-                    }}
-                    onAvancar={avancar}
-                  />
+                  <div className="flex min-w-0 flex-1 flex-col gap-7">
+                    <h2 className="text-2xl leading-snug font-normal text-balance md:text-3xl">
+                      {passo.pergunta}
+                    </h2>
 
-                  {/* escolha_unica avanca no proprio clique: um botao aqui seria um passo a mais sem funcao. */}
-                  {passo.tipo !== "escolha_unica" && (
-                    <Button
-                      size="lg"
-                      disabled={ocupado}
-                      onClick={() => avancar()}
-                      className="h-14 rounded-2xl text-lg"
-                    >
-                      {ocupado && <Loader2 className="mr-2 size-4 animate-spin" />}
-                      {proximoPasso(categoria!, respostas, passo.id) ? "Continuar" : "Enviar"}
-                    </Button>
-                  )}
+                    <CampoPergunta
+                      passo={passo}
+                      valor={rascunho}
+                      erro={erro}
+                      onChange={(v) => {
+                        setRascunho(v);
+                        if (erro) setErro(null);
+                      }}
+                      onAvancar={avancar}
+                    />
+
+                    {/* escolha_unica avanca no proprio clique: um botao aqui seria um passo a mais sem funcao. */}
+                    {passo.tipo !== "escolha_unica" && (
+                      <div className="flex items-center gap-3">
+                        <Button
+                          size="lg"
+                          disabled={ocupado}
+                          onClick={() => avancar()}
+                          className="h-11 px-6 text-base font-bold"
+                        >
+                          {ocupado && <Loader2 className="size-4 animate-spin" />}
+                          {proximoPasso(categoria!, respostas, passo.id) ? "OK" : "Enviar"}
+                          <Check className="size-4" strokeWidth={3.5} />
+                        </Button>
+                        {/* So onde ha teclado fisico; no toque a dica nao significa nada. */}
+                        <span className="hidden text-sm text-muted-foreground md:inline">
+                          pressione <span className="font-semibold text-foreground">Enter</span> ↵
+                        </span>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -381,7 +421,7 @@ export function FormularioClient({ whatsappMel }: { whatsappMel: string }) {
                     href={`https://wa.me/${whatsappMel}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className={cn(buttonVariants({ size: "lg" }), "mt-2 h-14 rounded-2xl text-lg")}
+                    className={cn(buttonVariants({ size: "lg" }), "mt-2 h-12 self-center px-8 text-lg font-bold")}
                   >
                     {arvore.confirmacao.cta_whatsapp}
                   </a>
@@ -396,6 +436,40 @@ export function FormularioClient({ whatsappMel }: { whatsappMel: string }) {
             </p>
           )}
         </main>
+
+        {tela === "pergunta" && (
+          <nav
+            aria-label="Navegar entre as perguntas"
+            className={cn(
+              "fixed right-4 z-10 flex",
+              // Sobe quando o banner de offline ocupa o rodape: os dois vivem
+              // na mesma faixa e o cluster opaco cobriria o aviso em 360px.
+              offline ? "bottom-16" : "bottom-[max(1rem,env(safe-area-inset-bottom))]",
+            )}
+          >
+            {/* Raio por lado em vez de overflow-hidden no pai: overflow-hidden
+                clipava o anel de foco dos botoes. size-11 = alvo de 44px. */}
+            <button
+              type="button"
+              onClick={voltar}
+              disabled={ocupado}
+              aria-label="Pergunta anterior"
+              className="flex size-11 items-center justify-center rounded-l-md bg-primary text-primary-foreground transition-opacity focus-visible:z-10 focus-visible:outline-2 focus-visible:outline-offset-2 active:opacity-70 disabled:opacity-40"
+            >
+              <ChevronUp className="size-5" />
+            </button>
+            <span aria-hidden="true" className="w-px bg-primary-foreground/30" />
+            <button
+              type="button"
+              onClick={() => avancar()}
+              disabled={ocupado || ehUltimoPasso}
+              aria-label="Próxima pergunta"
+              className="flex size-11 items-center justify-center rounded-r-md bg-primary text-primary-foreground transition-opacity focus-visible:z-10 focus-visible:outline-2 focus-visible:outline-offset-2 active:opacity-70 disabled:opacity-40"
+            >
+              <ChevronDown className="size-5" />
+            </button>
+          </nav>
+        )}
 
         {offline && (
           <p className="mt-4 flex items-center justify-center gap-2 text-xs text-muted-foreground">

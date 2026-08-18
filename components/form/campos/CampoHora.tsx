@@ -27,7 +27,7 @@ export function CampoHora({ passo, valor, onChange, onAvancar, erro }: CampoProp
           onAvancar();
         }
       }}
-      className="h-14 w-full rounded-2xl border-0 border-b-2 bg-transparent px-1 text-xl shadow-none focus-visible:ring-0 md:text-2xl"
+      className="h-14 w-full rounded-none border-0 border-b-2 border-foreground/20 bg-transparent px-1 text-2xl shadow-none transition-colors placeholder:text-foreground/45 focus-visible:border-foreground focus-visible:ring-0 md:text-3xl"
     />
   );
 }
