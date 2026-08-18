@@ -3,8 +3,12 @@
  *
  *   npm run admin:criar -- mel@exemplo.com
  *   npm run admin:criar -- mel@exemplo.com "senha-escolhida"
+ *   npm run admin:criar -- mel@exemplo.com --redefinir
  *
  * Sem senha no argumento, gera uma forte e imprime UMA vez.
+ *
+ * Se a conta ja existe, o script NAO mexe nela sem `--redefinir`: trocar a
+ * senha por engano trancaria a Mel do lado de fora do proprio painel.
  *
  * Existe em vez de criar pelo dashboard por causa do `email_confirm: true`.
  * No painel do Supabase isso e um toggle discreto ("Auto Confirm User") que,
@@ -28,10 +32,15 @@ function gerarSenha(tamanho = 20): string {
 }
 
 async function main() {
-  const [email, senhaArg] = process.argv.slice(2);
+  const args = process.argv.slice(2);
+  const redefinir = args.includes("--redefinir");
+  const [email, senhaArg] = args.filter((a) => a !== "--redefinir");
 
   if (!email || !email.includes("@")) {
-    console.error("\nUso: npm run admin:criar -- <email> [senha]\n");
+    console.error(
+      "\nUso: npm run admin:criar -- <email> [senha] [--redefinir]\n" +
+        "  --redefinir: troca a senha de uma conta que ja existe.\n",
+    );
     process.exit(1);
   }
 
@@ -62,10 +71,40 @@ async function main() {
 
   const jaExiste = existentes.users.find((u) => u.email?.toLowerCase() === email.toLowerCase());
   if (jaExiste) {
+    // Trocar a senha por acidente trancaria a Mel do lado de fora sem que ela
+    // entendesse o motivo -- por isso exige a flag explicita.
+    if (!redefinir) {
+      console.log(
+        `\nJa existe uma conta com ${email} (criada em ${jaExiste.created_at}).\n` +
+          `Nada foi alterado.\n\n` +
+          `Para definir uma senha nova:\n` +
+          `  npm run admin:criar -- ${email} --redefinir\n`,
+      );
+      process.exit(0);
+    }
+
+    const { error: erroSenha } = await admin.auth.admin.updateUserById(jaExiste.id, {
+      password: senha,
+      email_confirm: true,
+    });
+    if (erroSenha) {
+      console.error(`\nFalha ao redefinir a senha: ${erroSenha.message}\n`);
+      process.exit(1);
+    }
+
     console.log(
-      `\nJa existe uma conta com ${email} (criada em ${jaExiste.created_at}).\n` +
-        `Nada foi alterado. Para trocar a senha, use o painel do Supabase em\n` +
-        `Authentication > Users.\n`,
+      [
+        "",
+        "\x1b[32m✓ Senha redefinida\x1b[0m",
+        "",
+        `  e-mail: ${email}`,
+        `  senha:  ${senha}`,
+        "",
+        "  \x1b[33mA senha anterior deixou de valer neste momento.\x1b[0m",
+        "",
+        "  Entrar em: /admin/login",
+        "",
+      ].join("\n"),
     );
     process.exit(0);
   }
