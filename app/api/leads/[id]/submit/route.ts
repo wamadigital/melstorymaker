@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { z } from "zod";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { passosVisiveis } from "@/lib/form/engine";
@@ -6,6 +6,9 @@ import { validarPassos } from "@/lib/form/validacao";
 import type { Respostas } from "@/lib/form/types";
 import { colunasPromovidas } from "@/lib/leads";
 import { excedeuLimite, ipDaRequisicao, LIMITES } from "@/lib/rate-limit";
+import { notificarMel } from "@/lib/notifica/adapter";
+import { mensagemNovoLead } from "@/lib/notifica/mensagem";
+import { env } from "@/lib/env";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -68,6 +71,16 @@ export async function POST(req: Request, { params }: Ctx) {
     console.error("[leads] falha no submit", error);
     return NextResponse.json({ erro: "Não consegui enviar agora." }, { status: 500 });
   }
+
+  // Avisa a Mel DEPOIS de responder ao lead: after() roda pos-resposta, entao
+  // gateway lento ou fora do ar nao atrasa nem quebra o submit. Dispara so
+  // aqui, na transicao incompleto -> aguardando_revisao (o guard de status
+  // acima ja engoliu reenvio e duplo clique).
+  after(async () => {
+    await notificarMel(
+      mensagemNovoLead(lead.categoria, respostas, `${env.APP_URL.replace(/\/+$/, "")}/admin`),
+    );
+  });
 
   return NextResponse.json({ ok: true, status: "aguardando_revisao" });
 }

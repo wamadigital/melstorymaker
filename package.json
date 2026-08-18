@@ -19,7 +19,8 @@
     "arte:preparar": "node --conditions=react-server --import tsx scripts/preparar-arte.ts",
     "vercel:env": "bash scripts/vercel-env.sh",
     "estilo:verificar": "node scripts/verificar-estilo.mjs http://localhost:3000/formulario http://localhost:3000/admin/login",
-    "screenshot": "node scripts/screenshot.mjs"
+    "screenshot": "node scripts/screenshot.mjs",
+    "notifica:testar": "node --env-file=.env.local --import tsx scripts/testar-notificacao.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",

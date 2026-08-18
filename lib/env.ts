@@ -29,6 +29,20 @@ const schema = z
     // WhatsApp para o lead. Se estiver errada, o link chega quebrado no
     // celular de quem recebeu -- em producao precisa ser o dominio real.
     APP_URL: z.string().url(),
+
+    // --- Notificacao de lead novo no WhatsApp da Mel (CallMeBot) -----------
+    // Os tres sao opcionais: sem fone+apikey a notificacao simplesmente nao
+    // dispara (o submit do lead nunca depende dela). NOTIFICA_DRY_RUN=1 loga
+    // a mensagem em vez de enviar -- o padrao do desenvolvimento.
+    NOTIFICA_WHATSAPP_FONE: z
+      .string()
+      .regex(/^\d{12,13}$/, "so digitos com DDI. Ex: 5519999999999")
+      .optional(),
+    NOTIFICA_WHATSAPP_APIKEY: z.string().min(1).optional(),
+    NOTIFICA_DRY_RUN: z
+      .string()
+      .optional()
+      .transform((v) => v === "1" || v?.toLowerCase() === "true"),
   })
   // As credenciais do Gmail so sao exigidas quando o envio e real: com
   // MAIL_DRY_RUN=1 o e-mail vai para o log e nao precisa de conta nenhuma.
