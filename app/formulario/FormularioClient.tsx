@@ -318,7 +318,9 @@ export function FormularioClient({ whatsappMel }: { whatsappMel: string }) {
                   <h1 className="text-4xl leading-tight font-semibold text-balance">
                     {arvore.boas_vindas.titulo}
                   </h1>
-                  <p className="text-lg text-pretty text-muted-foreground">
+                  {/* whitespace-pre-line: a copy do arvore.json quebra linha de
+                      propósito, e sem isto o \n viraria um espaço. */}
+                  <p className="text-lg whitespace-pre-line text-pretty text-muted-foreground">
                     {arvore.boas_vindas.texto}
                   </p>
                   <Button

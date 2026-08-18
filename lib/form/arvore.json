@@ -1,66 +1,272 @@
 {
   "boas_vindas": {
     "titulo": "Oi! Eu sou a Mel ✨",
-    "texto": "Vou te fazer algumas perguntinhas rápidas pra montar a proposta perfeita pro seu evento. Leva menos de 2 minutos.",
+    "texto": "Vou te fazer algumas perguntinhas rápidas para entender melhor o seu evento e preparar a proposta ideal para você.\nÉ rapidinho e leva menos de 2 minutos!",
     "cta": "Começar"
   },
   "categoria": {
     "tipo": "escolha_unica",
     "pergunta": "Que momento vamos eternizar? ✨",
     "opcoes": [
-      { "valor": "debutante", "rotulo": "Festa de 15 anos" },
-      { "valor": "aniversario", "rotulo": "Aniversário" },
-      { "valor": "casamento", "rotulo": "Casamento" },
-      { "valor": "corporativo", "rotulo": "Evento corporativo" }
+      {
+        "valor": "debutante",
+        "rotulo": "Festa de 15 anos"
+      },
+      {
+        "valor": "aniversario",
+        "rotulo": "Aniversário"
+      },
+      {
+        "valor": "casamento",
+        "rotulo": "Casamento"
+      },
+      {
+        "valor": "corporativo",
+        "rotulo": "Evento corporativo"
+      }
     ]
   },
   "fluxos": {
     "debutante": [
-      { "id": "nome", "tipo": "texto", "pergunta": "Como você se chama? ✨", "obrigatorio": true },
-      { "id": "debutante", "tipo": "texto", "pergunta": "Nome da debutante ✨", "obrigatorio": true },
-      { "id": "data", "tipo": "data", "pergunta": "Data da festa", "obrigatorio": true, "min": "hoje" },
-      { "id": "horario", "tipo": "hora", "pergunta": "Horário do convite", "obrigatorio": true },
-      { "id": "local", "tipo": "texto", "pergunta": "Local da festa", "obrigatorio": true },
-      { "id": "making_of", "tipo": "escolha_unica", "pergunta": "Quer registrar o making of?", "opcoes": ["Sim", "Não"], "obrigatorio": true },
-      { "id": "local_making_of", "tipo": "texto", "pergunta": "Local do making of", "obrigatorio": true, "exibir_se": { "making_of": "Sim" } },
-      { "id": "entrega", "tipo": "escolha_unica", "pergunta": "Como você prefere a entrega?", "opcoes": ["Em tempo real", "Em até 1 semana"], "obrigatorio": true }
+      {
+        "id": "nome",
+        "tipo": "texto",
+        "pergunta": "Como você se chama? ✨",
+        "obrigatorio": true
+      },
+      {
+        "id": "debutante",
+        "tipo": "texto",
+        "pergunta": "Nome da debutante ✨",
+        "obrigatorio": true
+      },
+      {
+        "id": "data",
+        "tipo": "data",
+        "pergunta": "Data da festa",
+        "obrigatorio": true,
+        "min": "hoje"
+      },
+      {
+        "id": "horario",
+        "tipo": "hora",
+        "pergunta": "Horário do convite",
+        "obrigatorio": true
+      },
+      {
+        "id": "local",
+        "tipo": "texto",
+        "pergunta": "Local da festa",
+        "obrigatorio": true
+      },
+      {
+        "id": "making_of",
+        "tipo": "escolha_unica",
+        "pergunta": "Quer registrar o making of?",
+        "opcoes": [
+          "Sim",
+          "Não"
+        ],
+        "obrigatorio": true
+      },
+      {
+        "id": "local_making_of",
+        "tipo": "texto",
+        "pergunta": "Local do making of",
+        "obrigatorio": true,
+        "exibir_se": {
+          "making_of": "Sim"
+        }
+      },
+      {
+        "id": "entrega",
+        "tipo": "escolha_unica",
+        "pergunta": "Como você prefere a entrega?",
+        "opcoes": [
+          "Em tempo real",
+          "Em até 1 semana"
+        ],
+        "obrigatorio": true
+      }
     ],
     "aniversario": [
-      { "id": "nome", "tipo": "texto", "pergunta": "Como você se chama? ✨", "obrigatorio": true },
-      { "id": "aniversariante", "tipo": "texto", "pergunta": "Nome do(a) aniversariante ✨", "obrigatorio": true },
-      { "id": "idade", "tipo": "numero", "pergunta": "Quantos anos vai completar? ✨", "obrigatorio": true, "min": 1, "max": 120 },
-      { "id": "data", "tipo": "data", "pergunta": "Data da festa", "obrigatorio": true, "min": "hoje" },
-      { "id": "horario", "tipo": "hora", "pergunta": "Horário do convite", "obrigatorio": true },
-      { "id": "local", "tipo": "texto", "pergunta": "Local da festa", "obrigatorio": true },
-      { "id": "entrega", "tipo": "escolha_unica", "pergunta": "Como você prefere a entrega?", "opcoes": ["Em tempo real", "Em até 1 semana"], "obrigatorio": true }
+      {
+        "id": "nome",
+        "tipo": "texto",
+        "pergunta": "Como você se chama? ✨",
+        "obrigatorio": true
+      },
+      {
+        "id": "aniversariante",
+        "tipo": "texto",
+        "pergunta": "Nome do(a) aniversariante ✨",
+        "obrigatorio": true
+      },
+      {
+        "id": "idade",
+        "tipo": "numero",
+        "pergunta": "Quantos anos vai completar? ✨",
+        "obrigatorio": true,
+        "min": 1,
+        "max": 120
+      },
+      {
+        "id": "data",
+        "tipo": "data",
+        "pergunta": "Data da festa",
+        "obrigatorio": true,
+        "min": "hoje"
+      },
+      {
+        "id": "horario",
+        "tipo": "hora",
+        "pergunta": "Horário do convite",
+        "obrigatorio": true
+      },
+      {
+        "id": "local",
+        "tipo": "texto",
+        "pergunta": "Local da festa",
+        "obrigatorio": true
+      },
+      {
+        "id": "entrega",
+        "tipo": "escolha_unica",
+        "pergunta": "Como você prefere a entrega?",
+        "opcoes": [
+          "Em tempo real",
+          "Em até 1 semana"
+        ],
+        "obrigatorio": true
+      }
     ],
     "casamento": [
-      { "id": "nome", "tipo": "texto", "pergunta": "Como você se chama? ✨", "obrigatorio": true },
-      { "id": "noivos", "tipo": "texto", "pergunta": "Nome dos noivos ✨", "placeholder": "Ex: Ana & João", "obrigatorio": true },
-      { "id": "data", "tipo": "data", "pergunta": "Data do casamento", "obrigatorio": true, "min": "hoje" },
-      { "id": "horario", "tipo": "hora", "pergunta": "Horário do convite", "obrigatorio": true },
-      { "id": "local_cerimonia", "tipo": "texto", "pergunta": "Local da cerimônia", "obrigatorio": true },
-      { "id": "local_festa", "tipo": "texto", "pergunta": "Local da festa", "obrigatorio": true },
-      { "id": "making_of", "tipo": "escolha_unica", "pergunta": "Quer registrar o making of?", "opcoes": ["Sim", "Não"], "obrigatorio": true },
-      { "id": "local_making_of", "tipo": "texto", "pergunta": "Local do making of", "obrigatorio": true, "exibir_se": { "making_of": "Sim" } },
-      { "id": "entrega", "tipo": "escolha_unica", "pergunta": "Como você prefere a entrega?", "opcoes": ["Em tempo real", "Em até 1 semana"], "obrigatorio": true }
+      {
+        "id": "nome",
+        "tipo": "texto",
+        "pergunta": "Como você se chama? ✨",
+        "obrigatorio": true
+      },
+      {
+        "id": "noivos",
+        "tipo": "texto",
+        "pergunta": "Nome dos noivos ✨",
+        "placeholder": "Ex: Ana & João",
+        "obrigatorio": true
+      },
+      {
+        "id": "data",
+        "tipo": "data",
+        "pergunta": "Data do casamento",
+        "obrigatorio": true,
+        "min": "hoje"
+      },
+      {
+        "id": "horario",
+        "tipo": "hora",
+        "pergunta": "Horário do convite",
+        "obrigatorio": true
+      },
+      {
+        "id": "local_cerimonia",
+        "tipo": "texto",
+        "pergunta": "Local da cerimônia",
+        "obrigatorio": true
+      },
+      {
+        "id": "local_festa",
+        "tipo": "texto",
+        "pergunta": "Local da festa",
+        "obrigatorio": true
+      },
+      {
+        "id": "making_of",
+        "tipo": "escolha_unica",
+        "pergunta": "Quer registrar o making of?",
+        "opcoes": [
+          "Sim",
+          "Não"
+        ],
+        "obrigatorio": true
+      },
+      {
+        "id": "local_making_of",
+        "tipo": "texto",
+        "pergunta": "Local do making of",
+        "obrigatorio": true,
+        "exibir_se": {
+          "making_of": "Sim"
+        }
+      },
+      {
+        "id": "entrega",
+        "tipo": "escolha_unica",
+        "pergunta": "Como você prefere a entrega?",
+        "opcoes": [
+          "Em tempo real",
+          "Em até 1 semana"
+        ],
+        "obrigatorio": true
+      }
     ],
     "corporativo": [
-      { "id": "nome", "tipo": "texto", "pergunta": "Como você se chama? ✨", "obrigatorio": true },
-      { "id": "empresa", "tipo": "texto", "pergunta": "Nome da empresa", "obrigatorio": true },
-      { "id": "tipo_evento", "tipo": "texto", "pergunta": "Que tipo de evento vamos cobrir?", "obrigatorio": true },
-      { "id": "data", "tipo": "data", "pergunta": "Data do evento", "obrigatorio": true, "min": "hoje" },
-      { "id": "horario", "tipo": "hora", "pergunta": "Horário do evento", "obrigatorio": true },
-      { "id": "local", "tipo": "texto", "pergunta": "Local do evento", "obrigatorio": true }
+      {
+        "id": "nome",
+        "tipo": "texto",
+        "pergunta": "Como você se chama? ✨",
+        "obrigatorio": true
+      },
+      {
+        "id": "empresa",
+        "tipo": "texto",
+        "pergunta": "Nome da empresa",
+        "obrigatorio": true
+      },
+      {
+        "id": "tipo_evento",
+        "tipo": "texto",
+        "pergunta": "Que tipo de evento vamos cobrir?",
+        "obrigatorio": true
+      },
+      {
+        "id": "data",
+        "tipo": "data",
+        "pergunta": "Data do evento",
+        "obrigatorio": true,
+        "min": "hoje"
+      },
+      {
+        "id": "horario",
+        "tipo": "hora",
+        "pergunta": "Horário do evento",
+        "obrigatorio": true
+      },
+      {
+        "id": "local",
+        "tipo": "texto",
+        "pergunta": "Local do evento",
+        "obrigatorio": true
+      }
     ]
   },
   "contato": [
-    { "id": "contato_email", "tipo": "email", "pergunta": "Qual o seu melhor e-mail? É pra lá que vai a proposta ✨", "obrigatorio": true },
-    { "id": "contato_whatsapp", "tipo": "telefone", "pergunta": "E o seu WhatsApp? (opcional)", "obrigatorio": false, "mascara": "(00) 00000-0000" }
+    {
+      "id": "contato_email",
+      "tipo": "email",
+      "pergunta": "Qual o seu melhor e-mail? É pra lá que vai a proposta ✨",
+      "obrigatorio": true
+    },
+    {
+      "id": "contato_whatsapp",
+      "tipo": "telefone",
+      "pergunta": "E o seu WhatsApp? (opcional)",
+      "obrigatorio": false,
+      "mascara": "(00) 00000-0000"
+    }
   ],
   "confirmacao": {
     "titulo": "Prontinho! ✨",
-    "texto": "Recebi tudo com carinho. Em breve sua proposta personalizada chega no seu e-mail.",
+    "texto": "Recebi tudo com carinho. Em breve sua proposta personalizada chegará no seu WhatsApp",
     "cta_whatsapp": "Falar com a Mel agora"
   }
 }
