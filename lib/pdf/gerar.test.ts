@@ -228,3 +228,59 @@ test("casamento e debutante compartilham o mesmo desenho de capa", () => {
     );
   }
 });
+
+// --- aniversário infantil -------------------------------------------------
+
+test("o cabeçalho do aniversário infantil traz o nome do aniversariante", () => {
+  const campo = {
+    chave: "cabecalho",
+    composicao: "ANIVERSÁRIO {aniversariante} | {data}",
+    formatos: { data: "data_curta" },
+  } as unknown as Parameters<typeof textoDoCampo>[0];
+
+  assert.equal(
+    textoDoCampo(campo, { aniversariante: "João Vitor", data: "2027-12-01" }),
+    "ANIVERSÁRIO João Vitor | 01/12/2027",
+  );
+});
+
+test("aniversário com 14 anos ou menos usa a arte infantil real", async () => {
+  const r = await gerarProposta("aniversario", {
+    nome: "Lúcia",
+    aniversariante: "João Vitor",
+    idade: "8",
+    data: "2027-12-01",
+  });
+  assert.equal(r.templateId, "aniversario_infantil");
+  assert.equal(r.usouPlaceholder, false);
+  assert.equal(r.usouFallbackDeFonte, false);
+  const doc = await PDFDocument.load(r.bytes);
+  assert.equal(doc.getPageCount(), 6);
+});
+
+test("aniversário infantil sem o nome do aniversariante recusa", async () => {
+  const campos = await esperarFalta("aniversario", {
+    nome: "Lúcia",
+    idade: "8",
+    data: "2027-12-01",
+  });
+  assert.match(campos.join(" "), /aniversariante/i);
+});
+
+test("as três artes reais compartilham o desenho de capa, variando só x e composição", () => {
+  const reais = ["casamento", "debutante", "aniversario_infantil"] as const;
+
+  for (const t of reais) {
+    const campos = templates[t].campos;
+    assert.deepEqual(
+      campos.map((c) => c.chave),
+      ["cabecalho", "nome"],
+      `${t} não tem os dois campos de capa`,
+    );
+    // O que NÃO pode variar entre as artes.
+    assert.equal(campos[0].y, 64, `${t}: y do cabeçalho`);
+    assert.equal(campos[1].y, 488.5, `${t}: y do nome`);
+    assert.equal(campos[0].alinhamento, "direita", `${t}: alinhamento do cabeçalho`);
+    assert.equal(campos[1].cor, "#FFFFFF", `${t}: cor do nome`);
+  }
+});

@@ -141,8 +141,14 @@ function campoSujeito(
 function camposCapa(opcoes: {
   /** Ex: "15 ANOS DA {debutante} | {data}". */
   composicao: string;
-  /** x do bloco "Olá," — a unica coordenada que varia entre as artes. */
+  /** x do bloco "Olá,". Varia entre as artes. */
   xNome: number;
+  /**
+   * Borda direita do cabecalho. Quase sempre 1150,5, mas o aniversario
+   * infantil fica em 1151 -- meio ponto, medido no Figma. Invisivel a olho nu,
+   * mas nao ha razao para desalinhar de proposito.
+   */
+  xCabecalho?: number;
 }): CampoTemplate[] {
   const BRANCO = "#FFFFFF";
 
@@ -152,7 +158,7 @@ function camposCapa(opcoes: {
       composicao: opcoes.composicao,
       formatos: { data: "data_curta" },
       pagina: 0,
-      x: 1150.5,
+      x: opcoes.xCabecalho ?? 1150.5,
       y: 64,
       font: "DMSans-Light",
       tamanho: 45.52,
@@ -228,12 +234,18 @@ export const templates: Record<TemplateId, TemplateConfig> = {
     }),
   },
 
+  // ARTE REAL — frame aniversario_infantil_01, node 356:8. Seis paginas; so a
+  // capa tem texto dinamico. Unica arte cuja borda direita do cabecalho e 1151.
   aniversario_infantil: {
     basePdf: "assets/templates/aniversario_infantil.pdf",
     rotulo: "Aniversário infantil (até 14 anos)",
     origemCoordenadas: "figma",
     escala: 1,
-    campos: [campoSujeito("aniversariante"), ...camposComuns(), campoLocal("local", 360)],
+    campos: camposCapa({
+      composicao: "ANIVERSÁRIO {aniversariante} | {data}",
+      xNome: 205,
+      xCabecalho: 1151,
+    }),
   },
 
   aniversario_adulto: {
