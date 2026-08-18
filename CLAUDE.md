@@ -76,6 +76,7 @@ supabase/schema.sql    Schema completo
 5. Formatação sempre via `lib/pdf/formatadores.ts`: **data em DD/MM/AAAA** ("14/03/2026") em TODOS os PDFs, hora no padrão "19h30". O formatador `data_extenso` continua disponível no registry, mas nenhuma arte usa.
 5b. **Campo do config vazio aborta a geração.** Todo campo de `templates.config.ts` é obrigatório salvo `opcional: true`. Faltando qualquer um, `gerarProposta` lança `CamposFaltandoError` com a lista, a rota devolve 422 e nada é gravado no banco nem no Storage. Nunca pular campo vazio em silêncio: PDF com buraco onde deveria estar o nome do lead é pior do que PDF nenhum. Pela mesma razão, `resolverTemplateId` devolve `null` em vez de escolher uma arte padrão quando a idade falta.
 6. Regerar PDF sobrescreve `{leadId}.pdf` no bucket `propostas` (URL estável para o link do WhatsApp). Preview no painel usa query param de cache-bust.
+7. **O link público da proposta é `{APP_URL}/proposta/{leadId}.pdf`**, servido por `app/proposta/[arquivo]/route.ts`, que lê o objeto do Storage. Nunca devolver a URL crua do Supabase: esse link vai por WhatsApp e o lead lê o domínio. Por isso `APP_URL` errada em produção = link quebrado no celular de quem recebeu.
 
 ## Convenções de código
 
@@ -86,6 +87,16 @@ supabase/schema.sql    Schema completo
 - Sem dependências novas sem justificativa de 1 linha no PR. O bundle de `/formulario` é sagrado: LCP < 2.5s em 4G.
 - Mobile-first de verdade: desenvolver em viewport 360px. Cenário real de uso é o navegador in-app do WhatsApp.
 - Datas no banco em ISO; formatação pt-BR só na borda (UI e PDF).
+
+### Identidade visual do SITE (não do PDF)
+
+**As duas identidades são separadas e não se contaminam.** O site tem a paleta abaixo; o PDF tem a arte do Figma, com as cores e fontes que a Mel desenhou lá. Unificar as duas seria destruir a arte — nunca mexer em `assets/templates/` ou nas cores de `lib/pdf/templates.config.ts` a pretexto de "seguir a paleta".
+
+- **Paleta: duas cores.** Preto (`#000000`) e `#F1F1F1`, em `--marca-preto` e `--marca-claro`. Branco entra só como superfície de card. Tom intermediário se deriva com opacidade (`rgb(0 0 0 / 60%)`), nunca acrescentando um hex novo.
+- **Fonte: DM Sans em tudo**, servida de `assets/fonts/` via `next/font/local` (não do Google Fonts — ida a terceiro atrasa o LCP). `--font-sans`, `--font-heading` e `--font-mono` apontam todos para ela.
+- **Raio: 6px em tudo.** Toda a escala `--radius-sm..4xl` aponta para `--radius`. Não usar `rounded-full`: mudar o raio do app inteiro deve ser mexer em uma linha só.
+- `npm run estilo:verificar` (com `npm run dev` em outro terminal) checa os quatro no DOM renderizado: raio, fonte, paleta e ausência de scroll horizontal em 360px. Julgar por screenshot não serve — 6px num print em 2x parece 12px.
+- `chrome --headless --window-size=360,x` **não** dá viewport de 360px (o Chrome tem largura mínima de janela e a imagem sai só recortada, simulando um estouro que não existe). Use `npm run screenshot -- <url> <saida.png> 360`, que emula via CDP.
 
 ## Workflow
 

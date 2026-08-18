@@ -71,7 +71,7 @@ export function FiltrosLeads({
             type="button"
             onClick={() => trocarStatus(aba.valor)}
             className={cn(
-              "rounded-full border px-3 py-1.5 text-sm transition-colors",
+              "rounded-md border px-3 py-1.5 text-sm transition-colors",
               statusAtual === aba.valor
                 ? "border-transparent bg-primary text-primary-foreground"
                 : "border-border bg-card hover:bg-accent",

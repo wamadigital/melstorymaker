@@ -137,7 +137,7 @@ export function DetalheLead({ lead }: { lead: Lead }) {
           <h1 className="text-2xl font-semibold">{sujeito || "Sem nome"}</h1>
           <span
             className={cn(
-              "rounded-full border px-2.5 py-0.5 text-xs font-medium",
+              "rounded-md border px-2.5 py-0.5 text-xs font-medium",
               CLASSE_STATUS[status],
             )}
           >

@@ -98,7 +98,7 @@ export default async function PaginaLeads({
                   <div className="flex shrink-0 items-center gap-3 sm:flex-col sm:items-end sm:gap-1">
                     <span
                       className={cn(
-                        "rounded-full border px-2.5 py-0.5 text-xs font-medium",
+                        "rounded-md border px-2.5 py-0.5 text-xs font-medium",
                         CLASSE_STATUS[lead.status],
                       )}
                     >

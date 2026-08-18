@@ -24,7 +24,15 @@ export function supabaseAdmin(): SupabaseClient {
   return cliente;
 }
 
-/** URL publica e estavel do PDF. Regerar sobrescreve o mesmo arquivo. */
+/**
+ * URL publica e estavel do PDF, no dominio da Mel.
+ *
+ * Aponta para /proposta/{id}.pdf, que le o arquivo do Storage e o devolve. E
+ * este link que vai por WhatsApp para o lead, entao ele precisa ostentar
+ * `melstorymaker.com.br` -- nao o endereco do projeto no Supabase.
+ *
+ * Regerar sobrescreve o mesmo objeto no bucket, entao a URL nao muda (RF-14).
+ */
 export function urlPublicaProposta(leadId: string): string {
-  return `${env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/${BUCKET_PROPOSTAS}/${leadId}.pdf`;
+  return `${env.APP_URL.replace(/\/+$/, "")}/proposta/${leadId}.pdf`;
 }

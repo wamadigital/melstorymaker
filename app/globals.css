@@ -7,8 +7,11 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  /* Uma fonte so em todo o app: DM Sans, carregada em app/layout.tsx. Titulo,
+     corpo e numero usam a mesma familia -- inclusive o "mono", que aqui existe
+     apenas para nao quebrar quem ja usa a classe. */
   --font-sans: var(--font-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-mono: var(--font-sans);
   --font-heading: var(--font-sans);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
@@ -39,92 +42,106 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
-  --radius-sm: calc(var(--radius) * 0.6);
-  --radius-md: calc(var(--radius) * 0.8);
+  /* Um raio so, 6px, em toda a escala. O shadcn deriva sm..4xl de --radius com
+     multiplicadores; aqui todos apontam para o mesmo valor de proposito, para
+     que `rounded-lg` e `rounded-2xl` no meio do codigo nao criem cantos
+     diferentes. Trocar o raio do app inteiro = mudar --radius. */
+  --radius-sm: var(--radius);
+  --radius-md: var(--radius);
   --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 1.4);
-  --radius-2xl: calc(var(--radius) * 1.8);
-  --radius-3xl: calc(var(--radius) * 2.2);
-  --radius-4xl: calc(var(--radius) * 2.6);
+  --radius-xl: var(--radius);
+  --radius-2xl: var(--radius);
+  --radius-3xl: var(--radius);
+  --radius-4xl: var(--radius);
 }
 
 /*
- * Paleta da marca. Ponto de partida derivado do unico hex que o PRD fixa
- * (#3A2E2A, cor do texto dinamico no PDF). Sera substituida pelos valores
- * exatos extraidos do Figma -- em PR dedicada, junto com a arte.
+ * Paleta da marca: DUAS cores, preto e #F1F1F1.
+ *
+ * Tudo o que parece um terceiro tom aqui e preto com opacidade -- bordas,
+ * texto secundario, superficies. Isso e proposital: mantem o contraste
+ * consistente sobre qualquer fundo e evita que a paleta cresca sozinha a cada
+ * componente novo. Se precisar de um tom intermediario, derive de
+ * --marca-preto com /N%, nao acrescente um hex.
  */
 :root {
-  --marca-tinta: #3a2e2a; /* marrom quente da marca */
-  --marca-creme: #fdfbf7;
-  --marca-areia: #f3ede5;
-  --marca-dourado: #c4a582;
+  --marca-preto: #000000;
+  --marca-claro: #f1f1f1;
 
-  --background: var(--marca-creme);
-  --foreground: var(--marca-tinta);
+  --background: var(--marca-claro);
+  --foreground: var(--marca-preto);
+  /* Superficie elevada: branco puro sobre o #F1F1F1 do fundo. E o unico jeito
+     de um card se destacar sem introduzir cor nova. */
   --card: #ffffff;
-  --card-foreground: var(--marca-tinta);
+  --card-foreground: var(--marca-preto);
   --popover: #ffffff;
-  --popover-foreground: var(--marca-tinta);
-  --primary: var(--marca-tinta);
-  --primary-foreground: var(--marca-creme);
-  --secondary: var(--marca-areia);
-  --secondary-foreground: var(--marca-tinta);
-  --muted: var(--marca-areia);
-  --muted-foreground: #8a7a70;
-  --accent: var(--marca-areia);
-  --accent-foreground: var(--marca-tinta);
+  --popover-foreground: var(--marca-preto);
+  --primary: var(--marca-preto);
+  --primary-foreground: var(--marca-claro);
+  --secondary: var(--marca-claro);
+  --secondary-foreground: var(--marca-preto);
+  --muted: var(--marca-claro);
+  /* 60% de preto: passa no AA sobre #F1F1F1 e sobre branco. */
+  --muted-foreground: rgb(0 0 0 / 60%);
+  --accent: var(--marca-claro);
+  --accent-foreground: var(--marca-preto);
   --destructive: oklch(0.577 0.245 27.325);
-  --border: #e8dfd4;
-  --input: #e8dfd4;
-  --ring: var(--marca-dourado);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --border: rgb(0 0 0 / 12%);
+  --input: rgb(0 0 0 / 20%);
+  --ring: var(--marca-preto);
+  --chart-1: rgb(0 0 0 / 90%);
+  --chart-2: rgb(0 0 0 / 70%);
+  --chart-3: rgb(0 0 0 / 50%);
+  --chart-4: rgb(0 0 0 / 30%);
+  --chart-5: rgb(0 0 0 / 15%);
+  --radius: 6px;
+  --sidebar: var(--marca-claro);
+  --sidebar-foreground: var(--marca-preto);
+  --sidebar-primary: var(--marca-preto);
+  --sidebar-primary-foreground: var(--marca-claro);
+  --sidebar-accent: #ffffff;
+  --sidebar-accent-foreground: var(--marca-preto);
+  --sidebar-border: rgb(0 0 0 / 12%);
+  --sidebar-ring: var(--marca-preto);
 }
 
+/*
+ * O mesmo par de cores, invertido. Nenhuma tela do sistema liga a classe
+ * `.dark` hoje; isto existe para que, no dia em que alguem ligar, a marca
+ * continue sendo preto e #F1F1F1 -- e nao a paleta cinza que vem do shadcn.
+ */
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
+  --background: var(--marca-preto);
+  --foreground: var(--marca-claro);
+  --card: rgb(255 255 255 / 6%);
+  --card-foreground: var(--marca-claro);
+  --popover: #141414;
+  --popover-foreground: var(--marca-claro);
+  --primary: var(--marca-claro);
+  --primary-foreground: var(--marca-preto);
+  --secondary: rgb(255 255 255 / 10%);
+  --secondary-foreground: var(--marca-claro);
+  --muted: rgb(255 255 255 / 10%);
+  --muted-foreground: rgb(241 241 241 / 65%);
+  --accent: rgb(255 255 255 / 10%);
+  --accent-foreground: var(--marca-claro);
   --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --border: rgb(255 255 255 / 15%);
+  --input: rgb(255 255 255 / 25%);
+  --ring: var(--marca-claro);
+  --chart-1: rgb(241 241 241 / 90%);
+  --chart-2: rgb(241 241 241 / 70%);
+  --chart-3: rgb(241 241 241 / 50%);
+  --chart-4: rgb(241 241 241 / 30%);
+  --chart-5: rgb(241 241 241 / 15%);
+  --sidebar: var(--marca-preto);
+  --sidebar-foreground: var(--marca-claro);
+  --sidebar-primary: var(--marca-claro);
+  --sidebar-primary-foreground: var(--marca-preto);
+  --sidebar-accent: rgb(255 255 255 / 10%);
+  --sidebar-accent-foreground: var(--marca-claro);
+  --sidebar-border: rgb(255 255 255 / 15%);
+  --sidebar-ring: var(--marca-claro);
 }
 
 @layer base {

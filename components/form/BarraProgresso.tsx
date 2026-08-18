@@ -11,7 +11,7 @@ export function BarraProgresso({ atual, total }: { atual: number; total: number 
 
   return (
     <div
-      className="h-1 w-full overflow-hidden rounded-full bg-muted"
+      className="h-1 w-full overflow-hidden rounded-md bg-muted"
       role="progressbar"
       aria-valuenow={atual}
       aria-valuemin={1}
