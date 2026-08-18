@@ -46,3 +46,6 @@ next-env.d.ts
 
 # saida do npm run pdf:verificar
 /.pdf-verificacao
+
+# arte bruta exportada do Figma (o PDF final é que vai versionado)
+/.arte-bruta

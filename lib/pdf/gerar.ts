@@ -7,7 +7,13 @@ import type { Categoria, Respostas, TemplateId } from "@/lib/form/types";
 import { FORMATADORES } from "./formatadores";
 import { carregarFontes, textoSeguro } from "./fontes";
 import { ajustarTamanho, alinharX, converterY, hexParaRgb } from "./geometria";
-import { fontesUsadas, templates, type CampoTemplate, type TemplateConfig } from "./templates.config";
+import {
+  chavesDoCampo,
+  fontesUsadas,
+  templates,
+  type CampoTemplate,
+  type TemplateConfig,
+} from "./templates.config";
 
 export const DIR_TEMPLATES = path.join(process.cwd(), "assets", "templates");
 
@@ -50,14 +56,33 @@ function resolver(caminho: string, contexto: Record<string, unknown>): string {
   return valor == null ? "" : String(valor);
 }
 
+/**
+ * Texto final do campo, seja ele simples ou composto.
+ *
+ * Composto existe porque a arte junta duas respostas numa linha so
+ * ("{noivos} | {data}"), com a data ja por extenso no meio. Formatar depois de
+ * concatenar seria impossivel: nao da para saber onde a data comeca.
+ */
+export function textoDoCampo(campo: CampoTemplate, respostas: Respostas): string {
+  if (campo.composicao) {
+    return campo.composicao.replace(/\{(\w+)\}/g, (_, chave: string) => {
+      const bruto = respostas[chave] ?? "";
+      const formatador = campo.formatos?.[chave];
+      return formatador ? FORMATADORES[formatador](bruto) : bruto;
+    });
+  }
+
+  const bruto = resolver(campo.fonte ?? "", { respostas });
+  return campo.formato ? FORMATADORES[campo.formato](bruto) : bruto;
+}
+
 function desenharCampo(
   page: PDFPage,
   campo: CampoTemplate,
   config: TemplateConfig,
   font: PDFFont,
-  bruto: string,
+  formatado: string,
 ) {
-  const formatado = campo.formato ? FORMATADORES[campo.formato](bruto) : bruto;
   const texto = textoSeguro(font, formatado.trim());
   if (!texto) return;
 
@@ -122,19 +147,22 @@ export async function gerarProposta(
   // Campo obrigatorio vazio nao pode virar espaco em branco na arte: e assim
   // que sai uma proposta sem o nome dos noivos. Junta TODOS os faltantes antes
   // de reclamar, para a Mel resolver de uma vez em vez de um por vez.
+  // Num campo composto, faltar UMA das chaves ja invalida a linha inteira:
+  // "Ana & João | " com a data vazia e pior do que nao gerar.
   const faltando = config.campos
-    .filter((c) => !c.opcional && !resolver(c.fonte, { respostas }).trim())
-    .map((c) => rotuloCampo(categoria, c.chave));
+    .filter((c) => !c.opcional)
+    .flatMap((c) => chavesDoCampo(c).filter((k) => !(respostas[k] ?? "").trim()))
+    .map((k) => rotuloCampo(categoria, k));
 
   if (faltando.length > 0) {
     throw new CamposFaltandoError([...new Set(faltando)]);
   }
+
   const { caminho, placeholder } = await caminhoTemplate(templateId);
 
   const pdfDoc = await PDFDocument.load(await fs.readFile(caminho));
   const fontes = await carregarFontes(pdfDoc, fontesUsadas(templateId));
   const paginas = pdfDoc.getPages();
-  const contexto = { respostas };
 
   for (const campo of config.campos) {
     const page = paginas[campo.pagina];
@@ -146,12 +174,12 @@ export async function gerarProposta(
       continue;
     }
 
-    const bruto = resolver(campo.fonte, contexto);
+    const texto = textoDoCampo(campo, respostas);
     // Obrigatorio vazio ja foi barrado acima; chegar aqui vazio so acontece
     // com campo marcado como opcional.
-    if (!bruto) continue;
+    if (!texto.trim()) continue;
 
-    desenharCampo(page, campo, config, fontes.obter(campo.font), bruto);
+    desenharCampo(page, campo, config, fontes.obter(campo.font), texto);
   }
 
   return {

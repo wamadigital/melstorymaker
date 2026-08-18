@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { PDFDocument } from "pdf-lib";
-import { CamposFaltandoError, gerarProposta } from "./gerar";
+import { CamposFaltandoError, gerarProposta, textoDoCampo } from "./gerar";
 import type { Respostas } from "@/lib/form/types";
 
 /**
@@ -56,11 +56,12 @@ test("espaço em branco não conta como resposta", async () => {
 });
 
 test("reclama de TODOS os campos faltando de uma vez, não um por vez", async () => {
+  // Os três campos que a arte do casamento realmente imprime.
   const campos = await esperarFalta("casamento", {
     ...CASAMENTO_COMPLETO,
     noivos: "",
     data: "",
-    local_festa: "",
+    nome: "",
   });
   assert.equal(campos.length, 3);
 });
@@ -105,10 +106,57 @@ test("corporativo exige o tipo de evento, que é impresso na arte", async () => 
 
 test("a mensagem do erro lista os campos pelo texto da pergunta", async () => {
   try {
-    await gerarProposta("casamento", { ...CASAMENTO_COMPLETO, horario: "" });
+    await gerarProposta("casamento", { ...CASAMENTO_COMPLETO, noivos: "" });
     assert.fail("deveria ter recusado");
   } catch (e) {
     // A Mel le esta mensagem no painel: precisa dizer a pergunta, nao a chave.
-    assert.match((e as Error).message, /Horário do convite/);
+    assert.match((e as Error).message, /Nome dos noivos/);
   }
+});
+
+// --- campo composto -------------------------------------------------------
+//
+// O cabeçalho da capa do casamento é UM texto que junta duas respostas com a
+// data já por extenso no meio. Formatar depois de concatenar seria impossível:
+// não dá para saber onde a data começa dentro da string.
+
+test("campo composto junta as respostas e formata cada uma", () => {
+  const campo = {
+    chave: "cabecalho",
+    composicao: "{noivos} | {data}",
+    formatos: { data: "data_extenso" },
+  } as unknown as Parameters<typeof textoDoCampo>[0];
+
+  assert.equal(
+    textoDoCampo(campo, { noivos: "Ana & João", data: "2027-08-31" }),
+    "Ana & João | 31 de agosto de 2027",
+  );
+});
+
+test("faltar UMA chave do composto invalida a linha inteira", async () => {
+  // "Ana & João | " com a data vazia é pior do que não gerar proposta.
+  const campos = await esperarFalta("casamento", {
+    nome: "Lúcia",
+    noivos: "Ana & João",
+    // data ausente
+    horario: "16:00",
+    local_cerimonia: "Igreja",
+    local_festa: "Salão",
+    making_of: "Não",
+    entrega: "Em tempo real",
+  });
+  assert.match(campos.join(" "), /Data do casamento/);
+});
+
+test("a arte do casamento não exige horário nem os dois locais", async () => {
+  // Eles continuam sendo perguntados e aparecem no painel, mas não são
+  // impressos: a arte não reservou espaço.
+  const r = await gerarProposta("casamento", {
+    nome: "Lúcia",
+    noivos: "Ana & João",
+    data: "2027-08-31",
+    making_of: "Não",
+    entrega: "Em tempo real",
+  });
+  assert.equal(r.templateId, "casamento");
 });

@@ -5,30 +5,27 @@ import fontkit from "@pdf-lib/fontkit";
 import { StandardFonts, type PDFDocument, type PDFFont } from "pdf-lib";
 
 /**
- * Nomes logicos usados no templates.config.ts. O config nunca aponta para um
- * caminho de arquivo: trocar o .ttf da marca nao encosta na configuracao de
- * coordenadas.
+ * Fontes da marca. A arte usa DM Sans (Google Fonts, licenca OFL) -- por isso
+ * os arquivos podem viver no repo sem questao de licenciamento.
+ *
+ * Historico util: a arte original do Figma usava Averta, que e comercial. A
+ * migracao para DM Sans foi decisao do owner, e e o que permite o PDF sair
+ * fiel sem depender de fonte paga no servidor.
  */
-export type NomeFonte =
-  | "BrandSerif-Bold"
-  | "BrandSerif-Regular"
-  | "BrandSans-Bold"
-  | "BrandSans-Regular";
+export type NomeFonte = "DMSans-Light" | "DMSans-Regular" | "DMSans-Bold";
 
 const ARQUIVOS: Record<NomeFonte, string> = {
-  "BrandSerif-Bold": "BrandSerif-Bold.ttf",
-  "BrandSerif-Regular": "BrandSerif-Regular.ttf",
-  "BrandSans-Bold": "BrandSans-Bold.ttf",
-  "BrandSans-Regular": "BrandSans-Regular.ttf",
+  "DMSans-Light": "DMSans-Light.ttf",
+  "DMSans-Regular": "DMSans-Regular.ttf",
+  "DMSans-Bold": "DMSans-Bold.ttf",
 };
 
-// Usadas enquanto as fontes da marca nao chegam no repo. Servem para calibrar
-// coordenadas; NAO servem para a proposta final ir pro lead.
+// Rede de seguranca para o caso de o .ttf sumir do deploy. Nao e para ser
+// acionado: se for, o painel avisa a Mel de que o PDF nao esta fiel a arte.
 const FALLBACK: Record<NomeFonte, StandardFonts> = {
-  "BrandSerif-Bold": StandardFonts.TimesRomanBold,
-  "BrandSerif-Regular": StandardFonts.TimesRoman,
-  "BrandSans-Bold": StandardFonts.HelveticaBold,
-  "BrandSans-Regular": StandardFonts.Helvetica,
+  "DMSans-Light": StandardFonts.Helvetica,
+  "DMSans-Regular": StandardFonts.Helvetica,
+  "DMSans-Bold": StandardFonts.HelveticaBold,
 };
 
 export const DIR_FONTES = path.join(process.cwd(), "assets", "fonts");

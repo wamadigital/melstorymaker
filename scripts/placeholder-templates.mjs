@@ -21,11 +21,13 @@ const ARTES = {
   corporativo: "Evento corporativo",
 };
 
-// A4 retrato, o formato mais provavel para a proposta exportada do Figma.
-// Se a arte real usar outro tamanho, o placeholder deixa de importar.
-const LARGURA = 595.28;
-const ALTURA = 841.89;
-const PAGINAS = 3;
+// Mesmo tamanho da arte real exportada do Figma: os frames tem 1240x1754 px e
+// o export em PDF sai em 1240x1754 pt, ou seja, 1 px = 1 pt. Manter o mesmo
+// tamanho evita que a proposta de uma categoria sem arte saia com folha de
+// dimensao diferente das outras.
+const LARGURA = 1240;
+const ALTURA = 1754;
+const PAGINAS = 7;
 
 const dir = path.join(process.cwd(), "assets", "templates");
 await fs.mkdir(dir, { recursive: true });
@@ -47,25 +49,25 @@ for (const [arte, rotulo] of Object.entries(ARTES)) {
     });
 
     page.drawText("PLACEHOLDER — arte real pendente do Figma", {
-      x: 40,
-      y: ALTURA - 50,
-      size: 11,
+      x: 80,
+      y: ALTURA - 100,
+      size: 22,
       font: sans,
       color: rgb(0.7, 0.6, 0.55),
     });
 
     page.drawText(rotulo, {
-      x: 40,
-      y: ALTURA - 80,
-      size: 24,
+      x: 80,
+      y: ALTURA - 160,
+      size: 48,
       font: serif,
       color: rgb(0.23, 0.18, 0.16),
     });
 
     page.drawText(`página ${i + 1} de ${PAGINAS}`, {
-      x: 40,
-      y: 40,
-      size: 10,
+      x: 80,
+      y: 80,
+      size: 20,
       font: sans,
       color: rgb(0.7, 0.6, 0.55),
     });

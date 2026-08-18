@@ -1,9 +1,9 @@
 import "server-only";
 import fs from "node:fs/promises";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
-import type { TemplateId } from "@/lib/form/types";
+import type { Respostas, TemplateId } from "@/lib/form/types";
 import { carregarFontes, textoSeguro } from "./fontes";
-import { caminhoTemplate } from "./gerar";
+import { caminhoTemplate, textoDoCampo } from "./gerar";
 import { ajustarTamanho, alinharX, converterY, hexParaRgb } from "./geometria";
 import { fontesUsadas, templates } from "./templates.config";
 
@@ -22,14 +22,20 @@ import { fontesUsadas, templates } from "./templates.config";
 const PASSO_GRID = 20;
 const PASSO_ROTULO = 100;
 
-const EXEMPLOS: Record<string, string> = {
+/**
+ * Respostas de exemplo, no formato BRUTO que vem do formulario -- data em ISO,
+ * hora em HH:mm. Passam pelo mesmo `textoDoCampo` da geracao real, entao o
+ * grid mostra o texto ja formatado e composto, exatamente como sairia.
+ */
+const EXEMPLOS: Respostas = {
+  nome: "Lúcia Fernandes",
   debutante: "Maria Eduarda Albuquerque",
   aniversariante: "João Vitor",
   noivos: "Ana & João",
   empresa: "Acme Tecnologia Ltda",
   tipo_evento: "Confraternização de fim de ano",
-  data: "14 de março de 2026",
-  horario: "19h30",
+  data: "2027-03-14",
+  horario: "19:30",
   local: "Espaço Villa Bisutti",
   local_cerimonia: "Igreja Nossa Senhora do Brasil",
   local_festa: "Espaço Villa Bisutti",
@@ -95,7 +101,7 @@ export async function gerarPdfCalibracao(template: TemplateId): Promise<Uint8Arr
     // --- campos configurados ----------------------------------------------
     for (const campo of config.campos.filter((c) => c.pagina === indice)) {
       const font = daMarca.obter(campo.font);
-      const texto = textoSeguro(font, EXEMPLOS[campo.chave] ?? campo.chave);
+      const texto = textoSeguro(font, textoDoCampo(campo, EXEMPLOS) || campo.chave);
 
       const escala = config.escala;
       const maxLargura = campo.maxLargura ? campo.maxLargura * escala : undefined;

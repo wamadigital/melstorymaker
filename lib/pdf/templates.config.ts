@@ -7,8 +7,22 @@ export type Alinhamento = "esquerda" | "centro" | "direita";
 export type CampoTemplate = {
   /** Identificador do campo na arte. So para leitura humana e debug. */
   chave: string;
-  /** Caminho da resposta, ex: "respostas.nome". */
-  fonte: string;
+  /**
+   * Caminho da resposta, ex: "respostas.nome". Use `composicao` quando o texto
+   * da arte junta mais de uma resposta numa linha so.
+   */
+  fonte?: string;
+  /**
+   * Template de string para texto composto, ex: "{noivos} | {data}".
+   *
+   * Existe porque na arte o cabecalho da capa e UM unico texto que mistura duas
+   * respostas, com a data ja por extenso no meio. Cada `{chave}` resolve em
+   * `respostas[chave]`, aplicando `formatos[chave]` quando houver. Se qualquer
+   * chave usada estiver vazia, o campo conta como faltando.
+   */
+  composicao?: string;
+  /** Formatador por chave, usado com `composicao`. */
+  formatos?: Record<string, NomeFormatador>;
   pagina: number;
   x: number;
   y: number;
@@ -68,7 +82,7 @@ function camposComuns(): CampoTemplate[] {
       pagina: 1,
       x: 90,
       y: 300,
-      font: "BrandSans-Regular",
+      font: "DMSans-Regular",
       tamanho: 14,
       cor: COR_TINTA,
       formato: "data_extenso",
@@ -79,7 +93,7 @@ function camposComuns(): CampoTemplate[] {
       pagina: 1,
       x: 90,
       y: 330,
-      font: "BrandSans-Regular",
+      font: "DMSans-Regular",
       tamanho: 14,
       cor: COR_TINTA,
       formato: "hora_br",
@@ -94,7 +108,7 @@ function camposComuns(): CampoTemplate[] {
  */
 function campoSujeito(
   chave: "debutante" | "aniversariante" | "noivos" | "empresa",
-  font: NomeFonte = "BrandSerif-Bold",
+  font: NomeFonte = "DMSans-Bold",
   tamanho = 32,
 ): CampoTemplate {
   return {
@@ -111,6 +125,15 @@ function campoSujeito(
   };
 }
 
+/** Chaves de resposta que um campo consome, seja simples ou composto. */
+export function chavesDoCampo(campo: CampoTemplate): string[] {
+  if (campo.composicao) {
+    return [...campo.composicao.matchAll(/\{(\w+)\}/g)].map((m) => m[1]);
+  }
+  const caminho = campo.fonte ?? "";
+  return caminho.startsWith("respostas.") ? [caminho.slice("respostas.".length)] : [];
+}
+
 function campoLocal(chave: string, y: number): CampoTemplate {
   return {
     chave,
@@ -118,7 +141,7 @@ function campoLocal(chave: string, y: number): CampoTemplate {
     pagina: 1,
     x: 90,
     y,
-    font: "BrandSans-Regular",
+    font: "DMSans-Regular",
     tamanho: 14,
     cor: COR_TINTA,
     maxLargura: 380,
@@ -161,17 +184,52 @@ export const templates: Record<TemplateId, TemplateConfig> = {
     campos: [campoSujeito("aniversariante"), ...camposComuns(), campoLocal("local", 360)],
   },
 
-  // Unica arte com dois locais separados.
+  /**
+   * ARTE REAL, medida no Figma (frame casamento_01, node 1084:11243).
+   *
+   * A pagina exportada tem 1240x1754 pt, exatamente o tamanho do frame em px,
+   * entao `escala: 1` e as coordenadas do painel do Figma valem direto.
+   *
+   * So a pagina 0 tem texto dinamico; as outras 6 sao estaticas. `horario`,
+   * `local_cerimonia` e `local_festa` NAO entram: a arte nao reservou espaco
+   * para eles. Continuam sendo perguntados e ficam visiveis no painel, como
+   * contexto para a Mel planejar.
+   */
   casamento: {
     basePdf: "assets/templates/casamento.pdf",
     rotulo: "Casamento",
     origemCoordenadas: "figma",
     escala: 1,
     campos: [
-      campoSujeito("noivos"),
-      ...camposComuns(),
-      campoLocal("local_cerimonia", 360),
-      campoLocal("local_festa", 390),
+      {
+        // Cabecalho da capa: um unico texto alinhado A DIREITA, entao o x e a
+        // borda direita da caixa (782,5 + 368 = 1150,5), nao o inicio.
+        chave: "cabecalho",
+        composicao: "{noivos} | {data}",
+        formatos: { data: "data_extenso" },
+        pagina: 0,
+        x: 1150.5,
+        y: 64,
+        font: "DMSans-Light",
+        tamanho: 45.52,
+        cor: "#FFFFFF",
+        maxLargura: 900,
+        alinhamento: "direita",
+      },
+      {
+        // Segunda linha do bloco "Olá,": o "Olá," continua desenhado na arte,
+        // so o nome e dinamico. y = 393,5 (topo do bloco) + 90,5 (altura de
+        // uma linha, medida em 181pt para duas).
+        chave: "nome",
+        fonte: "respostas.nome",
+        pagina: 0,
+        x: 148.5,
+        y: 484,
+        font: "DMSans-Light",
+        tamanho: 73.12,
+        cor: "#FFFFFF",
+        maxLargura: 620,
+      },
     ],
   },
 
@@ -181,7 +239,7 @@ export const templates: Record<TemplateId, TemplateConfig> = {
     origemCoordenadas: "figma",
     escala: 1,
     campos: [
-      campoSujeito("empresa", "BrandSans-Bold", 28),
+      campoSujeito("empresa", "DMSans-Bold", 28),
       // Coordenada provisoria: a posicao real sai da arte do Figma, onde este
       // campo vai existir como variavel.
       {
@@ -190,7 +248,7 @@ export const templates: Record<TemplateId, TemplateConfig> = {
         pagina: 0,
         x: 297,
         y: 470,
-        font: "BrandSans-Regular",
+        font: "DMSans-Regular",
         tamanho: 16,
         cor: COR_TINTA,
         maxLargura: 420,
