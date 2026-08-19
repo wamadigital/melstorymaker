@@ -3,7 +3,11 @@ import { FormularioClient } from "./FormularioClient";
 
 export const metadata: Metadata = {
   title: "Vamos eternizar seu momento ✨ | Mel Simão Storymaker",
-  description: "Algumas perguntinhas rápidas pra montar a proposta perfeita pro seu evento.",
+  // Este e o texto da PREVIA do link no WhatsApp, que e como a Mel manda o
+  // formulario. Mantido em sintonia com a copy de boas-vindas do
+  // arvore.json -- ficou desencontrado quando a copy mudou.
+  description:
+    "Algumas perguntinhas rápidas para eu entender seu evento e preparar a proposta ideal.",
 };
 
 // O formulario e publico e nao tem nada para cachear entre leads.
