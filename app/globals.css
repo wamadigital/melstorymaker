@@ -148,6 +148,28 @@
   * {
     @apply border-border outline-ring/50;
   }
+
+  /*
+   * DM Sans em peso alto abre demais nos tamanhos grandes. -0,3px fecha o
+   * espacamento onde ela aparece pesada -- titulos e botoes -- sem encostar no
+   * texto corrido, que continua com o tracking natural da fonte.
+   *
+   * Isto e CSS do SITE. A arte do PDF nao passa por aqui: o texto do PDF e
+   * desenhado pelo pdf-lib, com as metricas da fonte embutida.
+   */
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6,
+  button,
+  [data-slot="button"],
+  .font-semibold,
+  .font-bold,
+  .font-black {
+    letter-spacing: -0.3px;
+  }
   body {
     @apply bg-background text-foreground;
   }

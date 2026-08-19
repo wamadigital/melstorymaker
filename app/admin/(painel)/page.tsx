@@ -4,6 +4,7 @@ import { STATUS, type Lead, type Status } from "@/lib/form/types";
 import { CLASSE_STATUS, ROTULO_STATUS, rotuloCategoria, rotuloPasso } from "@/lib/admin/rotulos";
 import { dataCurta, dataHoraLocal } from "@/lib/pdf/formatadores";
 import { FiltrosLeads } from "@/components/admin/FiltrosLeads";
+import { AcoesLead } from "@/components/admin/AcoesLead";
 import { cn } from "@/lib/utils";
 
 type Busca = { status?: string; q?: string };
@@ -25,7 +26,7 @@ export default async function PaginaLeads({
   let consulta = supabaseAdmin()
     .from("leads")
     .select(
-      "id, created_at, categoria, status, nome_display, data_evento, passo_atual, enviado_em",
+      "id, created_at, categoria, status, nome_display, data_evento, passo_atual, enviado_em, pdf_url, whatsapp, email",
     )
     .order("created_at", { ascending: false })
     .limit(200);
@@ -53,6 +54,9 @@ export default async function PaginaLeads({
     | "data_evento"
     | "passo_atual"
     | "enviado_em"
+    | "pdf_url"
+    | "whatsapp"
+    | "email"
   >[];
 
   return (
@@ -77,10 +81,12 @@ export default async function PaginaLeads({
               lead.status === "incompleto" ? rotuloPasso(lead.categoria, lead.passo_atual) : null;
 
             return (
-              <li key={lead.id}>
+              // O menu fica FORA do <Link>: botao dentro de link e HTML
+              // invalido, e o clique no menu navegaria para o detalhe.
+              <li key={lead.id} className="flex items-center gap-1 pr-2 transition-colors hover:bg-accent">
                 <Link
                   href={`/admin/leads/${lead.id}`}
-                  className="flex flex-col gap-2 px-4 py-4 transition-colors hover:bg-accent sm:flex-row sm:items-center sm:justify-between"
+                  className="flex min-w-0 flex-1 flex-col gap-2 px-4 py-4 sm:flex-row sm:items-center sm:justify-between"
                 >
                   <div className="min-w-0 space-y-1">
                     <p className="truncate font-medium">
@@ -109,6 +115,14 @@ export default async function PaginaLeads({
                     </span>
                   </div>
                 </Link>
+
+                <AcoesLead
+                  id={lead.id}
+                  nome={lead.nome_display ?? ""}
+                  pdfUrl={lead.pdf_url}
+                  whatsapp={lead.whatsapp}
+                  temEmail={!!lead.email}
+                />
               </li>
             );
           })}

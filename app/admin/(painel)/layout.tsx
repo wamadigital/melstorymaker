@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { BotaoSair } from "@/components/admin/BotaoSair";
+import { Toaster } from "@/components/ui/sonner";
 
 /** Casca das telas autenticadas. Fora do grupo fica o /admin/login, sem casca. */
 export default function LayoutPainel({ children }: { children: React.ReactNode }) {
@@ -14,6 +15,9 @@ export default function LayoutPainel({ children }: { children: React.ReactNode }
         </div>
       </header>
       <main className="mx-auto w-full max-w-5xl px-5 py-8">{children}</main>
+      {/* Sem isto montado, toast() e um no-op silencioso: a Mel clicaria em
+          "excluir" e nao veria confirmacao nenhuma. */}
+      <Toaster position="top-center" />
     </div>
   );
 }

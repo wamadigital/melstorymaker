@@ -59,17 +59,35 @@ export function dataCurta(iso: string | null | undefined): string {
 }
 
 /** Timestamp do banco para "14/03/2026 às 19h30", no fuso de quem le. */
+const FUSO_MEL = "America/Sao_Paulo";
+
 export function dataHoraLocal(iso: string | null | undefined): string {
   if (!iso) return "";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
 
-  const dia = String(d.getDate()).padStart(2, "0");
-  const mes = String(d.getMonth() + 1).padStart(2, "0");
-  const hora = d.getHours();
-  const minuto = String(d.getMinutes()).padStart(2, "0");
+  // Fuso FIXO, nao o do ambiente. getDate/getHours usam o relogio de quem
+  // renderiza: no navegador da Mel daria certo por acaso, mas a lista do painel
+  // e renderizada no servidor da Vercel, que roda em UTC -- e um lead das 15h08
+  // aparecia como 18h08. O horario aqui e sempre o de Sao Paulo, de onde a Mel
+  // le, independentemente de onde o codigo rodar.
+  const partes = new Intl.DateTimeFormat("pt-BR", {
+    timeZone: FUSO_MEL,
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(d);
 
-  return `${dia}/${mes}/${d.getFullYear()} às ${minuto === "00" ? `${hora}h` : `${hora}h${minuto}`}`;
+  const em = (tipo: Intl.DateTimeFormatPartTypes) =>
+    partes.find((x) => x.type === tipo)?.value ?? "";
+
+  const hora = String(Number.parseInt(em("hour"), 10));
+  const minuto = em("minute");
+
+  return `${em("day")}/${em("month")}/${em("year")} às ${minuto === "00" ? `${hora}h` : `${hora}h${minuto}`}`;
 }
 
 /**

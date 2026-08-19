@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { supabaseAdmin } from "@/lib/supabase/admin";
+import { BUCKET_PROPOSTAS, supabaseAdmin } from "@/lib/supabase/admin";
 import { getSessaoAdmin } from "@/lib/supabase/server";
 import { idsValidos, limparRespostasOrfas } from "@/lib/form/engine";
 import type { Respostas } from "@/lib/form/types";
@@ -57,4 +57,55 @@ export async function PATCH(req: Request, { params }: Ctx) {
   }
 
   return NextResponse.json({ ok: true, respostas });
+}
+
+/**
+ * DELETE /api/admin/leads/[id] -- a Mel apaga um lead pelo painel.
+ *
+ * Existe porque limpar a base deixou de ser tarefa de quem programa: a partir
+ * de 19/08/2026 quem decide o que sai e a Mel, na tela. Apaga o PDF do Storage
+ * junto -- deixar o arquivo orfao no bucket significaria que o link publico
+ * continua abrindo a proposta de um lead que ela achou que tinha removido.
+ *
+ * Irreversivel: nao ha lixeira nem backup no plano gratuito. A confirmacao
+ * mora na interface.
+ */
+export async function DELETE(_req: Request, { params }: Ctx) {
+  if (!(await getSessaoAdmin())) {
+    return NextResponse.json({ erro: "Sessão expirada." }, { status: 401 });
+  }
+
+  const { id } = await params;
+  if (!z.string().uuid().safeParse(id).success) {
+    return NextResponse.json({ erro: "Lead não encontrado." }, { status: 404 });
+  }
+
+  const { data: lead } = await supabaseAdmin()
+    .from("leads")
+    .select("id, nome_display")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (!lead) {
+    return NextResponse.json({ erro: "Lead não encontrado." }, { status: 404 });
+  }
+
+  // Storage ANTES do banco: se a ordem fosse inversa e o remove falhasse, a
+  // linha ja teria sumido e ninguem saberia mais qual arquivo era daquele lead.
+  const { error: erroStorage } = await supabaseAdmin()
+    .storage.from(BUCKET_PROPOSTAS)
+    .remove([`${id}.pdf`]);
+
+  // Lead sem proposta gerada nao tem arquivo; isso nao e falha.
+  if (erroStorage) {
+    console.warn(`[admin] PDF de ${id} não removido: ${erroStorage.message}`);
+  }
+
+  const { error } = await supabaseAdmin().from("leads").delete().eq("id", id);
+  if (error) {
+    console.error("[admin] falha ao excluir lead", error);
+    return NextResponse.json({ erro: "Não consegui excluir agora." }, { status: 500 });
+  }
+
+  return NextResponse.json({ ok: true, nome: lead.nome_display });
 }

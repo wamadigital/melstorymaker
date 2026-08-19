@@ -33,11 +33,17 @@ create table if not exists leads (
   whatsapp text,
   pdf_url text,
   pdf_gerado_em timestamptz,
-  enviado_em timestamptz
+  enviado_em timestamptz,
+  -- Codigo curto do link publico da proposta: melstorymaker.com.br/p/a3f9.
+  -- O UUID funcionava, mas o link ficava com 36 caracteres e a Mel manda isso
+  -- por WhatsApp. Nasce so quando o PDF e gerado; lead sem proposta nao tem.
+  slug text unique
 );
 
 create index if not exists leads_status_idx on leads (status);
 create index if not exists leads_created_idx on leads (created_at desc);
+-- unique ja cria indice, mas deixar explicito o caminho de leitura do /p/:
+create index if not exists leads_slug_idx on leads (slug) where slug is not null;
 
 -- updated_at ---------------------------------------------------------------
 

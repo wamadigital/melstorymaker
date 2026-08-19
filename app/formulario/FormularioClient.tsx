@@ -416,7 +416,9 @@ export function FormularioClient({ whatsappMel }: { whatsappMel: string }) {
                   <h1 className="text-4xl leading-tight font-semibold text-balance">
                     {arvore.confirmacao.titulo}
                   </h1>
-                  <p className="text-lg text-pretty text-muted-foreground">
+                  {/* text-balance, nao text-pretty: distribui as linhas por igual e
+                      evita a ultima linha com uma palavra sozinha. */}
+                  <p className="text-lg text-balance text-muted-foreground">
                     {arvore.confirmacao.texto}
                   </p>
                   <a

@@ -55,6 +55,7 @@ supabase/schema.sql    Schema completo
 7. Sem banners de cookies, telas de consentimento ou fluxos de LGPD. Decisão de escopo do owner.
 8. Escopo v2 do PRD (seção 19) é proibido no MVP: sem tracking de abertura, sem agenda, sem contrato/pagamento, sem analytics de funil, sem notificações em tempo real.
 9. Admin tem usuária única (Mel), criada via dashboard do Supabase. Nunca criar tela ou endpoint de signup.
+10. **Quem apaga lead é a Mel, pelo painel** (menu de ações na linha → Excluir lead). Decisão do owner em 19/08/2026. Não escrever script de limpeza nem apagar lead por conta própria — nem "lead de teste", que já foi confundido com lead real. Se a base precisar de faxina, a instrução vai para a Mel, não para o banco.
 
 ## Dados e segurança
 
@@ -76,13 +77,14 @@ supabase/schema.sql    Schema completo
 5. Formatação sempre via `lib/pdf/formatadores.ts`: **data em DD/MM/AAAA** ("14/03/2026") em TODOS os PDFs, hora no padrão "19h30". O formatador `data_extenso` continua disponível no registry, mas nenhuma arte usa.
 5b. **Campo do config vazio aborta a geração.** Todo campo de `templates.config.ts` é obrigatório salvo `opcional: true`. Faltando qualquer um, `gerarProposta` lança `CamposFaltandoError` com a lista, a rota devolve 422 e nada é gravado no banco nem no Storage. Nunca pular campo vazio em silêncio: PDF com buraco onde deveria estar o nome do lead é pior do que PDF nenhum. Pela mesma razão, `resolverTemplateId` devolve `null` em vez de escolher uma arte padrão quando a idade falta.
 6. Regerar PDF sobrescreve `{leadId}.pdf` no bucket `propostas` (URL estável para o link do WhatsApp). Preview no painel usa query param de cache-bust.
-7. **O link público da proposta é `{APP_URL}/proposta/{leadId}.pdf`**, servido por `app/proposta/[arquivo]/route.ts`, que lê o objeto do Storage. Nunca devolver a URL crua do Supabase: esse link vai por WhatsApp e o lead lê o domínio. Por isso `APP_URL` errada em produção = link quebrado no celular de quem recebeu.
+7. **O link público da proposta é `{APP_URL}/p/{slug}`** — 4 caracteres, coluna `slug` na tabela, gerada por `garantirSlug()` na primeira geração do PDF e nunca mais alterada (RF-14). Nunca devolver a URL crua do Supabase: esse link vai por WhatsApp e o lead lê o domínio. `APP_URL` errada em produção = link quebrado no celular de quem recebeu. A rota antiga `/proposta/{leadId}.pdf` continua viva porque links já enviados não podem morrer — mas não usar em código novo.
 
 ## Convenções de código
 
 - Domínio em pt-BR: categorias, status, chaves do jsonb e do `arvore.json` (`aguardando_revisao`, `making_of`, `local_festa`). Código e infra em inglês: variáveis, funções, componentes, commits.
 - **`nome` é sempre quem PREENCHEU o formulário, nunca o sujeito do evento.** O sujeito mora em chave própria por categoria (`debutante`, `aniversariante`, `noivos`, `empresa`), com o mesmo nome da variável na arte do Figma. Use `nomeContato()` e `sujeitoDoEvento()` de `lib/leads.ts` — nunca leia `respostas.nome` direto esperando o nome do evento. `nome_display` guarda o sujeito; a saudação do e-mail e do WhatsApp usa quem preencheu.
-- Toda string visível ao usuário em pt-BR. Copies do e-mail e do WhatsApp: usar exatamente as da seção 14 do PRD, sem reescrever o tom da Mel.
+- Toda string visível ao usuário em pt-BR. Copy do e-mail: a da seção 14 do PRD. A do **WhatsApp** foi substituída pelo owner em 19/08/2026 por uma versão objetiva e **sem emoji** (`mensagemProposta`) — não restaurar a do PRD.
+- **Datas e horas para a Mel sempre em `America/Sao_Paulo`**, via `dataHoraLocal`. Nunca `getHours()`/`getDate()` direto: a lista do painel é renderizada no servidor da Vercel, que roda em UTC, e um lead das 15h08 aparecia como 18h08.
 - Um componente por tipo de pergunta (`texto`, `data`, `hora`, `escolha_unica`, `email`, `telefone`, `numero`), todos consumindo o schema do `arvore.json`.
 - Sem dependências novas sem justificativa de 1 linha no PR. O bundle de `/formulario` é sagrado: LCP < 2.5s em 4G.
 - Mobile-first de verdade: desenvolver em viewport 360px. Cenário real de uso é o navegador in-app do WhatsApp.
@@ -94,6 +96,7 @@ supabase/schema.sql    Schema completo
 
 - **Paleta: duas cores.** Preto (`#000000`) e `#F1F1F1`, em `--marca-preto` e `--marca-claro`. Branco entra só como superfície de card. Tom intermediário se deriva com opacidade (`rgb(0 0 0 / 60%)`), nunca acrescentando um hex novo.
 - **Fonte: DM Sans em tudo**, servida de `assets/fonts/` via `next/font/local` (não do Google Fonts — ida a terceiro atrasa o LCP). `--font-sans`, `--font-heading` e `--font-mono` apontam todos para ela.
+- **Tracking:** títulos, botões e utilitários de peso (`font-semibold/bold/black`) levam `letter-spacing: -0.3px`. É CSS do site apenas — o texto do PDF é desenhado pelo pdf-lib e não passa por aqui.
 - **Raio: 6px em tudo.** Toda a escala `--radius-sm..4xl` aponta para `--radius`. Não usar `rounded-full`: mudar o raio do app inteiro deve ser mexer em uma linha só.
 - `npm run estilo:verificar` (com `npm run dev` em outro terminal) checa os quatro no DOM renderizado: raio, fonte, paleta e ausência de scroll horizontal em 360px. Julgar por screenshot não serve — 6px num print em 2x parece 12px.
 - `chrome --headless --window-size=360,x` **não** dá viewport de 360px (o Chrome tem largura mínima de janela e a imagem sai só recortada, simulando um estouro que não existe). Use `npm run screenshot -- <url> <saida.png> 360`, que emula via CDP.

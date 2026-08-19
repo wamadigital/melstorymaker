@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { normalizarOpcoes, passosVisiveis } from "@/lib/form/engine";
 import type { Lead, Respostas, Status } from "@/lib/form/types";
-import { primeiroNome, sujeitoDoEvento } from "@/lib/leads";
+import { sujeitoDoEvento } from "@/lib/leads";
 import { CLASSE_STATUS, ROTULO_STATUS, rotuloCategoria } from "@/lib/admin/rotulos";
 import { dataHoraLocal } from "@/lib/pdf/formatadores";
 import { linkPropostaWhatsApp } from "@/lib/whatsapp";
@@ -259,7 +259,7 @@ export function DetalheLead({ lead }: { lead: Lead }) {
           {pdfUrl && (
             <>
               <a
-                href={linkPropostaWhatsApp(whatsapp, primeiroNome({ respostas }), pdfUrl)}
+                href={linkPropostaWhatsApp(whatsapp, pdfUrl)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex h-9 items-center rounded-lg border border-border bg-background px-3 text-sm font-medium hover:bg-muted"

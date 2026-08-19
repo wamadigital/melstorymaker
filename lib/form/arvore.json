@@ -260,13 +260,13 @@
     {
       "id": "contato_email",
       "tipo": "email",
-      "pergunta": "E o seu e-mail? Te envio uma cópia por lá.",
+      "pergunta": "E o seu e-mail?",
       "obrigatorio": true
     }
   ],
   "confirmacao": {
     "titulo": "Prontinho! ✨",
-    "texto": "Recebi tudo com carinho. Em breve sua proposta personalizada chegará no seu WhatsApp",
+    "texto": "Recebi tudo com carinho. Em breve sua proposta personalizada chegará no seu WhatsApp.",
     "cta_whatsapp": "Falar com a Mel agora"
   }
 }

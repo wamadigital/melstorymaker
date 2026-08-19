@@ -19,14 +19,14 @@ export function normalizarNumero(bruto: string | null | undefined): string | nul
 }
 
 /**
- * Mensagem do botao do painel. Texto exato da secao 14 do PRD -- o tom e da
- * Mel e nao se reescreve.
+ * Mensagem do botao do painel.
+ *
+ * Objetiva e sem emoji, por decisao do owner em 19/08/2026 -- substitui a copy
+ * da secao 14 do PRD. Sem saudacao pelo nome: a Mel manda isso dentro de uma
+ * conversa que ja existe, entao "Oi, Fulana!" soava como mensagem automatica.
  */
-export function mensagemProposta(primeiroNome: string, pdfUrl: string): string {
-  return (
-    `Oi, ${primeiroNome}! ✨ Preparei sua proposta com todo carinho. Dá uma olhada aqui: ${pdfUrl}\n\n` +
-    `Qualquer dúvida, me chama! 🤍`
-  );
+export function mensagemProposta(pdfUrl: string): string {
+  return `Segue proposta ${pdfUrl}\n\nQualquer dúvida estou à disposição!`;
 }
 
 /**
@@ -36,10 +36,9 @@ export function mensagemProposta(primeiroNome: string, pdfUrl: string): string {
  */
 export function linkPropostaWhatsApp(
   whatsappLead: string | null | undefined,
-  primeiroNome: string,
   pdfUrl: string,
 ): string {
-  const texto = encodeURIComponent(mensagemProposta(primeiroNome, pdfUrl));
+  const texto = encodeURIComponent(mensagemProposta(pdfUrl));
   const numero = normalizarNumero(whatsappLead);
   return numero ? `https://wa.me/${numero}?text=${texto}` : `https://wa.me/?text=${texto}`;
 }

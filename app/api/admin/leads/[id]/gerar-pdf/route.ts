@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
-import { BUCKET_PROPOSTAS, supabaseAdmin, urlPublicaProposta } from "@/lib/supabase/admin";
+import {
+  BUCKET_PROPOSTAS,
+  garantirSlug,
+  supabaseAdmin,
+  urlPublicaProposta,
+} from "@/lib/supabase/admin";
 import { getSessaoAdmin } from "@/lib/supabase/server";
 import { CamposFaltandoError, gerarProposta } from "@/lib/pdf/gerar";
 
@@ -46,7 +51,9 @@ export async function POST(_req: Request, { params }: Ctx) {
 
     if (erroUpload) throw new Error(`Storage recusou o upload: ${erroUpload.message}`);
 
-    const pdf_url = urlPublicaProposta(id);
+    // O slug nasce aqui, na primeira geracao, e nunca muda: e ele que mantem
+    // o link estavel quando a Mel regera o PDF depois de corrigir algo.
+    const pdf_url = urlPublicaProposta(await garantirSlug(id));
     const pdf_gerado_em = new Date().toISOString();
 
     const { error: erroUpdate } = await supabaseAdmin()

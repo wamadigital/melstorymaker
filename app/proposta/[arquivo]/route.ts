@@ -9,7 +9,11 @@ const NOME_VALIDO =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.pdf$/i;
 
 /**
- * GET /proposta/{leadId}.pdf
+ * GET /proposta/{leadId}.pdf -- FORMATO ANTIGO, mantido vivo de proposito.
+ *
+ * O link publico agora e /p/{slug}, curto. Esta rota continua respondendo
+ * porque a Mel ja mandou links neste formato por WhatsApp, e link enviado nao
+ * pode morrer (RF-14). Nao usar em codigo novo.
  *
  * Serve a proposta pelo dominio da Mel em vez do link cru do Storage. E o link
  * que vai por WhatsApp, entao ele aparece para o lead: `melstorymaker.com.br`
