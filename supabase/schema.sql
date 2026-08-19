@@ -37,12 +37,20 @@ create table if not exists leads (
   -- Codigo curto do link publico da proposta: melstorymaker.com.br/p/a3f9.
   -- O UUID funcionava, mas o link ficava com 36 caracteres e a Mel manda isso
   -- por WhatsApp. Nasce so quando o PDF e gerado; lead sem proposta nao tem.
-  slug text unique
+  -- O unique vem do indice logo abaixo, que tambem cobre banco ja existente.
+  slug text
 );
 
+-- `create table if not exists` acima NAO acrescenta coluna a uma tabela que ja
+-- existe: o bloco inteiro vira no-op. Como o runbook e rodar este arquivo a mao
+-- no SQL Editor, toda coluna nova precisa TAMBEM aparecer aqui embaixo, senao o
+-- schema do repo deixa de reproduzir o de producao -- e foi exatamente o que
+-- aconteceu com `slug`, aplicada por migration fora do arquivo.
+alter table leads add column if not exists slug text;
+
+create unique index if not exists leads_slug_key on leads (slug);
 create index if not exists leads_status_idx on leads (status);
 create index if not exists leads_created_idx on leads (created_at desc);
--- unique ja cria indice, mas deixar explicito o caminho de leitura do /p/:
 create index if not exists leads_slug_idx on leads (slug) where slug is not null;
 
 -- updated_at ---------------------------------------------------------------

@@ -7,8 +7,13 @@
 import { randomInt } from "node:crypto";
 
 /**
- * Sem 0/o/O, 1/l/I e 5/S: o link e ditado no telefone e digitado a mao. Sobram
- * 30 simbolos -> 30^4 = 810 mil combinacoes, folgado para o volume da Mel.
+ * Sem 0/o, 1/l, 5/s: o link e ditado no telefone e digitado a mao.
+ *
+ * Sao 29 simbolos -> 29^4 = 707.281 combinacoes. Isso e POUCO para resistir a
+ * varredura: com 100 propostas geradas, um acerto a cada ~7 mil tentativas. O
+ * que segura a porta e o rate limit da rota /p/[slug], nao o tamanho do
+ * espaco. Aumentar TAMANHO_SLUG para 6 leva a 594 milhoes e torna a varredura
+ * inviavel -- e a troca de uma constante, se o dono quiser.
  */
 const ALFABETO = "abcdefghjkmnpqrtuvwxyz2346789";
 

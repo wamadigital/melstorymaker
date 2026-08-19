@@ -92,13 +92,23 @@ export async function DELETE(_req: Request, { params }: Ctx) {
 
   // Storage ANTES do banco: se a ordem fosse inversa e o remove falhasse, a
   // linha ja teria sumido e ninguem saberia mais qual arquivo era daquele lead.
+  //
+  // `remove` de caminho inexistente NAO da erro (devolve lista vazia), entao
+  // lead sem proposta passa aqui sem ruido. Erro de verdade ABORTA a exclusao:
+  // apagar so a linha deixaria o PDF orfao no bucket, e ele continua servido
+  // pela rota antiga /proposta/{id}.pdf e pela URL publica do Storage. A Mel
+  // veria "excluido" e a proposta seguiria baixavel por quem tem o link --
+  // exatamente quem recebeu por WhatsApp.
   const { error: erroStorage } = await supabaseAdmin()
     .storage.from(BUCKET_PROPOSTAS)
     .remove([`${id}.pdf`]);
 
-  // Lead sem proposta gerada nao tem arquivo; isso nao e falha.
   if (erroStorage) {
-    console.warn(`[admin] PDF de ${id} não removido: ${erroStorage.message}`);
+    console.error(`[admin] exclusão abortada, PDF de ${id} não saiu: ${erroStorage.message}`);
+    return NextResponse.json(
+      { erro: "Não consegui apagar o PDF da proposta, então não excluí o lead. Tenta de novo?" },
+      { status: 502 },
+    );
   }
 
   const { error } = await supabaseAdmin().from("leads").delete().eq("id", id);

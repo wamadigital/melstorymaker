@@ -49,4 +49,12 @@ export const LIMITES = {
   criarLead: { limite: 10, janelaMs: 60_000 },
   autosave: { limite: 120, janelaMs: 60_000 },
   submit: { limite: 10, janelaMs: 60_000 },
+  /**
+   * Leitura da proposta pelo link curto. O slug tem 4 caracteres (707 mil
+   * combinacoes), entao SEM limite a rota e um oraculo varrivel: 200 no acerto,
+   * 404 no erro, e a proposta de um desconhecido sai em minutos. 30/min cobre
+   * folgadamente o uso real (o lead abre o link e talvez recarregue) e derruba
+   * a varredura de horas para meses.
+   */
+  proposta: { limite: 30, janelaMs: 60_000 },
 } as const;

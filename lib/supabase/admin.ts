@@ -42,7 +42,7 @@ export function urlPublicaProposta(slug: string): string {
 /**
  * Garante um slug para o lead, devolvendo o que ja existe quando houver.
  *
- * O sorteio pode colidir -- sao 810 mil combinacoes, mas colisao com
+ * O sorteio pode colidir -- sao 707 mil combinacoes, mas colisao com
  * probabilidade baixa ainda acontece. Em vez de conferir antes (que abriria
  * corrida entre duas geracoes simultaneas), grava e deixa o UNIQUE do Postgres
  * decidir: violacao 23505 e sinal para sortear de novo, nao erro.
