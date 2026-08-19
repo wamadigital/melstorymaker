@@ -260,7 +260,7 @@
     {
       "id": "contato_email",
       "tipo": "email",
-      "pergunta": "E o seu melhor e-mail?",
+      "pergunta": "E o seu e-mail? Te envio uma cópia por lá.",
       "obrigatorio": true
     }
   ],
