@@ -170,6 +170,49 @@
   .font-black {
     letter-spacing: -0.3px;
   }
+  /*
+   * Cursor de mao em TUDO que se clica.
+   *
+   * Nao e cosmetico: o Tailwind v4 mudou o padrao do `button` de `pointer`
+   * para `default`, entao sem esta regra o sistema inteiro fica sem a dica
+   * visual de que algo e clicavel -- e o cenario de uso e o navegador in-app
+   * do WhatsApp, onde nao ha hover para descobrir isso por tentativa.
+   *
+   * Ficam de fora os campos de texto (inclusive data e hora): ali o cursor de
+   * digitacao E a affordance certa, e trocar por mao sugeriria botao.
+   */
+  button,
+  summary,
+  label[for],
+  select,
+  a[href],
+  [role="button"],
+  [role="menuitem"],
+  [role="menuitemcheckbox"],
+  [role="menuitemradio"],
+  [role="radio"],
+  [role="option"],
+  [role="tab"],
+  [role="switch"],
+  [role="link"],
+  input[type="checkbox"],
+  input[type="radio"],
+  input[type="file"],
+  input[type="submit"],
+  input[type="reset"],
+  input[type="button"] {
+    cursor: pointer;
+  }
+
+  /* Desabilitado nao e clicavel: mao ali promete algo que nao acontece. */
+  button:disabled,
+  select:disabled,
+  input:disabled,
+  [aria-disabled="true"],
+  [data-disabled] {
+    cursor: not-allowed;
+  }
+
   body {
     @apply bg-background text-foreground;
   }

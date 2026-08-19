@@ -9,6 +9,7 @@
  *   - toda fonte usada e DM Sans
  *   - toda cor de texto/fundo sai da paleta preto + #F1F1F1
  *   - nao ha scroll horizontal em 360px
+ *   - todo elemento clicavel tem cursor: pointer
  *
  * Julgar isso por screenshot nao funciona: 6px num print em 2x parece 12, e
  * uma borda clara muda a leitura da curva. Aqui a resposta vem do
@@ -48,7 +49,8 @@ async function esperar(fn, tentativas = 50, intervalo = 200) {
 
 // Roda DENTRO da pagina. Varre todo elemento visivel e coleta o que interessa.
 const SONDA = `(() => {
-  const raios = new Map(), fontes = new Set(), cores = new Map();
+  const raios = new Map(), fontes = new Set(), cores = new Map(), semPonteiro = new Map();
+  const CLICAVEL = 'button, summary, select, a[href], [role=button], [role=menuitem], [role=radio], [role=option], [role=tab], [role=switch], input[type=checkbox], input[type=radio], input[type=file], input[type=submit]';
   const PALETA = new Set(['rgb(0, 0, 0)', 'rgb(241, 241, 241)', 'rgb(255, 255, 255)', 'rgba(0, 0, 0, 0)']);
   for (const el of document.querySelectorAll('*')) {
     // O indicador de dev do Next.js (<nextjs-portal>) nao e o app: usa Geist e
@@ -64,6 +66,16 @@ const SONDA = `(() => {
       if (v && v !== '0px' && !raios.has(v)) raios.set(v, marca);
     }
     (s.fontFamily || '').split(',').forEach(f => fontes.add(f.trim().replace(/^["']|["']$/g, '')));
+    if (el.matches(CLICAVEL)) {
+      // Desabilitado deve ser not-allowed, nao pointer: mao ali prometeria
+      // uma acao que nao acontece.
+      const inerte = el.disabled || el.getAttribute('aria-disabled') === 'true'
+        || el.hasAttribute('data-disabled');
+      const esperado = inerte ? 'not-allowed' : 'pointer';
+      if (s.cursor !== esperado && !semPonteiro.has(marca)) {
+        semPonteiro.set(marca, s.cursor + ' (esperado ' + esperado + ')');
+      }
+    }
     for (const prop of ['color', 'backgroundColor', 'borderTopColor']) {
       const v = s[prop];
       // Preto/claro com alfa continuam sendo a paleta: e o mesmo pigmento.
@@ -78,6 +90,7 @@ const SONDA = `(() => {
     raios: [...raios].map(([v, onde]) => ({ valor: v, onde })),
     fontes: [...fontes],
     coresForaDaPaleta: [...cores].map(([v, onde]) => ({ valor: v, onde })),
+    semPonteiro: [...semPonteiro].map(([onde, valor]) => ({ onde, valor })),
     scrollWidth: document.documentElement.scrollWidth,
     clientWidth: document.documentElement.clientWidth,
   });
@@ -167,6 +180,14 @@ try {
       d.coresForaDaPaleta.forEach((c) => console.log(`      ${c.valor}  em ${c.onde}`));
     } else {
       console.log(`  \x1b[32m✓ paleta\x1b[0m — só preto, #F1F1F1 e branco`);
+    }
+
+    if (d.semPonteiro.length) {
+      falhas++;
+      console.log(`  \x1b[31m✗ cursor\x1b[0m — clicável sem cursor de mão:`);
+      d.semPonteiro.forEach((c) => console.log(`      ${c.valor}  em ${c.onde}`));
+    } else {
+      console.log(`  \x1b[32m✓ cursor\x1b[0m — todo clicável tem cursor de mão`);
     }
 
     if (d.scrollWidth > d.clientWidth) {
