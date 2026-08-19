@@ -27,102 +27,87 @@ import { TEMPLATES } from "@/lib/form/types";
 const exec = promisify(execFile);
 
 /**
- * ESTRATEGIA: a arte base vira IMAGEM, uma por pagina.
+ * ESTRATEGIA: a arte continua VETORIAL; so as ondas viraram imagem.
  *
- * O export do Figma e vetorial e traz ~96 mil operacoes de path (o padrao
- * topografico) mais 51 grupos de transparencia. Visualizador de PDF de celular
- * tem orcamento de renderizacao: diante disso ele desiste e pinta a pagina
- * BRANCA -- so ao dar zoom, que o obriga a redesenhar em blocos menores, o
- * conteudo aparece. Foi o que aconteceu em campo, e reduzir a pagina para A4
- * sozinho nao resolveu.
+ * As ondas do padrao topografico eram ~290 mil segmentos de path espalhados
+ * pelas 31 paginas. Elas foram convertidas em PNG transparente DENTRO do
+ * Figma (decisao do owner em 19/08/2026), preservando a ordem de camadas --
+ * que importa, porque em varias paginas ha texto por baixo delas.
  *
- * Rasterizando, cada pagina vira um JPEG e o PDF passa a ser a coisa mais
- * simples que um visualizador sabe abrir. O texto que o lead LE como dado
- * (nome, data) nao esta aqui: ele e desenhado pelo pdf-lib por cima, em
- * runtime, e continua vetorial e nitido em qualquer zoom.
+ * O que este script faz agora: reduzir a pagina para A4 e reamostrar as fotos.
+ * O texto da arte permanece vetorial e nitido em qualquer zoom.
  *
- * Custo assumido: o texto DA ARTE (titulos, corpo, precos) vira pixel e
- * amolece em zoom extremo. Decisao do owner em 19/08/2026, com o PDF branco no
- * celular como alternativa.
+ * CUIDADO ao mexer aqui: o Figma exporta texto como CONTORNO, nao como fonte
+ * embutida (zero /FontFile no PDF). Cada letra vira dezenas de curvas, entao o
+ * texto e o que sobra de complexidade -- ~12 mil operacoes de path por pagina.
+ * Nao ha como reduzir isso pelo lado do Ghostscript.
  */
 
-/** Pagina final: A4 — o frame do Figma (1240x1754 px) tem praticamente a mesma proporcao. */
+/** Pagina final: A4. O frame do Figma (1240x1754 px) tem a mesma proporcao. */
 const LARGURA_A4 = 595;
-const ALTURA_A4 = 842;
+const LARGURA_FRAME = 1240;
+const ALTURA_FRAME = 1754;
+const ESCALA_ARTE = LARGURA_A4 / LARGURA_FRAME;
+const ALTURA_DESTINO = +(ALTURA_FRAME * ESCALA_ARTE).toFixed(2);
 
 /**
- * Altura do JPEG de cada pagina, em px. 1280 sobre uma pagina de 842 pt da
- * ~109 DPI efetivos -- mais que a largura da tela de qualquer celular, e uma
- * fracao do peso do vetor. Numero definido pelo owner.
+ * A peca e 100% DIGITAL. O alvo e a tela: 144 DPI (2 x a unidade base do PDF)
+ * cobre uma pagina A4 inteira com ~1190 px, mais que a largura de tela de
+ * qualquer celular.
  */
-const ALTURA_RASTER = 1280;
-
-/** Qualidade do JPEG. 82 e o ponto onde artefato para de aparecer em foto. */
-const QUALIDADE_PADRAO = 82;
-
+const DPI_PADRAO = 144;
 const LIMITE_ALERTA = 4 * 1024 * 1024;
 
 const mb = (b: number) => `${(b / 1024 / 1024).toFixed(2)} MB`;
 
-/**
- * Rasteriza uma pagina do Figma em JPEG.
- *
- * O -r do Ghostscript e relativo ao tamanho declarado da pagina de ORIGEM
- * (1240x1754 pt), entao a resolucao vai calculada para o resultado ter
- * exatamente ALTURA_RASTER px de altura, independentemente disso.
- */
-async function rasterizar(entrada: string, saida: string, altura: number, qualidade: number) {
-  const doc = await PDFDocument.load(await fs.readFile(entrada));
-  const { height } = doc.getPage(0).getSize();
-  const r = (altura / height) * 72;
-
+/** Reduz a pagina para largura de A4 E reamostra as imagens, na mesma passada. */
+async function comprimir(entrada: string, saida: string, dpi: number) {
   await exec("gs", [
     "-q",
     "-dNOPAUSE",
     "-dBATCH",
-    "-sDEVICE=jpeg",
-    `-dJPEGQ=${qualidade}`,
-    `-r${r.toFixed(4)}`,
-    // Antialias no texto e nos vetores: sem isto o padrao topografico vira
-    // serrilhado visivel e a tipografia da arte fica dura.
-    "-dTextAlphaBits=4",
-    "-dGraphicsAlphaBits=4",
-    "-o",
-    saida,
+    "-sDEVICE=pdfwrite",
+    "-dCompatibilityLevel=1.5",
+    // Pagina de destino + encaixe. Com a proporcao preservada, o encaixe e uma
+    // multiplicacao limpa por 595/1240 -- sem tarja e sem deslocamento, entao
+    // as coordenadas do Figma seguem valendo via `escala` no config.
+    `-dDEVICEWIDTHPOINTS=${LARGURA_A4}`,
+    `-dDEVICEHEIGHTPOINTS=${ALTURA_DESTINO}`,
+    "-dFIXEDMEDIA",
+    "-dPDFFitPage",
+    // Reamostragem DEPOIS do redimensionamento: e a area final da imagem na
+    // pagina que decide quantos pixels ela precisa ter.
+    "-dDownsampleColorImages=true",
+    "-dColorImageDownsampleType=/Bicubic",
+    `-dColorImageResolution=${dpi}`,
+    "-dDownsampleGrayImages=true",
+    "-dGrayImageDownsampleType=/Bicubic",
+    `-dGrayImageResolution=${dpi}`,
+    "-dJPEGQ=82",
+    "-dSubsetFonts=true",
+    "-dEmbedAllFonts=true",
+    `-sOutputFile=${saida}`,
     entrada,
   ]);
 }
 
 async function main() {
   const args = process.argv.slice(2);
-  const opcao = (nome: string, padrao: number) => {
-    const i = args.indexOf(nome);
-    return i >= 0 ? Number(args[i + 1]) : padrao;
-  };
-  const altura = opcao("--altura", ALTURA_RASTER);
-  const qualidade = opcao("--qualidade", QUALIDADE_PADRAO);
-  // Descarta as flags E seus valores; o resto sao os posicionais.
-  const usados = new Set<number>();
-  for (const f of ["--altura", "--qualidade"]) {
-    const i = args.indexOf(f);
-    if (i >= 0) { usados.add(i); usados.add(i + 1); }
-  }
-  const [template, pasta] = args.filter((_, i) => !usados.has(i));
+  const iDpi = args.indexOf("--dpi");
+  const dpi = iDpi >= 0 ? Number(args[iDpi + 1]) : DPI_PADRAO;
+  // Sem --dpi, iDpi e -1 e "iDpi + 1" seria 0 -- descartaria o template.
+  const [template, pasta] = args.filter((_, i) => iDpi < 0 || (i !== iDpi && i !== iDpi + 1));
 
   if (!template || !(TEMPLATES as readonly string[]).includes(template) || !pasta) {
     console.error(
-      `\nUso: npm run arte:preparar -- <template> <pasta> [--altura PX] [--qualidade N]\n` +
+      `\nUso: npm run arte:preparar -- <template> <pasta> [--dpi N]\n` +
         `Templates: ${TEMPLATES.join(" | ")}\n`,
     );
     process.exit(1);
   }
 
-  if (!Number.isFinite(altura) || altura < 600 || altura > 4000) {
-    console.error(`\nAltura inválida: ${altura}px. Use entre 600 e 4000 (padrão ${ALTURA_RASTER}).\n`);
-    process.exit(1);
-  }
-  if (!Number.isFinite(qualidade) || qualidade < 40 || qualidade > 95) {
-    console.error(`\nQualidade inválida: ${qualidade}. Use entre 40 e 95 (padrão ${QUALIDADE_PADRAO}).\n`);
+  if (!Number.isFinite(dpi) || dpi < 48 || dpi > 300) {
+    console.error(`\nDPI inválido: ${dpi}. Use entre 48 e 300 (padrão ${DPI_PADRAO}).\n`);
     process.exit(1);
   }
 
@@ -142,11 +127,7 @@ async function main() {
     process.exit(1);
   }
 
-  const dpiEfetivo = Math.round((altura / ALTURA_A4) * 72);
-  console.log(
-    `\n\x1b[1m${template}\x1b[0m — ${paginas.length} página(s), ` +
-      `raster ${altura}px (~${dpiEfetivo} DPI em A4), qualidade ${qualidade}\n`,
-  );
+  console.log(`\n\x1b[1m${template}\x1b[0m — ${paginas.length} página(s), ${dpi} DPI, vetorial em A4\n`);
 
   const temp = await fs.mkdtemp(path.join(os.tmpdir(), "arte-"));
   const doc = await PDFDocument.create();
@@ -156,23 +137,23 @@ async function main() {
 
   for (const [i, nome] of paginas.entries()) {
     const entrada = path.join(pasta, nome);
-    const jpg = path.join(temp, `${i}.jpg`);
+    const saida = path.join(temp, `${i}.pdf`);
 
     const antes = (await fs.stat(entrada)).size;
-    await rasterizar(entrada, jpg, altura, qualidade);
-    const bytesJpg = await fs.readFile(jpg);
-    const depois = bytesJpg.length;
+    await comprimir(entrada, saida, dpi);
+    const depois = (await fs.stat(saida)).size;
 
     brutoTotal += antes;
     comprimidoTotal += depois;
 
-    const img = await doc.embedJpg(bytesJpg);
-    const pg = doc.addPage([LARGURA_A4, ALTURA_A4]);
-    pg.drawImage(img, { x: 0, y: 0, width: LARGURA_A4, height: ALTURA_A4 });
+    const origem = await PDFDocument.load(await fs.readFile(saida));
+    const copiadas = await doc.copyPages(origem, origem.getPageIndices());
+    copiadas.forEach((p) => doc.addPage(p));
 
+    const { width, height } = copiadas[0].getSize();
     console.log(
       `  ${nome.padEnd(14)} ${mb(antes).padStart(8)} → ${mb(depois).padStart(8)}` +
-        `  ${img.width}x${img.height}px`,
+        `  ${Math.round(width)}x${Math.round(height)}pt`,
     );
   }
 
