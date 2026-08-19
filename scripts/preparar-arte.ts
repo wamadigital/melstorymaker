@@ -26,24 +26,62 @@ import { TEMPLATES } from "@/lib/form/types";
 
 const exec = promisify(execFile);
 
-const DPI = 150;
+/**
+ * A arte e desenhada num frame de 1240x1754 PX no Figma, e o export manda cada
+ * px como 1 PT -- ou seja, 43,7 x 61,9 cm, mais de quatro A4 de area.
+ *
+ * Isso quebrava a leitura no celular: o visualizador tenta encaixar 43 cm numa
+ * tela de 7, estoura o limite de bitmap e desenha a pagina BRANCA; so ao dar
+ * zoom ele re-renderiza em blocos e o conteudo aparece. E ainda sabotava a
+ * compressao, porque "150 DPI" era calculado sobre 43 cm.
+ *
+ * Aqui a pagina volta para largura de A4 preservando a proporcao exata do
+ * frame. A altura sai 841,64 pt contra os 842 da A4 -- diferenca de 0,13 mm, e
+ * em troca a escala fica sendo 595/1240 redondo, sem tarja nem deslocamento.
+ */
+const LARGURA_A4 = 595;
+const LARGURA_FRAME = 1240;
+const ALTURA_FRAME = 1754;
+const ESCALA_ARTE = LARGURA_A4 / LARGURA_FRAME;
+const ALTURA_DESTINO = +(ALTURA_FRAME * ESCALA_ARTE).toFixed(2);
+
+/**
+ * A proposta e 100% DIGITAL -- ninguem imprime isto. O alvo nao e a regra de
+ * impressao (150/300 DPI), e a tela: a pagina tem 595 pt de largura e os
+ * visualizadores renderizam por volta de 2x, entao 144 DPI (2 x 72) cobre uma
+ * pagina inteira com ~1190 px. Isso ja e mais largo que a tela da maioria dos
+ * celulares; acima disso sao bytes que so custam tempo em rede movel.
+ *
+ * Configuravel para o preparo poder comparar: `arte:preparar -- x pasta --dpi 120`.
+ */
+const DPI_PADRAO = 144;
 const LIMITE_ALERTA = 4 * 1024 * 1024;
 
 const mb = (b: number) => `${(b / 1024 / 1024).toFixed(2)} MB`;
 
-async function comprimir(entrada: string, saida: string) {
+/** Redimensiona para largura de A4 E comprime, na mesma passada. */
+async function comprimir(entrada: string, saida: string, dpi: number) {
   await exec("gs", [
     "-q",
     "-dNOPAUSE",
     "-dBATCH",
     "-sDEVICE=pdfwrite",
     "-dCompatibilityLevel=1.5",
+    // Pagina de destino + encaixe. Com a proporcao preservada, o encaixe e uma
+    // multiplicacao limpa por 595/1240 -- sem tarja e sem deslocamento, entao
+    // as coordenadas do Figma seguem valendo via `escala` no config.
+    `-dDEVICEWIDTHPOINTS=${LARGURA_A4}`,
+    `-dDEVICEHEIGHTPOINTS=${ALTURA_DESTINO}`,
+    "-dFIXEDMEDIA",
+    "-dPDFFitPage",
+    // Downsample DEPOIS do redimensionamento: e a area final da imagem na
+    // pagina que decide quantos pixels ela precisa ter.
     "-dDownsampleColorImages=true",
     "-dColorImageDownsampleType=/Bicubic",
-    `-dColorImageResolution=${DPI}`,
+    `-dColorImageResolution=${dpi}`,
     "-dDownsampleGrayImages=true",
     "-dGrayImageDownsampleType=/Bicubic",
-    `-dGrayImageResolution=${DPI}`,
+    `-dGrayImageResolution=${dpi}`,
     "-dJPEGQ=80",
     // Sem isto o Ghostscript reescreve as fontes e pode trocar o desenho das
     // letras; a arte precisa sair idêntica ao Figma.
@@ -55,13 +93,23 @@ async function comprimir(entrada: string, saida: string) {
 }
 
 async function main() {
-  const [template, pasta] = process.argv.slice(2);
+  const args = process.argv.slice(2);
+  const iDpi = args.indexOf("--dpi");
+  const dpi = iDpi >= 0 ? Number(args[iDpi + 1]) : DPI_PADRAO;
+  // Sem --dpi, iDpi e -1 e "iDpi + 1" seria 0 -- descartaria o template.
+  const posicionais = args.filter((_, i) => iDpi < 0 || (i !== iDpi && i !== iDpi + 1));
+  const [template, pasta] = posicionais;
 
   if (!template || !(TEMPLATES as readonly string[]).includes(template) || !pasta) {
     console.error(
-      `\nUso: npm run arte:preparar -- <template> <pasta-com-paginas>\n` +
+      `\nUso: npm run arte:preparar -- <template> <pasta-com-paginas> [--dpi N]\n` +
         `Templates: ${TEMPLATES.join(" | ")}\n`,
     );
+    process.exit(1);
+  }
+
+  if (!Number.isFinite(dpi) || dpi < 48 || dpi > 300) {
+    console.error(`\nDPI inválido: ${dpi}. Use algo entre 48 e 300 (padrão ${DPI_PADRAO}).\n`);
     process.exit(1);
   }
 
@@ -81,7 +129,7 @@ async function main() {
     process.exit(1);
   }
 
-  console.log(`\n\x1b[1m${template}\x1b[0m — ${paginas.length} página(s)\n`);
+  console.log(`\n\x1b[1m${template}\x1b[0m — ${paginas.length} página(s), ${dpi} DPI, largura A4\n`);
 
   const temp = await fs.mkdtemp(path.join(os.tmpdir(), "arte-"));
   const doc = await PDFDocument.create();
@@ -94,7 +142,7 @@ async function main() {
     const saida = path.join(temp, `${i}.pdf`);
 
     const antes = (await fs.stat(entrada)).size;
-    await comprimir(entrada, saida);
+    await comprimir(entrada, saida, dpi);
     const depois = (await fs.stat(saida)).size;
 
     brutoTotal += antes;

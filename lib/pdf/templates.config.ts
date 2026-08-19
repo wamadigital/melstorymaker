@@ -59,6 +59,14 @@ export type CampoTemplate = {
   opcional?: boolean;
 };
 
+/**
+ * Razao entre a pagina final (A4, 595 pt de largura) e o frame do Figma
+ * (1240 px). Espelha a mesma conta em scripts/preparar-arte.ts: se um dia a
+ * pagina de destino mudar la, muda aqui -- os dois numeros descrevem a mesma
+ * transformacao e nao podem divergir.
+ */
+export const ESCALA_ARTE = 595 / 1240;
+
 export type TemplateConfig = {
   basePdf: string;
   /** Nome legivel da arte, exibido no painel para a Mel conferir. */
@@ -163,10 +171,18 @@ export function chavesDoCampo(campo: CampoTemplate): string[] {
 /**
  * As CINCO artes reais, exportadas do Figma. Nenhuma roda mais sobre placeholder.
  *
- * A pagina exportada tem 1240x1754 pt, exatamente o tamanho do frame em px,
- * entao `escala: 1` e as coordenadas do painel do Figma valem direto.
- * Calibracao em /admin/debug-template?template=X, em PR dedicada contendo so
- * assets + este arquivo.
+ * A pagina FINAL tem 595x842 pt (A4). O frame do Figma tem 1240x1754 px, e o
+ * preparo (`arte:preparar`) reduz a pagina para largura de A4 -- por isso
+ * `escala: ESCALA_ARTE` (595/1240), e nao 1.
+ *
+ * O motivo do redimensionamento e de leitura, nao de peso: exportado 1:1, cada
+ * px do frame virava 1 pt e a pagina ficava com 43,7 x 61,9 cm. O visualizador
+ * do celular nao dava conta e desenhava a pagina BRANCA ate o leitor dar zoom.
+ *
+ * As coordenadas abaixo continuam sendo as do painel do Figma, sem conversao a
+ * mao: a `escala` multiplica x, y e o tamanho da fonte no gerar.ts. Calibracao
+ * em /admin/debug-template?template=X, em PR dedicada contendo so assets +
+ * este arquivo.
  *
  * Indexado por TemplateId, nao por Categoria: `aniversario` e uma categoria so
  * no banco, mas resolve entre duas artes conforme a idade.
@@ -184,7 +200,7 @@ export const templates: Record<TemplateId, TemplateConfig> = {
     basePdf: "assets/templates/debutante.pdf",
     rotulo: "Festa de 15 anos",
     origemCoordenadas: "figma",
-    escala: 1,
+    escala: ESCALA_ARTE,
     campos: camposCapa({
       composicao: "15 ANOS DA {debutante} | {data}",
       xNome: 205,
@@ -197,7 +213,7 @@ export const templates: Record<TemplateId, TemplateConfig> = {
     basePdf: "assets/templates/aniversario_infantil.pdf",
     rotulo: "Aniversário infantil (até 14 anos)",
     origemCoordenadas: "figma",
-    escala: 1,
+    escala: ESCALA_ARTE,
     campos: camposCapa({
       composicao: "ANIVERSÁRIO {aniversariante} | {data}",
       xNome: 205,
@@ -221,7 +237,7 @@ export const templates: Record<TemplateId, TemplateConfig> = {
     basePdf: "assets/templates/aniversario_adulto.pdf",
     rotulo: "Aniversário adulto (15 anos ou mais)",
     origemCoordenadas: "figma",
-    escala: 1,
+    escala: ESCALA_ARTE,
     campos: camposCapa({
       composicao: "ANIVERSÁRIO | {data}",
       xNome: 205,
@@ -236,7 +252,7 @@ export const templates: Record<TemplateId, TemplateConfig> = {
     basePdf: "assets/templates/casamento.pdf",
     rotulo: "Casamento",
     origemCoordenadas: "figma",
-    escala: 1,
+    escala: ESCALA_ARTE,
     campos: camposCapa({
       composicao: "{noivos} | {data}",
       xNome: 148.5,
@@ -255,7 +271,7 @@ export const templates: Record<TemplateId, TemplateConfig> = {
     basePdf: "assets/templates/corporativo.pdf",
     rotulo: "Evento corporativo",
     origemCoordenadas: "figma",
-    escala: 1,
+    escala: ESCALA_ARTE,
     campos: camposCapa({
       composicao: "{tipo_evento} | {data}",
       xNome: 205,
