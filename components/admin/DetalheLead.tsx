@@ -2,7 +2,17 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, Download, FileText, Loader2, Mail, MessageCircle, Save } from "lucide-react";
+import {
+  AlertTriangle,
+  Download,
+  FileText,
+  Loader2,
+  Mail,
+  MessageCircle,
+  Save,
+  Trash2,
+} from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -26,7 +36,7 @@ export function DetalheLead({ lead }: { lead: Lead }) {
   const [enviadoEm, setEnviadoEm] = useState(lead.enviado_em);
   const [rotuloArte, setRotuloArte] = useState<string | null>(null);
 
-  const [acao, setAcao] = useState<null | "salvar" | "gerar" | "enviar">(null);
+  const [acao, setAcao] = useState<null | "salvar" | "gerar" | "enviar" | "excluir">(null);
   const [aviso, setAviso] = useState<Aviso | null>(null);
 
   const passos = passosVisiveis(lead.categoria, respostas);
@@ -130,10 +140,41 @@ export function DetalheLead({ lead }: { lead: Lead }) {
     }
   }
 
+  async function excluir() {
+    // window.confirm de proposito, igual a lista: exclusao e irreversivel e nao
+    // ha lixeira nem backup no plano gratuito.
+    const certeza = window.confirm(
+      `Excluir o lead ${sujeito || "sem nome"}?\n\nIsso apaga também a proposta em PDF. Não dá para desfazer.`,
+    );
+    if (!certeza) return;
+
+    setAcao("excluir");
+    setAviso(null);
+    try {
+      const r = await fetch(`/api/admin/leads/${lead.id}`, { method: "DELETE" });
+      const json = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(json.erro ?? "Não consegui excluir.");
+
+      // Toast, e nao o banner desta tela: a pagina deixa de existir, entao so o
+      // toast sobrevive a navegacao e aparece ja na lista.
+      toast.success(`Lead ${sujeito || ""} excluído.`);
+      router.push("/admin");
+      router.refresh();
+      // acao continua "excluir" de proposito: trava o botao ate a navegacao
+      // sair, senao um duplo clique dispara um segundo DELETE.
+    } catch (e) {
+      setAviso({ tom: "erro", texto: (e as Error).message });
+      setAcao(null);
+    }
+  }
+
   return (
     <div className="space-y-8">
       <header className="space-y-2">
-        <div className="flex flex-wrap items-center gap-3">
+        {/* gap-y menor que o gap-x: em 360px o botao quebra para a linha de
+            baixo, e com gap-3 nos dois eixos ele ficava solto no meio do
+            cabecalho, separando o titulo da linha de metadados. */}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
           <h1 className="text-2xl font-semibold">{sujeito || "Sem nome"}</h1>
           <span
             className={cn(
@@ -143,6 +184,23 @@ export function DetalheLead({ lead }: { lead: Lead }) {
           >
             {ROTULO_STATUS[status]}
           </span>
+
+          {/* ml-auto, nao justify-between: com flex-wrap em 360px o
+              justify-between afastaria o badge do titulo na quebra de linha. */}
+          <Button
+            variant="destructive"
+            size="sm"
+            className="ml-auto"
+            onClick={excluir}
+            disabled={acao !== null}
+          >
+            {acao === "excluir" ? (
+              <Loader2 className="mr-1.5 size-4 animate-spin" />
+            ) : (
+              <Trash2 className="mr-1.5 size-4" />
+            )}
+            Excluir lead
+          </Button>
         </div>
         <p className="text-sm text-muted-foreground">
           {rotuloCategoria(lead.categoria)} · recebido em {dataHoraLocal(lead.created_at)}
