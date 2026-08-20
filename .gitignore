@@ -49,6 +49,7 @@ next-env.d.ts
 
 # arte bruta exportada do Figma (o PDF final é que vai versionado)
 /.arte-bruta
+.arte-vetor
 
 
 # vinculo local do projeto Vercel
