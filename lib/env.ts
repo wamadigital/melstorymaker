@@ -31,9 +31,12 @@ const schema = z
     APP_URL: z.string().url(),
 
     // --- Notificacao de lead novo no WhatsApp da Mel (CallMeBot) -----------
-    // Os tres sao opcionais: sem fone+apikey a notificacao simplesmente nao
-    // dispara (o submit do lead nunca depende dela). NOTIFICA_DRY_RUN=1 loga
-    // a mensagem em vez de enviar -- o padrao do desenvolvimento.
+    // Os tres sao opcionais: sem a APIKEY a notificacao simplesmente nao dispara
+    // (o submit do lead nunca depende dela). NOTIFICA_DRY_RUN=1 loga a mensagem
+    // em vez de enviar -- o padrao do desenvolvimento.
+    //
+    // NOTIFICA_WHATSAPP_FONE so e necessario para mandar a notificacao para um
+    // numero DIFERENTE do MEL_WHATSAPP; sem ele, o adapter usa aquele.
     NOTIFICA_WHATSAPP_FONE: z
       .string()
       .regex(/^\d{12,13}$/, "so digitos com DDI. Ex: 5519999999999")

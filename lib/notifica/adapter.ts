@@ -23,10 +23,17 @@ export async function notificarMel(texto: string): Promise<void> {
     return;
   }
 
-  const fone = env.NOTIFICA_WHATSAPP_FONE;
+  // Cai para MEL_WHATSAPP quando o fone especifico nao existe: e o mesmo numero
+  // dela, no mesmo formato (so digitos com DDI), e ja e obrigatorio no projeto.
+  // Exigir a mesma informacao em duas variaveis so criava a chance de configurar
+  // uma e esquecer a outra -- foi exatamente o que aconteceu em 20/08/2026, com
+  // a apikey em producao e o fone nao, deixando a notificacao muda em silencio.
+  // O NOTIFICA_WHATSAPP_FONE continua valendo, para o caso de as notificacoes
+  // irem para um aparelho diferente do numero publicado ao lead.
+  const fone = env.NOTIFICA_WHATSAPP_FONE ?? env.MEL_WHATSAPP;
   const apikey = env.NOTIFICA_WHATSAPP_APIKEY;
   if (!fone || !apikey) {
-    console.log("[notifica] desligada (NOTIFICA_WHATSAPP_FONE/APIKEY ausentes)");
+    console.log("[notifica] desligada (NOTIFICA_WHATSAPP_APIKEY ausente)");
     return;
   }
 
