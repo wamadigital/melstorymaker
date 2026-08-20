@@ -1,33 +1,39 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { STATUS, type Status } from "@/lib/form/types";
-import { ROTULO_STATUS } from "@/lib/admin/rotulos";
+import { CATEGORIAS, type Categoria } from "@/lib/form/types";
+import { rotuloCategoria } from "@/lib/admin/rotulos";
 import { cn } from "@/lib/utils";
 
-type Filtro = Status | "todos";
+type Filtro = Categoria | "todas";
 
+// Os chips filtravam por STATUS; agora as colunas do quadro SAO o status, entao
+// filtrar por status seria pedir para esconder uma coluna inteira. Categoria e o
+// recorte que sobra e que a Mel usa de verdade ("so os casamentos").
 const ABAS: { valor: Filtro; rotulo: string }[] = [
-  { valor: "todos", rotulo: "Todos" },
-  ...STATUS.map((s) => ({ valor: s as Filtro, rotulo: ROTULO_STATUS[s] })),
+  { valor: "todas", rotulo: "Todas" },
+  ...CATEGORIAS.map((c) => ({ valor: c as Filtro, rotulo: rotuloCategoria(c) })),
 ];
 
 /**
  * Filtro e busca vivem na URL, nao no estado do componente: assim a Mel pode
- * favoritar "aguardando revisao" e o botao voltar do navegador funciona.
+ * favoritar "so casamentos" e o botao voltar do navegador funciona.
  */
 export function FiltrosLeads({
-  statusAtual,
+  categoriaAtual,
   termoAtual,
 }: {
-  statusAtual: Filtro;
+  categoriaAtual: Filtro;
   termoAtual: string;
 }) {
   const router = useRouter();
   const params = useSearchParams();
+  // usePathname e nao "/admin" cravado: com a rota hardcoded, mover a pagina
+  // quebraria a busca em silencio, sem erro de tipo.
+  const caminho = usePathname();
   const [termo, setTermo] = useState(termoAtual);
 
   // Debounce: buscar a cada tecla dispararia um request por letra digitada.
@@ -38,17 +44,17 @@ export function FiltrosLeads({
       const proximos = new URLSearchParams(params.toString());
       if (termo.trim()) proximos.set("q", termo.trim());
       else proximos.delete("q");
-      router.replace(`/admin?${proximos.toString()}`);
+      router.replace(`${caminho}?${proximos.toString()}`);
     }, 300);
 
     return () => clearTimeout(t);
-  }, [termo, termoAtual, params, router]);
+  }, [termo, termoAtual, params, router, caminho]);
 
-  function trocarStatus(valor: Filtro) {
+  function trocarCategoria(valor: Filtro) {
     const proximos = new URLSearchParams(params.toString());
-    if (valor === "todos") proximos.delete("status");
-    else proximos.set("status", valor);
-    router.replace(`/admin?${proximos.toString()}`);
+    if (valor === "todas") proximos.delete("categoria");
+    else proximos.set("categoria", valor);
+    router.replace(`${caminho}?${proximos.toString()}`);
   }
 
   return (
@@ -69,10 +75,10 @@ export function FiltrosLeads({
           <button
             key={aba.valor}
             type="button"
-            onClick={() => trocarStatus(aba.valor)}
+            onClick={() => trocarCategoria(aba.valor)}
             className={cn(
               "rounded-md border px-3 py-1.5 text-sm transition-colors",
-              statusAtual === aba.valor
+              categoriaAtual === aba.valor
                 ? "border-transparent bg-primary text-primary-foreground"
                 : "border-border bg-card hover:bg-accent",
             )}

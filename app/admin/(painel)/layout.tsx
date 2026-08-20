@@ -7,14 +7,17 @@ export default function LayoutPainel({ children }: { children: React.ReactNode }
   return (
     <div className="min-h-dvh">
       <header className="border-b bg-card">
-        <div className="mx-auto flex h-14 w-full max-w-5xl items-center justify-between px-5">
+        {/* max-w-7xl e nao 5xl: o quadro precisa de 4 colunas de ~295px lado a
+            lado. O header acompanha para alinhar com o conteudo; quem precisa de
+            linha de leitura estreita (o detalhe do lead) limita por dentro. */}
+        <div className="mx-auto flex h-14 w-full max-w-7xl items-center justify-between px-5">
           <Link href="/admin" className="font-semibold">
             Propostas
           </Link>
           <BotaoSair />
         </div>
       </header>
-      <main className="mx-auto w-full max-w-5xl px-5 py-8">{children}</main>
+      <main className="mx-auto w-full max-w-7xl px-5 py-8">{children}</main>
       {/* Sem isto montado, toast() e um no-op silencioso: a Mel clicaria em
           "excluir" e nao veria confirmacao nenhuma. */}
       <Toaster position="top-center" />

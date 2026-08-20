@@ -61,10 +61,25 @@ function DropdownMenuSeparator({ className, ...props }: React.ComponentProps<"di
   return <div role="separator" className={cn("-mx-1 my-1 h-px bg-border", className)} {...props} />;
 }
 
+const DropdownMenuGroup = MenuPrimitive.Group;
+
+/** Titulo de um grupo de itens ("Mover para"). Nao e clicavel nem focavel. */
+function DropdownMenuGroupLabel({ className, ...props }: MenuPrimitive.GroupLabel.Props) {
+  return (
+    <MenuPrimitive.GroupLabel
+      data-slot="dropdown-menu-group-label"
+      className={cn("px-2.5 py-1.5 text-xs font-medium text-muted-foreground", className)}
+      {...props}
+    />
+  );
+}
+
 export {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  DropdownMenuGroup,
+  DropdownMenuGroupLabel,
 };

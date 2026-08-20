@@ -4,7 +4,11 @@
 export const CATEGORIAS = ["debutante", "aniversario", "casamento", "corporativo"] as const;
 export type Categoria = (typeof CATEGORIAS)[number];
 
-export const STATUS = ["incompleto", "aguardando_revisao", "enviado"] as const;
+// Ordem = ordem do funil, e tambem a ordem das colunas do quadro em /admin.
+// `incompleto` aparece para a Mel como "Novo" (ver ROTULO_STATUS): o valor e
+// contrato interno -- significa "o formulario ainda aceita escrita anonima" --
+// e o rotulo e a palavra de CRM para a mesma raia.
+export const STATUS = ["incompleto", "aguardando_revisao", "enviado", "virou_cliente"] as const;
 export type Status = (typeof STATUS)[number];
 
 export type TipoPergunta =

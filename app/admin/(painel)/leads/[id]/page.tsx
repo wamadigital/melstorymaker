@@ -12,7 +12,9 @@ export default async function PaginaDetalhe({ params }: { params: Promise<{ id: 
   if (!data) notFound();
 
   return (
-    <div className="space-y-6">
+    // O layout do painel agora e largo por causa do quadro; o detalhe e texto
+    // para ler e corrigir, entao recupera aqui a propria medida.
+    <div className="mx-auto w-full max-w-5xl space-y-6">
       <Link
         href="/admin"
         className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"

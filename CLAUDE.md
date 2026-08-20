@@ -63,7 +63,10 @@ supabase/schema.sql    Schema completo
 - RLS ativado na tabela `leads` com zero policies públicas. Se um acesso falhar por RLS, a correção é no route handler, nunca criar policy pública.
 - `respostas` é jsonb: mudança na árvore de perguntas não gera migration.
 - Colunas promovidas (`nome_display`, `data_evento`, `email`, `whatsapp`) são atualizadas no autosave, junto com o jsonb.
-- Transições de status apenas nos endpoints definidos: `incompleto` (criação) > `aguardando_revisao` (submit) > `enviado` (envio de e-mail).
+- Transições de status apenas nos endpoints definidos: `incompleto` (criação) > `aguardando_revisao` (submit) > `enviado` (envio de e-mail) e, desde 20/08/2026, **`PATCH /api/admin/leads/[id]/status`**, a única em que uma pessoa (a Mel, arrastando no quadro) escreve status. A matriz de transição vive em `lib/admin/status.ts` e vale nos dois lados: o servidor recusa com 422, o cliente desabilita o item de menu.
+- **`incompleto` NUNCA é destino.** Não é só uma raia do funil: é a única que devolve permissão de ESCRITA a quem tiver o UUID — reabre o autosave público sobre respostas já revisadas e re-arma o `submit`, que dispara `notificarMel()` de novo (a Mel recebe "lead novo" por um lead que ela mesma moveu). O `scripts/e2e-quadro.ts` prova isso: depois do 422, confere que o `PATCH /api/leads/[id]` público segue 409.
+- **Coluna proibida no quadro nunca usa `disabled` no `useDroppable`.** Com `disabled`, o `closestCorners` elege o droppable mais próximo e o cartão mirado em "Novo" era solto em "Aguardando revisão", em silêncio. A coluna recebe o drop e `mover()` recusa com toast explicando. Coberto por `npm run e2e:arraste`.
+- Marcar como "Enviado" pelo quadro **não manda e-mail** (regra 4 continua de pé): pede confirmação quando `enviado_em` é nulo e carimba a data, porque o caso real é a Mel ter mandado pelo WhatsApp. Sair de "Enviado" **nunca** limpa `enviado_em` — e-mail não desenvia.
 - Nunca commitar `.env`, App Password ou service role key. Nunca expor a service role no bundle do client.
 
 ## PDF: gotchas obrigatórios
@@ -102,6 +105,7 @@ supabase/schema.sql    Schema completo
 **As duas identidades são separadas e não se contaminam.** O site tem a paleta abaixo; o PDF tem a arte do Figma, com as cores e fontes que a Mel desenhou lá. Unificar as duas seria destruir a arte — nunca mexer em `assets/templates/` ou nas cores de `lib/pdf/templates.config.ts` a pretexto de "seguir a paleta".
 
 - **Paleta: duas cores.** Preto (`#000000`) e `#F1F1F1`, em `--marca-preto` e `--marca-claro`. Branco entra só como superfície de card. Tom intermediário se deriva com opacidade (`rgb(0 0 0 / 60%)`), nunca acrescentando um hex novo.
+- **A regra das duas cores vale para as telas do LEAD** (`/formulario`, `/p/[slug]`, `/`). O **painel interno** usa também as cores de status do quadro — slate/âmbar/sky/emerald —, definidas só em `CLASSE_STATUS`/`TEMA_COLUNA` (`lib/admin/rotulos.ts`). Decisão do owner em 20/08/2026, ao pedir o kanban com "visual Notion". Já havia precedente não documentado (`emerald-100` no badge de enviado, `amber-50`/`emerald-50` nos avisos do detalhe). As classes são **literais**: `bg-${cor}-50` some do CSS porque o scanner do Tailwind v4 não lê string interpolada. E **não** apontar `estilo:verificar` para `/admin` — ele falharia por desenho, além de exigir sessão.
 - **Fonte: DM Sans em tudo**, servida de `assets/fonts/` via `next/font/local` (não do Google Fonts — ida a terceiro atrasa o LCP). `--font-sans`, `--font-heading` e `--font-mono` apontam todos para ela.
 - **Tracking:** títulos, botões e utilitários de peso (`font-semibold/bold/black`) levam `letter-spacing: -0.3px`. É CSS do site apenas — o texto do PDF é desenhado pelo pdf-lib e não passa por aqui.
 - **Cursor de mão em tudo que se clica**, sem exceção: botão, link, item de menu, opção de escolha, checkbox, radio, select. Desabilitado usa `not-allowed`. Campo de texto (inclusive data e hora) fica com o cursor de digitação — ali a mão sugeriria botão. A regra é global, em `@layer base`; nunca reintroduzir `cursor-default` num componente (o utilitário vence a camada base e foi o que o shadcn trouxe por padrão). Motivo de existir: o **Tailwind v4 mudou o padrão do `button` de `pointer` para `default`**, então sem a regra o sistema inteiro perde a dica de clicabilidade.
@@ -116,6 +120,8 @@ supabase/schema.sql    Schema completo
 - Feature só está pronta depois de rodar o cenário da Definition of Done (PRD seção 18) para a categoria afetada.
 - Antes de deploy final: testar manualmente as 4 categorias e as 5 artes (aniversário com idade ≤14 e ≥15), incluindo a ramificação `making_of` com "Sim" e com "Não", e a retomada de lead incompleto.
 - `npm run pdf:verificar` cobre **uma arte por cenário, as 5**, e falha se algum `TemplateId` ficar sem cenário. Arte nova sem cenário = script vermelho, de propósito: senão dá para acrescentar uma arte e nunca abri-la em teste nenhum.
+- **Nunca rodar `npm run build` com o `npm run dev` no ar**: os dois escrevem em `.next` e o dev server passa a devolver 500 com `ENOENT ..._buildManifest.js.tmp`. A correção é parar o dev, `rm -rf .next` e subir de novo.
+- Quadro de leads: `npm run e2e:quadro` (API, rápido) e `npm run e2e:arraste` (arraste real via CDP, precisa do Chrome). Os dois criam admin e leads temporários e limpam no fim.
 - Ao corrigir um bug causado por premissa errada sobre o projeto, registrar a regra correta neste arquivo na mesma PR.
 
 ## Nunca fazer

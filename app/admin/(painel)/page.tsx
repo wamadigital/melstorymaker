@@ -1,133 +1,78 @@
-import Link from "next/link";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { STATUS, type Lead, type Status } from "@/lib/form/types";
-import { CLASSE_STATUS, ROTULO_STATUS, rotuloCategoria, rotuloPasso } from "@/lib/admin/rotulos";
-import { dataCurta, dataHoraLocal } from "@/lib/pdf/formatadores";
+import { CATEGORIAS, STATUS, type Categoria, type Status } from "@/lib/form/types";
+import { COLUNAS_CARTAO, type LeadCartao } from "@/lib/admin/tipos";
 import { FiltrosLeads } from "@/components/admin/FiltrosLeads";
-import { AcoesLead } from "@/components/admin/AcoesLead";
-import { cn } from "@/lib/utils";
+import { QuadroLeads, type Coluna } from "@/components/admin/QuadroLeads";
 
-type Busca = { status?: string; q?: string };
+type Busca = { q?: string; categoria?: string };
 
-function ehStatus(v: string | undefined): v is Status {
-  return !!v && (STATUS as readonly string[]).includes(v);
+/** Teto por coluna. "Novo" e a raia gorda (formularios abandonados). */
+const LIMITE_COLUNA = 50;
+
+function ehCategoria(v: string | undefined): v is Categoria {
+  return !!v && (CATEGORIAS as readonly string[]).includes(v);
 }
 
-export default async function PaginaLeads({
-  searchParams,
-}: {
-  searchParams: Promise<Busca>;
-}) {
-  const { status, q } = await searchParams;
+export default async function PaginaLeads({ searchParams }: { searchParams: Promise<Busca> }) {
+  const { q, categoria } = await searchParams;
   const termo = (q ?? "").trim();
 
+  // Uma consulta por coluna, com count exato: alem dos cartoes, traz o TOTAL
+  // real da raia. E o que substitui o "N resultados" antigo, que era o length de
+  // um .limit(200) sem paginacao -- ou seja, mentia a partir de 200.
+  //
   // Leitura pela service role: a tabela tem RLS sem policies, entao este e o
-  // unico caminho possivel -- e ele so roda depois do middleware validar a sessao.
-  let consulta = supabaseAdmin()
-    .from("leads")
-    .select(
-      "id, created_at, categoria, status, nome_display, data_evento, passo_atual, enviado_em, pdf_url, whatsapp, email",
-    )
-    .order("created_at", { ascending: false })
-    .limit(200);
+  // unico caminho possivel -- e so roda depois do middleware validar a sessao.
+  const consultar = (status: Status) => {
+    let c = supabaseAdmin()
+      .from("leads")
+      .select(COLUNAS_CARTAO, { count: "exact" })
+      .eq("status", status)
+      .order("created_at", { ascending: false })
+      .limit(LIMITE_COLUNA);
 
-  if (ehStatus(status)) consulta = consulta.eq("status", status);
-  if (termo) consulta = consulta.ilike("nome_display", `%${termo}%`);
+    if (termo) c = c.ilike("nome_display", `%${termo}%`);
+    if (ehCategoria(categoria)) c = c.eq("categoria", categoria);
+    return c;
+  };
 
-  const { data, error } = await consulta;
+  // 4 em paralelo custam a latencia de 1, e todas caem no leads_status_idx.
+  const respostas = await Promise.all(STATUS.map(consultar));
 
-  if (error) {
-    return (
-      <p className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
-        Não consegui carregar os leads: {error.message}
-      </p>
-    );
-  }
+  const colunas = Object.fromEntries(
+    STATUS.map((status, i) => {
+      const { data, count, error } = respostas[i];
+      return [
+        status,
+        {
+          cartoes: (data ?? []) as unknown as LeadCartao[],
+          total: count ?? 0,
+          // Erro por coluna, e nao da pagina inteira: uma raia que falhou nao
+          // pode derrubar as outras tres.
+          erro: error ? `Não consegui carregar: ${error.message}` : null,
+        } satisfies Coluna,
+      ];
+    }),
+  ) as Record<Status, Coluna>;
 
-  const leads = (data ?? []) as Pick<
-    Lead,
-    | "id"
-    | "created_at"
-    | "categoria"
-    | "status"
-    | "nome_display"
-    | "data_evento"
-    | "passo_atual"
-    | "enviado_em"
-    | "pdf_url"
-    | "whatsapp"
-    | "email"
-  >[];
+  const totalGeral = STATUS.reduce((s, status) => s + colunas[status].total, 0);
+  const filtrando = !!termo || ehCategoria(categoria);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h1 className="text-2xl font-semibold">Leads</h1>
-        <p className="text-sm text-muted-foreground">
-          {leads.length} {leads.length === 1 ? "resultado" : "resultados"}
-        </p>
+        {filtrando && (
+          <p className="text-sm text-muted-foreground">
+            {totalGeral} {totalGeral === 1 ? "lead" : "leads"}
+            {termo && <> com “{termo}”</>}
+          </p>
+        )}
       </div>
 
-      <FiltrosLeads statusAtual={ehStatus(status) ? status : "todos"} termoAtual={termo} />
+      <FiltrosLeads categoriaAtual={ehCategoria(categoria) ? categoria : "todas"} termoAtual={termo} />
 
-      {leads.length === 0 ? (
-        <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-          Nenhum lead por aqui ainda.
-        </p>
-      ) : (
-        <ul className="divide-y rounded-lg border bg-card">
-          {leads.map((lead) => {
-            const parouEm =
-              lead.status === "incompleto" ? rotuloPasso(lead.categoria, lead.passo_atual) : null;
-
-            return (
-              // O menu fica FORA do <Link>: botao dentro de link e HTML
-              // invalido, e o clique no menu navegaria para o detalhe.
-              <li key={lead.id} className="flex items-center gap-1 pr-2 transition-colors hover:bg-accent">
-                <Link
-                  href={`/admin/leads/${lead.id}`}
-                  className="flex min-w-0 flex-1 flex-col gap-2 px-4 py-4 sm:flex-row sm:items-center sm:justify-between"
-                >
-                  <div className="min-w-0 space-y-1">
-                    <p className="truncate font-medium">
-                      {lead.nome_display || <span className="text-muted-foreground">Sem nome</span>}
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      {rotuloCategoria(lead.categoria)}
-                      {lead.data_evento && <> · {dataCurta(lead.data_evento)}</>}
-                    </p>
-                    {parouEm && (
-                      <p className="text-xs text-muted-foreground">Parou em: {parouEm}</p>
-                    )}
-                  </div>
-
-                  <div className="flex shrink-0 items-center gap-3 sm:flex-col sm:items-end sm:gap-1">
-                    <span
-                      className={cn(
-                        "rounded-md border px-2.5 py-0.5 text-xs font-medium",
-                        CLASSE_STATUS[lead.status],
-                      )}
-                    >
-                      {ROTULO_STATUS[lead.status]}
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      {dataHoraLocal(lead.created_at)}
-                    </span>
-                  </div>
-                </Link>
-
-                <AcoesLead
-                  id={lead.id}
-                  nome={lead.nome_display ?? ""}
-                  pdfUrl={lead.pdf_url}
-                  whatsapp={lead.whatsapp}
-                  temEmail={!!lead.email}
-                />
-              </li>
-            );
-          })}
-        </ul>
-      )}
+      <QuadroLeads colunas={colunas} termo={termo} />
     </div>
   );
 }

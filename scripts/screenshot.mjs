@@ -23,8 +23,16 @@ const CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const [url, saida, larguraArg] = process.argv.slice(2);
 const largura = Number(larguraArg) || 360;
 
+// Cookie de sessao, para fotografar tela autenticada: sem ele o middleware
+// manda /admin para /admin/login e o print sai da tela errada. Aceita o formato
+// "nome=valor; nome2=valor2", que e o mesmo que o e2e-admin.ts ja monta.
+const iCookie = process.argv.indexOf("--cookie");
+const cookieBruto = iCookie > -1 ? process.argv[iCookie + 1] : null;
+
 if (!url || !saida) {
-  console.error("\nUso: node scripts/screenshot.mjs <url> <saida.png> [largura]\n");
+  console.error(
+    "\nUso: node scripts/screenshot.mjs <url> <saida.png> [largura] [--cookie \"n=v; n2=v2\"]\n",
+  );
   process.exit(1);
 }
 
@@ -93,6 +101,22 @@ try {
     });
 
   await cdp("Page.enable");
+
+  if (cookieBruto) {
+    await cdp("Network.enable");
+    const dominio = new URL(url).hostname;
+    for (const parte of cookieBruto.split("; ")) {
+      const corte = parte.indexOf("=");
+      if (corte < 1) continue;
+      await cdp("Network.setCookie", {
+        name: parte.slice(0, corte),
+        value: parte.slice(corte + 1),
+        domain: dominio,
+        path: "/",
+      });
+    }
+  }
+
   // O que o --window-size nao faz: viewport real de <largura>px, com
   // deviceScaleFactor 2 e mobile=true (o meta viewport passa a valer).
   await cdp("Emulation.setDeviceMetricsOverride", {

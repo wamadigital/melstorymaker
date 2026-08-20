@@ -15,6 +15,8 @@
     "admin:criar": "node --env-file=.env.local --import tsx scripts/criar-admin.ts",
     "e2e:formulario": "node --env-file=.env.local --import tsx scripts/e2e-formulario.ts",
     "e2e:admin": "node --env-file=.env.local --import tsx scripts/e2e-admin.ts",
+    "e2e:quadro": "node --env-file=.env.local --import tsx scripts/e2e-quadro.ts",
+    "e2e:arraste": "node --env-file=.env.local --import tsx scripts/e2e-arraste.ts",
     "bundle:verificar": "node --env-file=.env.local --import tsx scripts/verificar-bundle.ts",
     "arte:preparar": "node --conditions=react-server --import tsx scripts/preparar-arte.ts",
     "vercel:env": "bash scripts/vercel-env.sh",
@@ -24,6 +26,8 @@
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/utilities": "^3.2.2",
     "@pdf-lib/fontkit": "^1.1.1",
     "@supabase/ssr": "^0.12.4",
     "@supabase/supabase-js": "^2.112.3",

@@ -2,16 +2,22 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Loader2, Mail, MessageCircle, MoreVertical, Pencil, Trash2 } from "lucide-react";
+import { Check, Loader2, Mail, MessageCircle, MoreVertical, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuGroupLabel,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { ROTULO_STATUS, TEMA_COLUNA } from "@/lib/admin/rotulos";
+import { recusarMovimento } from "@/lib/admin/status";
+import { STATUS, type Status } from "@/lib/form/types";
 import { linkPropostaWhatsApp } from "@/lib/whatsapp";
+import { cn } from "@/lib/utils";
 
 type Props = {
   id: string;
@@ -19,6 +25,11 @@ type Props = {
   pdfUrl: string | null;
   whatsapp: string | null;
   temEmail: boolean;
+  /** Coluna atual. Com ela (e `onMover`) o menu ganha o grupo "Mover para". */
+  status?: Status;
+  /** O quadro ja tem um request deste lead em voo. */
+  ocupadoExterno?: boolean;
+  onMover?: (para: Status) => void;
 };
 
 /**
@@ -31,9 +42,19 @@ type Props = {
  * A exclusao pede confirmacao e e irreversivel -- nao ha lixeira nem backup no
  * plano gratuito, entao a confirmacao e a unica rede.
  */
-export function AcoesLead({ id, nome, pdfUrl, whatsapp, temEmail }: Props) {
+export function AcoesLead({
+  id,
+  nome,
+  pdfUrl,
+  whatsapp,
+  temEmail,
+  status,
+  ocupadoExterno = false,
+  onMover,
+}: Props) {
   const router = useRouter();
   const [ocupado, setOcupado] = useState<null | "email" | "excluir">(null);
+  const travado = ocupado !== null || ocupadoExterno;
 
   async function enviarEmail() {
     setOcupado("email");
@@ -81,7 +102,7 @@ export function AcoesLead({ id, nome, pdfUrl, whatsapp, temEmail }: Props) {
         onClick={(e) => e.stopPropagation()}
         className="flex size-9 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground data-[popup-open]:bg-accent"
       >
-        {ocupado ? (
+        {travado ? (
           <Loader2 className="size-4 animate-spin" />
         ) : (
           <MoreVertical className="size-4" />
@@ -89,10 +110,7 @@ export function AcoesLead({ id, nome, pdfUrl, whatsapp, temEmail }: Props) {
       </DropdownMenuTrigger>
 
       <DropdownMenuContent>
-        <DropdownMenuItem
-          disabled={!pdfUrl || !temEmail || ocupado !== null}
-          onClick={enviarEmail}
-        >
+        <DropdownMenuItem disabled={!pdfUrl || !temEmail || travado} onClick={enviarEmail}>
           <Mail />
           Enviar e-mail
         </DropdownMenuItem>
@@ -113,9 +131,41 @@ export function AcoesLead({ id, nome, pdfUrl, whatsapp, temEmail }: Props) {
           Editar
         </DropdownMenuItem>
 
+        {/* Caminho sem gesto para mover o cartao. E o principal no celular (onde
+            arrastar entre secoes distantes do accordion seria sofrido), o
+            caminho de teclado, e a rede para os Androids que leem o long-press
+            como scroll. */}
+        {status && onMover && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuGroup>
+              <DropdownMenuGroupLabel>Mover para</DropdownMenuGroupLabel>
+              {STATUS.map((destino) => {
+                const recusa = recusarMovimento(status, destino, { temProposta: !!pdfUrl });
+                return (
+                  <DropdownMenuItem
+                    key={destino}
+                    // `mesmo_status` nao desabilita: o item marcado com o check
+                    // e o que mostra onde o lead esta, e clicar nele e no-op.
+                    disabled={(!!recusa && recusa !== "mesmo_status") || travado}
+                    onClick={() => onMover(destino)}
+                  >
+                    <span
+                      aria-hidden
+                      className={cn("size-2 shrink-0 rounded-sm", TEMA_COLUNA[destino].ponto)}
+                    />
+                    {ROTULO_STATUS[destino]}
+                    {destino === status && <Check className="ml-auto size-4" />}
+                  </DropdownMenuItem>
+                );
+              })}
+            </DropdownMenuGroup>
+          </>
+        )}
+
         <DropdownMenuSeparator />
 
-        <DropdownMenuItem destrutivo disabled={ocupado !== null} onClick={excluir}>
+        <DropdownMenuItem destrutivo disabled={travado} onClick={excluir}>
           <Trash2 />
           Excluir lead
         </DropdownMenuItem>

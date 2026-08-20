@@ -11,9 +11,21 @@ exception when duplicate_object then null;
 end $$;
 
 do $$ begin
-  create type lead_status as enum ('incompleto', 'aguardando_revisao', 'enviado');
+  create type lead_status as enum
+    ('incompleto', 'aguardando_revisao', 'enviado', 'virou_cliente');
 exception when duplicate_object then null;
 end $$;
+
+-- O bloco acima e no-op num banco que ja tem o tipo: `duplicate_object` engole a
+-- criacao inteira, inclusive o valor novo. Todo valor acrescentado ao enum
+-- precisa TAMBEM aparecer aqui embaixo -- mesma regra das colunas (l.44) e mesma
+-- armadilha que aconteceu com `slug`.
+--
+-- `add value` nao aceita plpgsql (por isso nao vai dentro de um `do $$`) e o
+-- valor novo nao pode ser USADO na mesma transacao. Por isso este arquivo nao
+-- tem nenhum `default 'virou_cliente'`. Ao rodar a mao no SQL Editor, execute
+-- esta linha isolada ANTES do arquivo inteiro.
+alter type lead_status add value if not exists 'virou_cliente';
 
 -- Tabela ------------------------------------------------------------------
 
