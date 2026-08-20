@@ -253,7 +253,7 @@
     {
       "id": "contato_whatsapp",
       "tipo": "telefone",
-      "pergunta": "Qual o seu WhatsApp? É por lá que a proposta chega ✨",
+      "pergunta": "Qual o seu WhatsApp?",
       "obrigatorio": true,
       "mascara": "(00) 00000-0000"
     },
