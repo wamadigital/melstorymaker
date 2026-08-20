@@ -28,14 +28,15 @@ test("sem numero, o link abre o seletor de conversas da Mel (RF-13)", () => {
   assert.ok(link.startsWith("https://wa.me/?text="));
 });
 
-test("a mensagem e objetiva, com o link e sem emoji", () => {
+test("a mensagem e a copy do owner, com o link em linha propria", () => {
   const msg = mensagemProposta("https://x.test/p.pdf");
   assert.equal(
     msg,
-    "Segue proposta https://x.test/p.pdf\n\nQualquer dúvida estou à disposição!",
+    "Segue a sua proposta 👇🏼\n\nhttps://x.test/p.pdf\n\n" +
+      "Qualquer dúvida, é só me chamar. Ok?\nFico à disposição para te ajudar no que precisar! ✨",
   );
-  // Sem emoji: a Mel manda isso numa conversa que ja existe.
-  assert.ok(!/\p{Extended_Pictographic}/u.test(msg));
+  // O link sozinho na linha e o que faz o WhatsApp gerar a previa.
+  assert.ok(msg.split("\n").includes("https://x.test/p.pdf"));
 });
 
 test("a URL do PDF sobrevive ao encode", () => {

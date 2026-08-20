@@ -19,14 +19,25 @@ export function normalizarNumero(bruto: string | null | undefined): string | nul
 }
 
 /**
- * Mensagem do botao do painel.
+ * Mensagem do botao do painel. Copy definida pelo owner em 20/08/2026,
+ * substituindo a versao sem emoji de 19/08 -- que por sua vez substituiu a da
+ * secao 14 do PRD.
  *
- * Objetiva e sem emoji, por decisao do owner em 19/08/2026 -- substitui a copy
- * da secao 14 do PRD. Sem saudacao pelo nome: a Mel manda isso dentro de uma
- * conversa que ja existe, entao "Oi, Fulana!" soava como mensagem automatica.
+ * Sem saudacao pelo nome, de proposito: a Mel manda isso dentro de uma conversa
+ * que ja existe, entao "Oi, Fulana!" soava como mensagem automatica.
+ *
+ * O link fica em linha propria e cercado de quebras: o WhatsApp so gera a previa
+ * do link quando ele nao esta grudado em outra palavra.
  */
 export function mensagemProposta(pdfUrl: string): string {
-  return `Segue proposta ${pdfUrl}\n\nQualquer dúvida estou à disposição!`;
+  return [
+    "Segue a sua proposta 👇🏼",
+    "",
+    pdfUrl,
+    "",
+    "Qualquer dúvida, é só me chamar. Ok?",
+    "Fico à disposição para te ajudar no que precisar! ✨",
+  ].join("\n");
 }
 
 /**

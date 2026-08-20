@@ -93,7 +93,7 @@ supabase/schema.sql    Schema completo
 
 - Domínio em pt-BR: categorias, status, chaves do jsonb e do `arvore.json` (`aguardando_revisao`, `making_of`, `local_festa`). Código e infra em inglês: variáveis, funções, componentes, commits.
 - **`nome` é sempre quem PREENCHEU o formulário, nunca o sujeito do evento.** O sujeito mora em chave própria por categoria (`debutante`, `aniversariante`, `noivos`, `empresa`), com o mesmo nome da variável na arte do Figma. Use `nomeContato()` e `sujeitoDoEvento()` de `lib/leads.ts` — nunca leia `respostas.nome` direto esperando o nome do evento. `nome_display` guarda o sujeito; a saudação do e-mail e do WhatsApp usa quem preencheu.
-- Toda string visível ao usuário em pt-BR. Copy do e-mail: a da seção 14 do PRD. A do **WhatsApp** foi substituída pelo owner em 19/08/2026 por uma versão objetiva e **sem emoji** (`mensagemProposta`) — não restaurar a do PRD.
+- Toda string visível ao usuário em pt-BR. Copy do e-mail: a da seção 14 do PRD. A do **WhatsApp** é escrita pelo owner e mora em `mensagemProposta` (`lib/whatsapp.ts`) — versão atual de 20/08/2026, com emoji e o link em linha própria. Não restaurar a do PRD nem a versão sem emoji de 19/08. Mudança de copy = mudar a função e o teste `lib/whatsapp.test.ts` juntos.
 - **Datas e horas para a Mel sempre em `America/Sao_Paulo`**, via `dataHoraLocal`. Nunca `getHours()`/`getDate()` direto: a lista do painel é renderizada no servidor da Vercel, que roda em UTC, e um lead das 15h08 aparecia como 18h08.
 - Um componente por tipo de pergunta (`texto`, `data`, `hora`, `escolha_unica`, `email`, `telefone`, `numero`), todos consumindo o schema do `arvore.json`.
 - Sem dependências novas sem justificativa de 1 linha no PR. O bundle de `/formulario` é sagrado: LCP < 2.5s em 4G.
