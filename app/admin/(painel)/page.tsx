@@ -3,6 +3,7 @@ import { CATEGORIAS, STATUS, type Categoria, type Status } from "@/lib/form/type
 import { COLUNAS_CARTAO, type LeadCartao } from "@/lib/admin/tipos";
 import { FiltrosLeads } from "@/components/admin/FiltrosLeads";
 import { QuadroLeads, type Coluna } from "@/components/admin/QuadroLeads";
+import { lerComRetentativa } from "@/lib/supabase/consulta";
 
 type Busca = { q?: string; categoria?: string };
 
@@ -37,7 +38,11 @@ export default async function PaginaLeads({ searchParams }: { searchParams: Prom
   };
 
   // 4 em paralelo custam a latencia de 1, e todas caem no leads_status_idx.
-  const respostas = await Promise.all(STATUS.map(consultar));
+  // Com retentativa porque uma falha transitoria do Supabase em UMA consulta
+  // apagava a coluna inteira, enquanto as outras tres carregavam normalmente.
+  const respostas = await Promise.all(
+    STATUS.map((status) => lerComRetentativa(`coluna ${status}`, () => consultar(status))),
+  );
 
   const colunas = Object.fromEntries(
     STATUS.map((status, i) => {
@@ -48,8 +53,10 @@ export default async function PaginaLeads({ searchParams }: { searchParams: Prom
           cartoes: (data ?? []) as unknown as LeadCartao[],
           total: count ?? 0,
           // Erro por coluna, e nao da pagina inteira: uma raia que falhou nao
-          // pode derrubar as outras tres.
-          erro: error ? `Não consegui carregar: ${error.message}` : null,
+          // pode derrubar as outras tres. A mensagem tecnica fica no log do
+          // servidor -- "JWT issued at future" nao diz nada para a Mel, e ela
+          // nao tem o que fazer com isso alem de tentar de novo.
+          erro: error ? "Não consegui carregar esta coluna." : null,
         } satisfies Coluna,
       ];
     }),

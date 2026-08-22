@@ -273,6 +273,7 @@ function Raia({
   movendo: string | null;
   onMover: (id: string, para: Status) => void;
 }) {
+  const router = useRouter();
   const recusa = arrastandoDe ? recusarMovimento(arrastandoDe, status, { temProposta }) : null;
   const proibida = !!recusa && recusa !== "mesmo_status";
 
@@ -296,9 +297,19 @@ function Raia({
       refDrop={setNodeRef}
     >
       {coluna.erro ? (
-        <p className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">
-          {coluna.erro}
-        </p>
+        // Botao em vez de so a mensagem: a falha e transitoria (ver
+        // lib/supabase/consulta.ts), entao tentar de novo costuma resolver na
+        // hora -- e refresh() recarrega so os dados, sem perder a busca digitada.
+        <div className="space-y-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3">
+          <p className="text-xs text-destructive">{coluna.erro}</p>
+          <button
+            type="button"
+            onClick={() => router.refresh()}
+            className="text-xs font-medium text-destructive underline underline-offset-2"
+          >
+            Tentar de novo
+          </button>
+        </div>
       ) : cartoes.length === 0 ? (
         <ColunaVazia status={status} termo={termo} />
       ) : (
