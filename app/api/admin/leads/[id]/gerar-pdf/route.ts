@@ -6,7 +6,7 @@ import {
   urlPublicaProposta,
 } from "@/lib/supabase/admin";
 import { getSessaoAdmin } from "@/lib/supabase/server";
-import { CamposFaltandoError, gerarProposta } from "@/lib/pdf/gerar";
+import { ArteFaltandoError, CamposFaltandoError, gerarProposta } from "@/lib/pdf/gerar";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -71,6 +71,9 @@ export async function POST(_req: Request, { params }: Ctx) {
       // Mel precisa poder conferir se saiu a infantil ou a de adulto.
       templateId: resultado.templateId,
       rotuloTemplate: resultado.rotuloTemplate,
+      // Qual tabela de preco saiu. Depende do ano do evento, entao a Mel
+      // confere na hora se a proposta foi precificada no ano certo.
+      tabelaPreco: resultado.tabelaPreco,
       // O painel avisa a Mel quando o PDF nao esta fiel a arte final.
       usouPlaceholder: resultado.usouPlaceholder,
       usouFallbackDeFonte: resultado.usouFallbackDeFonte,
@@ -83,6 +86,22 @@ export async function POST(_req: Request, { params }: Ctx) {
       return NextResponse.json(
         { erro: "Faltam respostas para gerar a proposta.", campos: e.campos },
         { status: 422 },
+      );
+    }
+
+    // Falta o ASSET da tabela de preco daquele ano -- nao ha o que a Mel digite
+    // para resolver. O caminho do arquivo fica no log; a tela recebe o recado
+    // em portugues, e nada e gravado: melhor nao gerar do que gerar com o
+    // preco do ano errado.
+    if (e instanceof ArteFaltandoError) {
+      console.error("[admin] arte ausente ao gerar PDF", e.message);
+      return NextResponse.json(
+        {
+          erro:
+            `A arte com os preços da ${e.tabela} ainda não foi publicada no sistema. ` +
+            `Enquanto isso, nenhuma proposta com data em ${e.tabela} pode ser gerada.`,
+        },
+        { status: 409 },
       );
     }
 

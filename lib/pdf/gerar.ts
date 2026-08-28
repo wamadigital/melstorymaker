@@ -8,6 +8,13 @@ import { FORMATADORES } from "./formatadores";
 import { carregarFontes, textoSeguro } from "./fontes";
 import { ajustarTamanho, alinharX, converterY, hexParaRgb } from "./geometria";
 import {
+  TABELA_BASE,
+  resolverTabelaPreco,
+  rotuloTabela,
+  type TabelaPreco,
+} from "./precos";
+import {
+  arquivoBase,
   chavesDoCampo,
   fontesUsadas,
   templates,
@@ -22,6 +29,12 @@ export type ResultadoPdf = {
   /** Arte efetivamente usada. O painel mostra para a Mel conferir. */
   templateId: TemplateId;
   rotuloTemplate: string;
+  /**
+   * Tabela de preco da arte aberta, escolhida pelo ANO DO EVENTO. Vai para o
+   * painel: a Mel precisa poder conferir que a proposta de um evento de 2027
+   * saiu com os precos de 2027, e nao com os do ano passado.
+   */
+  tabelaPreco: TabelaPreco;
   /** true quando a arte real ainda nao esta no repo (rodou sobre placeholder). */
   usouPlaceholder: boolean;
   /** true quando alguma fonte da marca faltou e caiu no fallback. */
@@ -38,6 +51,30 @@ export class CamposFaltandoError extends Error {
   constructor(readonly campos: string[]) {
     super(`Faltam respostas para gerar a proposta: ${campos.join(", ")}`);
     this.name = "CamposFaltandoError";
+  }
+}
+
+/**
+ * A arte daquela combinacao de (arte, tabela de preco) nao esta no repo.
+ *
+ * Distinto de `CamposFaltandoError`: nao ha nada que a Mel possa digitar para
+ * resolver -- falta um ASSET, e quem publica asset e quem mexe no repo. A rota
+ * devolve texto humano e guarda o caminho do arquivo so no log do servidor.
+ *
+ * Existir e melhor do que a alternativa silenciosa: sem isto, um evento de 2027
+ * cairia na arte de 2026 e a Mel enviaria a proposta com o preco defasado sem
+ * nunca perceber.
+ */
+export class ArteFaltandoError extends Error {
+  constructor(
+    readonly templateId: TemplateId,
+    readonly tabela: TabelaPreco,
+  ) {
+    super(
+      `Arte "${templateId}" da ${rotuloTabela(tabela)} nao encontrada. ` +
+        `Publique o PDF em ${arquivoBase(templateId, tabela)}.`,
+    );
+    this.name = "ArteFaltandoError";
   }
 }
 
@@ -104,29 +141,36 @@ function desenharCampo(
   });
 }
 
+async function existe(caminho: string): Promise<boolean> {
+  try {
+    await fs.access(caminho);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
- * Caminho do PDF base. Prefere a arte real e cai no placeholder gerado por
- * script enquanto o export do Figma nao chega, para o pipeline nunca travar.
+ * Caminho do PDF base de uma arte NUMA tabela de preco.
+ *
+ * O placeholder segue valendo como rede de bootstrap, mas SO para a tabela
+ * base: ele nao tem preco nenhum desenhado, entao nao consegue representar uma
+ * tabela nova. Cair nele para 2027 entregaria uma proposta sem preco -- e a
+ * regra do projeto e que PDF nenhum e melhor do que PDF com buraco.
  */
 export async function caminhoTemplate(
   template: TemplateId,
+  tabela: TabelaPreco,
 ): Promise<{ caminho: string; placeholder: boolean }> {
-  const real = path.join(process.cwd(), templates[template].basePdf);
-  try {
-    await fs.access(real);
-    return { caminho: real, placeholder: false };
-  } catch {
-    const provisorio = path.join(DIR_TEMPLATES, `${template}.placeholder.pdf`);
-    try {
-      await fs.access(provisorio);
-      return { caminho: provisorio, placeholder: true };
-    } catch {
-      throw new Error(
-        `Arte "${template}" nao encontrada. Coloque o PDF em ` +
-          `${templates[template].basePdf} ou rode \`npm run templates:placeholder\`.`,
-      );
-    }
+  const real = path.join(process.cwd(), arquivoBase(template, tabela));
+  if (await existe(real)) return { caminho: real, placeholder: false };
+
+  const provisorio = path.join(DIR_TEMPLATES, `${template}.placeholder.pdf`);
+  if (tabela === TABELA_BASE && (await existe(provisorio))) {
+    return { caminho: provisorio, placeholder: true };
   }
+
+  throw new ArteFaltandoError(template, tabela);
 }
 
 /** Aplica os campos dinamicos sobre a arte da categoria. */
@@ -160,7 +204,20 @@ export async function gerarProposta(
     throw new CamposFaltandoError([...new Set(faltando)]);
   }
 
-  const { caminho, placeholder } = await caminhoTemplate(templateId);
+  // A TABELA DE PRECO sai do ANO DO EVENTO, nao da data em que o lead
+  // preencheu: quem marca uma festa de 2027 contrata pelo preco de 2027, mesmo
+  // tendo preenchido o formulario em 2026. Como o preco esta desenhado na arte,
+  // isto decide QUAL PDF base abrir -- ver precos.ts.
+  //
+  // Data vazia ja foi barrada acima (as cinco capas compoem "{data}"); chegar
+  // aqui sem tabela significa data fora do formato ISO, e chutar 2026 seria
+  // exatamente o erro caro que esta funcao existe para evitar.
+  const tabela = resolverTabelaPreco(respostas.data ?? "");
+  if (!tabela) {
+    throw new CamposFaltandoError([rotuloCampo(categoria, "data")]);
+  }
+
+  const { caminho, placeholder } = await caminhoTemplate(templateId, tabela);
 
   const pdfDoc = await PDFDocument.load(await fs.readFile(caminho));
   const fontes = await carregarFontes(pdfDoc, fontesUsadas(templateId));
@@ -188,6 +245,7 @@ export async function gerarProposta(
     bytes: await pdfDoc.save(),
     templateId,
     rotuloTemplate: config.rotulo,
+    tabelaPreco: tabela,
     usouPlaceholder: placeholder,
     usouFallbackDeFonte: fontes.usouFallback,
   };

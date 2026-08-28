@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { PDFDocument } from "pdf-lib";
-import { CamposFaltandoError, gerarProposta, textoDoCampo } from "./gerar";
+import { ArteFaltandoError, CamposFaltandoError, gerarProposta, textoDoCampo } from "./gerar";
 import { TEMPLATES, type Respostas } from "@/lib/form/types";
 import { chavesDoCampo, templates } from "./templates.config";
 
@@ -12,12 +12,18 @@ import { chavesDoCampo, templates } from "./templates.config";
  *
  * Rodam com --conditions=react-server (ver package.json) para o "server-only"
  * do gerar.ts resolver para modulo vazio.
+ *
+ * As amostras que GERAM de fato usam data de 2026 de proposito: a partir de
+ * 2027 vale outra tabela de preco, que e outro jogo de PDFs base (ver
+ * precos.ts). Estes testes sao sobre campo faltando e composicao de texto, nao
+ * sobre preco -- quem cruza arte x tabela e o `npm run pdf:verificar`. Os
+ * testes de `textoDoCampo`, que nao abrem arquivo nenhum, seguem em 2027.
  */
 
 const CASAMENTO_COMPLETO: Respostas = {
   nome: "Lúcia",
   noivos: "Ana & João",
-  data: "2027-08-31",
+  data: "2026-08-31",
   horario: "16:00",
   local_cerimonia: "Igreja Nossa Senhora do Brasil",
   local_festa: "Espaço Villa Bisutti",
@@ -71,7 +77,7 @@ test("aniversário sem idade recusa: não dá para saber qual arte usar", async 
   const campos = await esperarFalta("aniversario", {
     nome: "Lúcia",
     aniversariante: "João",
-    data: "2027-12-01",
+    data: "2026-12-01",
     horario: "20:00",
     local: "Casa da vovó",
     entrega: "Em tempo real",
@@ -83,7 +89,7 @@ test("aniversário com idade escolhe a arte e gera", async () => {
   const base: Respostas = {
     nome: "Lúcia",
     aniversariante: "João",
-    data: "2027-12-01",
+    data: "2026-12-01",
     horario: "20:00",
     local: "Casa da vovó",
     entrega: "Em tempo real",
@@ -98,7 +104,7 @@ test("corporativo exige o tipo de evento, que é impresso na arte", async () => 
   const campos = await esperarFalta("corporativo", {
     nome: "Lúcia",
     empresa: "Acme Ltda",
-    data: "2027-05-20",
+    data: "2026-05-20",
     horario: "09:00",
     local: "Centro de Convenções",
   });
@@ -155,7 +161,7 @@ test("a arte do casamento não exige horário nem os dois locais", async () => {
   const r = await gerarProposta("casamento", {
     nome: "Lúcia",
     noivos: "Ana & João",
-    data: "2027-08-31",
+    data: "2026-08-31",
     making_of: "Não",
     entrega: "Em tempo real",
   });
@@ -167,7 +173,7 @@ test("a arte do casamento não exige horário nem os dois locais", async () => {
 const DEBUTANTE_COMPLETO: Respostas = {
   nome: "Lúcia",
   debutante: "Maria Eduarda",
-  data: "2027-03-14",
+  data: "2026-03-14",
   horario: "19:30",
   local: "Espaço Villa Bisutti",
   making_of: "Não",
@@ -205,7 +211,7 @@ test("debutante não exige horário nem local: a arte não os imprime", async ()
   const r = await gerarProposta("debutante", {
     nome: "Lúcia",
     debutante: "Maria Eduarda",
-    data: "2027-03-14",
+    data: "2026-03-14",
   });
   assert.equal(r.templateId, "debutante");
 });
@@ -249,7 +255,7 @@ test("aniversário com 14 anos ou menos usa a arte infantil real", async () => {
     nome: "Lúcia",
     aniversariante: "João Vitor",
     idade: "8",
-    data: "2027-12-01",
+    data: "2026-12-01",
   });
   assert.equal(r.templateId, "aniversario_infantil");
   assert.equal(r.usouPlaceholder, false);
@@ -262,7 +268,7 @@ test("aniversário infantil sem o nome do aniversariante recusa", async () => {
   const campos = await esperarFalta("aniversario", {
     nome: "Lúcia",
     idade: "8",
-    data: "2027-12-01",
+    data: "2026-12-01",
   });
   assert.match(campos.join(" "), /aniversariante/i);
 });
@@ -292,7 +298,7 @@ test("aniversário com 15 anos ou mais usa a arte adulta real", async () => {
     nome: "Lúcia",
     aniversariante: "João Vitor",
     idade: "30",
-    data: "2027-12-01",
+    data: "2026-12-01",
   });
   assert.equal(r.templateId, "aniversario_adulto");
   assert.equal(r.usouPlaceholder, false);
@@ -320,7 +326,7 @@ test("adulto gera sem o nome do aniversariante, porque a arte não o usa", async
   const r = await gerarProposta("aniversario", {
     nome: "Lúcia",
     idade: "30",
-    data: "2027-12-01",
+    data: "2026-12-01",
   });
   assert.equal(r.templateId, "aniversario_adulto");
 });
@@ -360,5 +366,33 @@ test("nenhuma arte imprime empresa, horário ou local", async () => {
     for (const k of naoImpressos) {
       assert.ok(!chaves.includes(k), `${t} imprime ${k}`);
     }
+  }
+});
+
+test("evento em 2026 sai na tabela de 2026", async () => {
+  const r = await gerarProposta("casamento", CASAMENTO_COMPLETO);
+  assert.equal(r.tabelaPreco, "2026");
+});
+
+/**
+ * A garantia que custa dinheiro: proposta de evento em 2027 NUNCA pode sair com
+ * a arte de 2026. Enquanto os PDFs da tabela nova não estiverem publicados,
+ * gerar tem de FALHAR dizendo que falta a arte de 2027 — nunca entregar em
+ * silêncio o preço do ano passado.
+ *
+ * Escrito como invariante ("ou sai 2027, ou recusa por falta da arte de 2027")
+ * de propósito: continua valendo depois que as cinco artes novas entrarem, sem
+ * precisar de edição.
+ */
+test("evento em 2027 sai na tabela de 2027, ou recusa dizendo que falta a arte", async () => {
+  const respostas = { ...CASAMENTO_COMPLETO, data: "2027-08-31" };
+
+  try {
+    const r = await gerarProposta("casamento", respostas);
+    assert.equal(r.tabelaPreco, "2027");
+  } catch (e) {
+    assert.ok(e instanceof ArteFaltandoError, `esperava ArteFaltandoError, veio ${e}`);
+    assert.equal((e as ArteFaltandoError).tabela, "2027");
+    assert.equal((e as ArteFaltandoError).templateId, "casamento");
   }
 });

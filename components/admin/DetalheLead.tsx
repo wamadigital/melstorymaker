@@ -35,6 +35,9 @@ export function DetalheLead({ lead }: { lead: Lead }) {
   const [pdfGeradoEm, setPdfGeradoEm] = useState(lead.pdf_gerado_em);
   const [enviadoEm, setEnviadoEm] = useState(lead.enviado_em);
   const [rotuloArte, setRotuloArte] = useState<string | null>(null);
+  // Qual tabela de preco a arte gerada carrega. Sai do ano do EVENTO, entao
+  // pode nao ser o ano corrente -- por isso vai visivel, e nao suposto.
+  const [tabelaPreco, setTabelaPreco] = useState<string | null>(null);
 
   const [acao, setAcao] = useState<null | "salvar" | "gerar" | "enviar" | "excluir">(null);
   const [aviso, setAviso] = useState<Aviso | null>(null);
@@ -92,6 +95,7 @@ export function DetalheLead({ lead }: { lead: Lead }) {
       setPdfUrl(json.pdf_url);
       setPdfGeradoEm(json.pdf_gerado_em);
       setRotuloArte(json.rotuloTemplate ?? null);
+      setTabelaPreco(json.tabelaPreco ?? null);
 
       // A Mel precisa saber quando o preview NAO representa a arte final.
       const ressalvas = [
@@ -100,8 +104,11 @@ export function DetalheLead({ lead }: { lead: Lead }) {
       ].filter(Boolean);
 
       // Em aniversario a arte depende da idade respondida: dizer qual saiu
-      // deixa a Mel corrigir antes de enviar, em vez de descobrir depois.
-      const arte = json.rotuloTemplate ? `Arte: ${json.rotuloTemplate}.` : "";
+      // deixa a Mel corrigir antes de enviar, em vez de descobrir depois. Vale
+      // o mesmo para a tabela de preco, que depende do ano do evento.
+      const arte = json.rotuloTemplate
+        ? `Arte: ${json.rotuloTemplate}${json.tabelaPreco ? `, preços de ${json.tabelaPreco}` : ""}.`
+        : "";
 
       setAviso(
         ressalvas.length
@@ -353,6 +360,12 @@ export function DetalheLead({ lead }: { lead: Lead }) {
             <div className="flex gap-2">
               <dt>Arte usada:</dt>
               <dd className="text-foreground">{rotuloArte}</dd>
+            </div>
+          )}
+          {tabelaPreco && (
+            <div className="flex gap-2">
+              <dt>Tabela de preços:</dt>
+              <dd className="text-foreground">{tabelaPreco}</dd>
             </div>
           )}
           {pdfGeradoEm && (

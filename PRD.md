@@ -226,15 +226,20 @@ Estados do lead:
 ### Insumos (exportados do Figma, versionados no repo)
 
 ```
-/assets/templates/debutante.pdf              3-4 páginas, arte final, espaços em branco nos campos dinâmicos
-/assets/templates/aniversario_infantil.pdf   até 14 anos
-/assets/templates/aniversario_adulto.pdf     15 anos ou mais
-/assets/templates/casamento.pdf
-/assets/templates/corporativo.pdf
-/assets/fonts/*.ttf                          Fontes da marca (necessárias pro pdf-lib desenhar texto idêntico ao design)
+/assets/templates/debutante.2026.pdf              arte final, espaços em branco nos campos dinâmicos
+/assets/templates/aniversario_infantil.2026.pdf   até 14 anos
+/assets/templates/aniversario_adulto.2026.pdf     15 anos ou mais
+/assets/templates/casamento.2026.pdf
+/assets/templates/corporativo.2026.pdf
+/assets/fonts/*.ttf                               Fontes da marca (necessárias pro pdf-lib desenhar texto idêntico ao design)
 ```
 
 São **5 artes para 4 categorias**: o nome do arquivo é o `TemplateId`, não a categoria.
+
+O sufixo é a **tabela de preço**, e o jogo completo de 5 artes se repete a cada
+tabela (`<arte>.<tabela>.pdf`). O preço está desenhado na arte, então reajustar
+preço é publicar outra arte — nunca mexer em variável. Qual tabela vale sai do
+**ano do evento**; vigências e valores aprovados em `/lib/pdf/precos.ts`.
 
 Exportar do Figma com imagens comprimidas. Alvo: cada PDF base abaixo de 4MB (vai por anexo de e-mail).
 

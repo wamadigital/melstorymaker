@@ -5,6 +5,7 @@ import type { Respostas, TemplateId } from "@/lib/form/types";
 import { carregarFontes, textoSeguro } from "./fontes";
 import { caminhoTemplate, textoDoCampo } from "./gerar";
 import { ajustarTamanho, alinharX, converterY, hexParaRgb } from "./geometria";
+import { TABELA_BASE, type TabelaPreco } from "./precos";
 import { fontesUsadas, templates } from "./templates.config";
 
 /**
@@ -42,9 +43,12 @@ const EXEMPLOS: Respostas = {
   local_making_of: "Hotel Fasano",
 };
 
-export async function gerarPdfCalibracao(template: TemplateId): Promise<Uint8Array> {
+export async function gerarPdfCalibracao(
+  template: TemplateId,
+  tabela: TabelaPreco = TABELA_BASE,
+): Promise<Uint8Array> {
   const config = templates[template];
-  const { caminho, placeholder } = await caminhoTemplate(template);
+  const { caminho, placeholder } = await caminhoTemplate(template, tabela);
 
   const pdfDoc = await PDFDocument.load(await fs.readFile(caminho));
   const mono = await pdfDoc.embedFont(StandardFonts.Courier);

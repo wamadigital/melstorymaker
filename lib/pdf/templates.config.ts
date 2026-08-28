@@ -1,6 +1,7 @@
 import type { TemplateId } from "@/lib/form/types";
 import type { NomeFormatador } from "./formatadores";
 import type { NomeFonte } from "./fontes";
+import type { TabelaPreco } from "./precos";
 
 export type Alinhamento = "esquerda" | "centro" | "direita";
 
@@ -67,8 +68,21 @@ export type CampoTemplate = {
  */
 export const ESCALA_ARTE = 595 / 1240;
 
+/**
+ * Caminho da arte base, relativo a raiz do repo.
+ *
+ * DUAS dimensoes nomeiam o arquivo, e nao uma: a ARTE (`TemplateId`) e a TABELA
+ * DE PRECO. A segunda existe porque o preco esta desenhado na arte rasterizada
+ * -- trocar de tabela e trocar de arquivo, nao de variavel. Ver `precos.ts`.
+ *
+ * Convencao em vez de campo no config: assim criar uma tabela nova nao pede
+ * cinco edicoes aqui, e nao ha como um template apontar para o PDF de outro.
+ */
+export function arquivoBase(template: TemplateId, tabela: TabelaPreco): string {
+  return `assets/templates/${template}.${tabela}.pdf`;
+}
+
 export type TemplateConfig = {
-  basePdf: string;
   /** Nome legivel da arte, exibido no painel para a Mel conferir. */
   rotulo: string;
   /**
@@ -197,7 +211,6 @@ export const templates: Record<TemplateId, TemplateConfig> = {
   // texto dinamico. `horario`, `local`, `making_of` e `entrega` nao entram: a
   // arte nao reservou espaco. Seguem no painel como contexto para a Mel.
   debutante: {
-    basePdf: "assets/templates/debutante.pdf",
     rotulo: "Festa de 15 anos",
     origemCoordenadas: "figma",
     escala: ESCALA_ARTE,
@@ -210,7 +223,6 @@ export const templates: Record<TemplateId, TemplateConfig> = {
   // ARTE REAL — frame aniversario_infantil_01, node 356:8. Seis paginas; so a
   // capa tem texto dinamico. Unica arte cuja borda direita do cabecalho e 1151.
   aniversario_infantil: {
-    basePdf: "assets/templates/aniversario_infantil.pdf",
     rotulo: "Aniversário infantil (até 14 anos)",
     origemCoordenadas: "figma",
     escala: ESCALA_ARTE,
@@ -234,7 +246,6 @@ export const templates: Record<TemplateId, TemplateConfig> = {
    * aparece no painel, mas nao e impresso nesta arte.
    */
   aniversario_adulto: {
-    basePdf: "assets/templates/aniversario_adulto.pdf",
     rotulo: "Aniversário adulto (15 anos ou mais)",
     origemCoordenadas: "figma",
     escala: ESCALA_ARTE,
@@ -249,7 +260,6 @@ export const templates: Record<TemplateId, TemplateConfig> = {
   // de fotos, que as outras nao tem); so a capa tem texto dinamico. `horario`,
   // `local_cerimonia` e `local_festa` nao entram: a arte nao reservou espaco.
   casamento: {
-    basePdf: "assets/templates/casamento.pdf",
     rotulo: "Casamento",
     origemCoordenadas: "figma",
     escala: ESCALA_ARTE,
@@ -268,7 +278,6 @@ export const templates: Record<TemplateId, TemplateConfig> = {
    * ("Obrigada pelo interesse da {empresa}") -- so nao e impressa no PDF.
    */
   corporativo: {
-    basePdf: "assets/templates/corporativo.pdf",
     rotulo: "Evento corporativo",
     origemCoordenadas: "figma",
     escala: ESCALA_ARTE,

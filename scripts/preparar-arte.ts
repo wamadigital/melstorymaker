@@ -1,11 +1,15 @@
 /**
  * Prepara a arte base de uma categoria a partir das páginas exportadas do Figma.
  *
- *   npm run arte:preparar -- casamento .arte-bruta/casamento
+ *   npm run arte:preparar -- casamento 2027 .arte-bruta/casamento
  *
  * Recebe uma pasta com as páginas soltas em PDF (nomeadas em ordem alfabética:
  * 01.pdf, 02.pdf, ...), comprime cada uma, une tudo e grava em
- * assets/templates/<template>.pdf.
+ * assets/templates/<template>.<tabela>.pdf.
+ *
+ * A TABELA é posicional e obrigatória, não uma flag com padrão: o preço está
+ * desenhado na arte, então errar a tabela aqui sobrescreve silenciosamente a
+ * arte de um ano com as páginas de outro.
  *
  * POR QUE COMPRIMIR: o Figma exporta as fotos na resolução original. Uma
  * página de galeria saiu com 11,4 MB porque as fotos têm 3024x4032 para ocupar
@@ -22,7 +26,8 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { PDFDocument } from "pdf-lib";
-import { TEMPLATES } from "@/lib/form/types";
+import { TEMPLATES, type TemplateId } from "@/lib/form/types";
+import { PACOTES, TABELAS_PRECO, type TabelaPreco } from "@/lib/pdf/precos";
 
 const exec = promisify(execFile);
 
@@ -120,12 +125,19 @@ async function main() {
     const i = args.indexOf(f);
     if (i >= 0) { usados.add(i); usados.add(i + 1); }
   }
-  const [template, pasta] = args.filter((_, i) => !usados.has(i));
+  const [template, tabela, pasta] = args.filter((_, i) => !usados.has(i));
 
-  if (!template || !(TEMPLATES as readonly string[]).includes(template) || !pasta) {
+  if (
+    !template ||
+    !(TEMPLATES as readonly string[]).includes(template) ||
+    !tabela ||
+    !(TABELAS_PRECO as readonly string[]).includes(tabela) ||
+    !pasta
+  ) {
     console.error(
-      `\nUso: npm run arte:preparar -- <template> <pasta> [--altura PX] [--qualidade N]\n` +
-        `Templates: ${TEMPLATES.join(" | ")}\n`,
+      `\nUso: npm run arte:preparar -- <template> <tabela> <pasta> [--altura PX] [--qualidade N]\n` +
+        `Templates: ${TEMPLATES.join(" | ")}\n` +
+        `Tabelas:   ${TABELAS_PRECO.join(" | ")}\n`,
     );
     process.exit(1);
   }
@@ -155,10 +167,26 @@ async function main() {
     process.exit(1);
   }
 
+  // A validação acima já garantiu que os dois valores pertencem às listas.
+  const arte = template as TemplateId;
+  const tab = tabela as TabelaPreco;
+
   const dpiEfetivo = Math.round((altura / ALTURA_A4) * 72);
   console.log(
-    `\n\x1b[1m${template}\x1b[0m — ${paginas.length} página(s), ` +
+    `\n\x1b[1m${arte}\x1b[0m · tabela \x1b[1m${tab}\x1b[0m — ${paginas.length} página(s), ` +
       `raster ${altura}px (~${dpiEfetivo} DPI em A4), qualidade ${qualidade}\n`,
+  );
+
+  // O preço é PIXEL: nenhum teste consegue conferir se a página de Pacotes saiu
+  // com os valores certos. O que dá para fazer é mostrar, no momento em que a
+  // arte entra no repo, o que ela deveria dizer -- e deixar a conferência com
+  // quem está olhando as páginas.
+  console.log(`  \x1b[1mConfira na página de Pacotes (tabela ${tab}):\x1b[0m`);
+  for (const { nome, valor } of PACOTES[tab][arte]) {
+    console.log(`    ${nome.padEnd(22)} R$ ${valor}`);
+  }
+  console.log(
+    `    \x1b[2mopcionais, locomoção, reserva de 30% e validade não mudam entre tabelas\x1b[0m\n`,
   );
 
   const temp = await fs.mkdtemp(path.join(os.tmpdir(), "arte-"));
@@ -198,7 +226,7 @@ async function main() {
     console.warn(`\n  \x1b[33m! páginas com tamanhos diferentes: ${[...tamanhos].join(", ")}\x1b[0m`);
   }
 
-  const arquivoFinal = path.join(process.cwd(), "assets", "templates", `${template}.pdf`);
+  const arquivoFinal = path.join(process.cwd(), "assets", "templates", `${arte}.${tab}.pdf`);
   await fs.mkdir(path.dirname(arquivoFinal), { recursive: true });
   await fs.writeFile(arquivoFinal, await doc.save());
   await fs.rm(temp, { recursive: true, force: true });
@@ -207,7 +235,7 @@ async function main() {
   console.log(
     `\n  bruto ${mb(brutoTotal)} → comprimido ${mb(comprimidoTotal)} → final ${mb(final)}`,
   );
-  console.log(`  \x1b[32m✓\x1b[0m assets/templates/${template}.pdf`);
+  console.log(`  \x1b[32m✓\x1b[0m assets/templates/${arte}.${tab}.pdf`);
 
   if (final > LIMITE_ALERTA) {
     console.warn(
@@ -215,7 +243,7 @@ async function main() {
         `    Reduza as fotos na origem, no Figma, antes de baixar o DPI daqui.`,
     );
   }
-  console.log(`\n  Calibre em /admin/debug-template?template=${template}\n`);
+  console.log(`\n  Calibre em /admin/debug-template?template=${arte}&tabela=${tab}\n`);
 }
 
 main().catch((e) => {
