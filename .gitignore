@@ -49,6 +49,8 @@ next-env.d.ts
 
 # arte bruta exportada do Figma (o PDF final é que vai versionado)
 /.arte-bruta
+# Páginas novas exportadas do Figma ao derivar uma tabela de preço (ver arte:derivar)
+/.arte-2027
 .arte-vetor
 
 

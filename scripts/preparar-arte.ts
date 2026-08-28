@@ -20,16 +20,23 @@
  * para a Vercel é o PDF já pronto: em produção continua sendo apenas pdf-lib,
  * como manda a decisão travada nº1 do CLAUDE.md.
  */
-import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { promisify } from "node:util";
 import { PDFDocument } from "pdf-lib";
 import { TEMPLATES, type TemplateId } from "@/lib/form/types";
 import { PACOTES, TABELAS_PRECO, type TabelaPreco } from "@/lib/pdf/precos";
-
-const exec = promisify(execFile);
+import {
+  ALTURA_A4,
+  ALTURA_RASTER,
+  LARGURA_A4,
+  LIMITE_ALERTA,
+  QUALIDADE_PADRAO,
+  garantirGhostscript,
+  mb,
+  rasterizar,
+  validarRaster,
+} from "./arte-raster";
 
 /**
  * ESTRATEGIA: a arte base vira IMAGEM, uma por pagina.
@@ -58,58 +65,6 @@ const exec = promisify(execFile);
  * operacoes por pagina. Nao ha como reduzir isso do lado do Ghostscript, e no
  * celular a pagina continuou branca. Nao repetir a tentativa.
  */
-
-/** Pagina final: A4 — o frame do Figma (1240x1754 px) tem praticamente a mesma proporcao. */
-const LARGURA_A4 = 595;
-const ALTURA_A4 = 842;
-
-/**
- * Altura do JPEG de cada pagina, em px.
- *
- * 2000 sobre uma pagina de 842 pt da ~171 DPI efetivos. Numero definido pelo
- * owner em 20/08/2026, subindo dos 1280 (~109 DPI) da primeira versao: a 1280
- * o texto DA ARTE ficava visivelmente mole ao dar zoom no celular.
- *
- * Antes de baixar este numero de novo, lembre que ele e o unico controle de
- * nitidez que resta -- a arte inteira e imagem.
- */
-const ALTURA_RASTER = 2000;
-
-/** Qualidade do JPEG. 82 e o ponto onde artefato para de aparecer em foto. */
-const QUALIDADE_PADRAO = 82;
-
-const LIMITE_ALERTA = 4 * 1024 * 1024;
-
-const mb = (b: number) => `${(b / 1024 / 1024).toFixed(2)} MB`;
-
-/**
- * Rasteriza uma pagina do Figma em JPEG.
- *
- * O -r do Ghostscript e relativo ao tamanho declarado da pagina de ORIGEM
- * (1240x1754 pt), entao a resolucao vai calculada para o resultado ter
- * exatamente ALTURA_RASTER px de altura, independentemente disso.
- */
-async function rasterizar(entrada: string, saida: string, altura: number, qualidade: number) {
-  const doc = await PDFDocument.load(await fs.readFile(entrada));
-  const { height } = doc.getPage(0).getSize();
-  const r = (altura / height) * 72;
-
-  await exec("gs", [
-    "-q",
-    "-dNOPAUSE",
-    "-dBATCH",
-    "-sDEVICE=jpeg",
-    `-dJPEGQ=${qualidade}`,
-    `-r${r.toFixed(4)}`,
-    // Antialias no texto e nos vetores: sem isto o padrao topografico vira
-    // serrilhado visivel e a tipografia da arte fica dura.
-    "-dTextAlphaBits=4",
-    "-dGraphicsAlphaBits=4",
-    "-o",
-    saida,
-    entrada,
-  ]);
-}
 
 async function main() {
   const args = process.argv.slice(2);
@@ -142,21 +97,8 @@ async function main() {
     process.exit(1);
   }
 
-  if (!Number.isFinite(altura) || altura < 600 || altura > 4000) {
-    console.error(`\nAltura inválida: ${altura}px. Use entre 600 e 4000 (padrão ${ALTURA_RASTER}).\n`);
-    process.exit(1);
-  }
-  if (!Number.isFinite(qualidade) || qualidade < 40 || qualidade > 95) {
-    console.error(`\nQualidade inválida: ${qualidade}. Use entre 40 e 95 (padrão ${QUALIDADE_PADRAO}).\n`);
-    process.exit(1);
-  }
-
-  try {
-    await exec("gs", ["--version"]);
-  } catch {
-    console.error("\nGhostscript não encontrado. Instale com `brew install ghostscript`.\n");
-    process.exit(1);
-  }
+  validarRaster(altura, qualidade);
+  await garantirGhostscript();
 
   const paginas = (await fs.readdir(pasta))
     .filter((f) => f.toLowerCase().endsWith(".pdf"))

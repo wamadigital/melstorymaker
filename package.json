@@ -19,6 +19,7 @@
     "e2e:arraste": "node --env-file=.env.local --import tsx scripts/e2e-arraste.ts",
     "bundle:verificar": "node --env-file=.env.local --import tsx scripts/verificar-bundle.ts",
     "arte:preparar": "node --conditions=react-server --import tsx scripts/preparar-arte.ts",
+    "arte:derivar": "node --conditions=react-server --import tsx scripts/derivar-tabela.ts",
     "vercel:env": "bash scripts/vercel-env.sh",
     "estilo:verificar": "node scripts/verificar-estilo.mjs http://localhost:3000/formulario http://localhost:3000/admin/login",
     "screenshot": "node scripts/screenshot.mjs",
