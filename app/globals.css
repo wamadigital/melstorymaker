@@ -56,69 +56,88 @@
 }
 
 /*
- * Paleta da marca: DUAS cores, preto e #F1F1F1.
+ * Paleta da marca Mel Storymaker.
  *
- * Tudo o que parece um terceiro tom aqui e preto com opacidade -- bordas,
- * texto secundario, superficies. Isso e proposital: mantem o contraste
- * consistente sobre qualquer fundo e evita que a paleta cresca sozinha a cada
- * componente novo. Se precisar de um tom intermediario, derive de
- * --marca-preto com /N%, nao acrescente um hex.
+ * A identidade vive no Figma (frame 7120:556) e tem quatro tons:
+ *   #20130A  marrom quase preto  -- o escuro da marca, e a cor do logo
+ *   #4D2B22  marrom medio
+ *   #823B25  terracota
+ *   #CBAD95  areia
+ * mais um creme (#F0E0C7) usado como fundo nas pecas grandes.
+ *
+ * O APP usa DOIS: o escuro da marca e #F1F1F1. Tudo o que parece um terceiro
+ * tom aqui e o escuro com opacidade -- bordas, texto secundario, superficies.
+ * Isso e proposital: mantem o contraste consistente sobre qualquer fundo e
+ * evita que a paleta cresca sozinha a cada componente novo. Se precisar de um
+ * tom intermediario, derive de --marca-escuro com /N%, nao acrescente um hex.
+ *
+ * O claro continua #F1F1F1, e nao o creme da marca: a troca pedida pelo owner
+ * em 29/08/2026 foi so das cores ESCURAS, para o painel seguir clean.
+ *
+ * A terracota entra em UM lugar so, o anel de foco: e o acento da marca onde
+ * ele aparece em toda tela sem repintar nada.
  */
 :root {
-  --marca-preto: #000000;
+  --marca-escuro: #20130a;
+  /* Componentes RGB do escuro, para derivar tons com opacidade sem repetir
+     o hex. `rgb(var(--marca-escuro-rgb) / 12%)` e a mesma tinta a 12%. */
+  --marca-escuro-rgb: 32 19 10;
+  --marca-terracota: #823b25;
   --marca-claro: #f1f1f1;
 
   --background: var(--marca-claro);
-  --foreground: var(--marca-preto);
+  --foreground: var(--marca-escuro);
   /* Superficie elevada: branco puro sobre o #F1F1F1 do fundo. E o unico jeito
      de um card se destacar sem introduzir cor nova. */
   --card: #ffffff;
-  --card-foreground: var(--marca-preto);
+  --card-foreground: var(--marca-escuro);
   --popover: #ffffff;
-  --popover-foreground: var(--marca-preto);
-  --primary: var(--marca-preto);
+  --popover-foreground: var(--marca-escuro);
+  --primary: var(--marca-escuro);
   --primary-foreground: var(--marca-claro);
   --secondary: var(--marca-claro);
-  --secondary-foreground: var(--marca-preto);
+  --secondary-foreground: var(--marca-escuro);
   --muted: var(--marca-claro);
-  /* 60% de preto: passa no AA sobre #F1F1F1 e sobre branco. */
-  --muted-foreground: rgb(0 0 0 / 60%);
+  /* 65% do escuro da marca: 5,37:1 sobre #F1F1F1 e 5,63:1 sobre branco.
+     Era 60% quando a tinta era preta; o marrom e mais claro que o preto,
+     entao 60% caia para 4,56:1 -- passa no AA, mas sem folga nenhuma. */
+  --muted-foreground: rgb(var(--marca-escuro-rgb) / 65%);
   --accent: var(--marca-claro);
-  --accent-foreground: var(--marca-preto);
+  --accent-foreground: var(--marca-escuro);
   --destructive: oklch(0.577 0.245 27.325);
-  --border: rgb(0 0 0 / 12%);
-  --input: rgb(0 0 0 / 20%);
-  --ring: var(--marca-preto);
-  --chart-1: rgb(0 0 0 / 90%);
-  --chart-2: rgb(0 0 0 / 70%);
-  --chart-3: rgb(0 0 0 / 50%);
-  --chart-4: rgb(0 0 0 / 30%);
-  --chart-5: rgb(0 0 0 / 15%);
+  --border: rgb(var(--marca-escuro-rgb) / 12%);
+  --input: rgb(var(--marca-escuro-rgb) / 20%);
+  --ring: var(--marca-terracota);
+  --chart-1: rgb(var(--marca-escuro-rgb) / 90%);
+  --chart-2: rgb(var(--marca-escuro-rgb) / 70%);
+  --chart-3: rgb(var(--marca-escuro-rgb) / 50%);
+  --chart-4: rgb(var(--marca-escuro-rgb) / 30%);
+  --chart-5: rgb(var(--marca-escuro-rgb) / 15%);
   --radius: 6px;
   --sidebar: var(--marca-claro);
-  --sidebar-foreground: var(--marca-preto);
-  --sidebar-primary: var(--marca-preto);
+  --sidebar-foreground: var(--marca-escuro);
+  --sidebar-primary: var(--marca-escuro);
   --sidebar-primary-foreground: var(--marca-claro);
   --sidebar-accent: #ffffff;
-  --sidebar-accent-foreground: var(--marca-preto);
-  --sidebar-border: rgb(0 0 0 / 12%);
-  --sidebar-ring: var(--marca-preto);
+  --sidebar-accent-foreground: var(--marca-escuro);
+  --sidebar-border: rgb(var(--marca-escuro-rgb) / 12%);
+  --sidebar-ring: var(--marca-terracota);
 }
 
 /*
- * O mesmo par de cores, invertido. Nenhuma tela do sistema liga a classe
+ * O mesmo par de cores da marca, invertido. Nenhuma tela do sistema liga a classe
  * `.dark` hoje; isto existe para que, no dia em que alguem ligar, a marca
- * continue sendo preto e #F1F1F1 -- e nao a paleta cinza que vem do shadcn.
+ * continue sendo o escuro da marca e #F1F1F1 -- e nao a paleta cinza do shadcn.
  */
 .dark {
-  --background: var(--marca-preto);
+  --background: var(--marca-escuro);
   --foreground: var(--marca-claro);
   --card: rgb(255 255 255 / 6%);
   --card-foreground: var(--marca-claro);
-  --popover: #141414;
+  --popover: #2a1810;
   --popover-foreground: var(--marca-claro);
   --primary: var(--marca-claro);
-  --primary-foreground: var(--marca-preto);
+  --primary-foreground: var(--marca-escuro);
   --secondary: rgb(255 255 255 / 10%);
   --secondary-foreground: var(--marca-claro);
   --muted: rgb(255 255 255 / 10%);
@@ -134,10 +153,10 @@
   --chart-3: rgb(241 241 241 / 50%);
   --chart-4: rgb(241 241 241 / 30%);
   --chart-5: rgb(241 241 241 / 15%);
-  --sidebar: var(--marca-preto);
+  --sidebar: var(--marca-escuro);
   --sidebar-foreground: var(--marca-claro);
   --sidebar-primary: var(--marca-claro);
-  --sidebar-primary-foreground: var(--marca-preto);
+  --sidebar-primary-foreground: var(--marca-escuro);
   --sidebar-accent: rgb(255 255 255 / 10%);
   --sidebar-accent-foreground: var(--marca-claro);
   --sidebar-border: rgb(255 255 255 / 15%);
@@ -217,6 +236,11 @@
     @apply bg-background text-foreground;
   }
   html {
-    @apply font-sans;
+    /* `text-foreground` tambem aqui, e nao so no body: sem isto o <html> fica
+       com o preto padrao do navegador. Nao aparecia enquanto a marca ERA preta;
+       com o escuro da marca vira um preto puro solto no documento, que o
+       `estilo:verificar` acusa -- e que herdaria para qualquer coisa
+       renderizada fora do body. */
+    @apply font-sans text-foreground;
   }
 }

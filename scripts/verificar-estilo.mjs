@@ -7,7 +7,7 @@
  * O que verifica em cada URL:
  *   - todo border-radius nao nulo e 6px
  *   - toda fonte usada e DM Sans
- *   - toda cor de texto/fundo sai da paleta preto + #F1F1F1
+ *   - toda cor de texto/fundo sai da paleta da marca (#20130A + #F1F1F1)
  *   - nao ha scroll horizontal em 360px
  *   - todo elemento clicavel tem cursor: pointer
  *
@@ -51,7 +51,10 @@ async function esperar(fn, tentativas = 50, intervalo = 200) {
 const SONDA = `(() => {
   const raios = new Map(), fontes = new Set(), cores = new Map(), semPonteiro = new Map();
   const CLICAVEL = 'button, summary, select, a[href], [role=button], [role=menuitem], [role=radio], [role=option], [role=tab], [role=switch], input[type=checkbox], input[type=radio], input[type=file], input[type=submit]';
-  const PALETA = new Set(['rgb(0, 0, 0)', 'rgb(241, 241, 241)', 'rgb(255, 255, 255)', 'rgba(0, 0, 0, 0)']);
+  // #20130A e o escuro da marca; #F1F1F1 o claro; branco e a superficie de
+  // card. A terracota (#823B25) entra so como anel de foco, que nao cai em
+  // color/background/border -- fica listada para o dia em que cair.
+  const PALETA = new Set(['rgb(32, 19, 10)', 'rgb(241, 241, 241)', 'rgb(255, 255, 255)', 'rgb(130, 59, 37)', 'rgba(0, 0, 0, 0)']);
   for (const el of document.querySelectorAll('*')) {
     // O indicador de dev do Next.js (<nextjs-portal>) nao e o app: usa Geist e
     // some no build de producao. Contar as cores e fontes dele daria falha
@@ -78,9 +81,10 @@ const SONDA = `(() => {
     }
     for (const prop of ['color', 'backgroundColor', 'borderTopColor']) {
       const v = s[prop];
-      // Preto/claro com alfa continuam sendo a paleta: e o mesmo pigmento.
+      // Escuro/claro com alfa continuam sendo a paleta: e o mesmo pigmento.
       const daPaleta = PALETA.has(v)
-        || /^rgba?\\(0, 0, 0(,|\\))/.test(v)
+        || /^rgba?\\(32, 19, 10(,|\\))/.test(v)
+        || /^rgba?\\(0, 0, 0, 0(\\)|,)/.test(v)
         || /^rgba?\\(241, 241, 241(,|\\))/.test(v)
         || /^rgba?\\(255, 255, 255(,|\\))/.test(v);
       if (!daPaleta && !cores.has(v)) cores.set(v, marca + ' [' + prop + ']');
@@ -176,10 +180,10 @@ try {
 
     if (d.coresForaDaPaleta.length) {
       falhas++;
-      console.log(`  \x1b[31m✗ paleta\x1b[0m — cor fora de preto/#F1F1F1:`);
+      console.log(`  \x1b[31m✗ paleta\x1b[0m — cor fora da paleta da marca:`);
       d.coresForaDaPaleta.forEach((c) => console.log(`      ${c.valor}  em ${c.onde}`));
     } else {
-      console.log(`  \x1b[32m✓ paleta\x1b[0m — só preto, #F1F1F1 e branco`);
+      console.log(`  \x1b[32m✓ paleta\x1b[0m — só #20130A, #F1F1F1 e branco`);
     }
 
     if (d.semPonteiro.length) {

@@ -11,8 +11,9 @@ export function BarraProgresso({ atual, total }: { atual: number; total: number 
 
   return (
     <div
-      // bg-foreground/15, nao bg-muted: na paleta preto + #F1F1F1 o muted e
-      // IGUAL ao fundo, e a trilha sumiria -- so o trecho preenchido apareceria.
+      // bg-foreground/15, nao bg-muted: na paleta de duas cores da marca o
+      // muted e IGUAL ao fundo, e a trilha sumiria -- so o trecho preenchido
+      // apareceria.
       className="h-1 w-full overflow-hidden rounded-md bg-foreground/15"
       role="progressbar"
       aria-valuenow={atual}

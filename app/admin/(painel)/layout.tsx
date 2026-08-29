@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { BotaoSair } from "@/components/admin/BotaoSair";
+import { LogoMel } from "@/components/marca/LogoMel";
 import { Toaster } from "@/components/ui/sonner";
 
 /** Casca das telas autenticadas. Fora do grupo fica o /admin/login, sem casca. */
@@ -11,8 +12,10 @@ export default function LayoutPainel({ children }: { children: React.ReactNode }
             lado. O header acompanha para alinhar com o conteudo; quem precisa de
             linha de leitura estreita (o detalhe do lead) limita por dentro. */}
         <div className="mx-auto flex h-14 w-full max-w-7xl items-center justify-between px-5">
-          <Link href="/admin" className="font-semibold">
-            Propostas
+          {/* A assinatura da marca no lugar da palavra "Propostas". h-7 = 28px;
+              a largura sai do viewBox, mantendo a proporcao 274x38. */}
+          <Link href="/admin" aria-label="Ir para os leads">
+            <LogoMel className="h-7 w-auto text-foreground" />
           </Link>
           <BotaoSair />
         </div>
