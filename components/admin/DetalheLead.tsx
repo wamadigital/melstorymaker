@@ -19,6 +19,7 @@ import { Label } from "@/components/ui/label";
 import { normalizarOpcoes, passosVisiveis } from "@/lib/form/engine";
 import type { Lead, Respostas, Status } from "@/lib/form/types";
 import { sujeitoDoEvento } from "@/lib/leads";
+import { PreviaProposta } from "@/components/admin/PreviaProposta";
 import { CLASSE_STATUS, ROTULO_STATUS, rotuloCategoria } from "@/lib/admin/rotulos";
 import { dataHoraLocal } from "@/lib/pdf/formatadores";
 import { linkPropostaWhatsApp } from "@/lib/whatsapp";
@@ -382,14 +383,7 @@ export function DetalheLead({ lead }: { lead: Lead }) {
           )}
         </dl>
 
-        {urlPreview && (
-          <iframe
-            key={urlPreview}
-            src={urlPreview}
-            title="Prévia da proposta"
-            className="h-[70vh] w-full rounded-lg border bg-muted"
-          />
-        )}
+        {urlPreview && <PreviaProposta url={urlPreview} />}
       </section>
     </div>
   );
