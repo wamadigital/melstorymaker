@@ -149,57 +149,74 @@ export function FormularioClient({ whatsappMel }: { whatsappMel: string }) {
     [],
   );
 
-  // ------------------------------------------------------------------ navegar
-
-  async function escolherCategoria(valor: string) {
-    if (!isCategoria(valor) || ocupado) return;
-    setOcupado(true);
-    setErro(null);
-
-    try {
-      let id = leadId;
-
-      if (!id) {
-        // RF-02: o lead nasce aqui, antes da 2a pergunta. Lead parcial e lead.
+  /**
+   * Cria o lead. Devolve o id, ou null se a rede falhou.
+   *
+   * Nasce ja com as respostas do primeiro passo -- ou seja, com o WhatsApp
+   * dentro. Um POST vazio seguido de PATCH deixaria, no intervalo, exatamente o
+   * registro que este desenho existe para nao criar.
+   */
+  const criarLead = useCallback(
+    async (cat: Categoria, rec: Respostas, proximo: string | null) => {
+      try {
         const r = await fetch("/api/leads", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ categoria: valor }),
+          body: JSON.stringify({ categoria: cat, respostas: rec, passo_atual: proximo ?? undefined }),
         });
-        if (!r.ok) throw new Error("criar");
+        if (!r.ok) throw new Error(String(r.status));
         const criado = await r.json();
-        id = criado.id as string;
+        const id = criado.id as string;
         window.localStorage.setItem(CHAVE_LEAD, id);
         setLeadId(id);
+        ultimoEnvio.current = rec;
+        setOffline(false);
+        return id;
+      } catch {
+        setOffline(true);
+        return null;
       }
+    },
+    [],
+  );
 
-      // Trocar de categoria reaproveita o mesmo lead e preserva o contato:
-      // criar um registro novo a cada troca encheria o painel de lead orfao.
-      const trocou = !!categoria && categoria !== valor;
-      const base: Respostas = trocou
-        ? Object.fromEntries(Object.entries(respostas).filter(([k]) => k.startsWith("contato_")))
-        : respostas;
+  // ------------------------------------------------------------------ navegar
 
-      const visiveis = passosVisiveis(valor, base);
-      const primeiro = visiveis[0] ?? null;
+  /**
+   * Escolher a categoria NAO cria mais o lead -- so muda de tela. O registro
+   * nasce no primeiro avanco, ja com o WhatsApp (ver `avancar`). Quem toca numa
+   * categoria e fecha a aba nao vira linha no painel: sem telefone a Mel nao
+   * tem o que fazer com o lead, e a coluna "Novo" so acumularia gente
+   * inalcancavel.
+   */
+  function escolherCategoria(valor: string) {
+    if (!isCategoria(valor) || ocupado) return;
+    setErro(null);
 
-      setCategoria(valor);
-      setRespostas(base);
-      setPassoId(primeiro?.id ?? null);
-      setRascunho(primeiro ? (base[primeiro.id] ?? "") : "");
-      setDirecao(1);
-      setTela("pergunta");
+    // Trocar de categoria preserva o contato ja digitado: quem voltou para
+    // trocar nao deve redigitar o proprio telefone.
+    const trocou = !!categoria && categoria !== valor;
+    const base: Respostas = trocou
+      ? Object.fromEntries(Object.entries(respostas).filter(([k]) => k.startsWith("contato_")))
+      : respostas;
 
-      void salvar(base, primeiro?.id ?? null, valor, id);
-    } catch {
-      setErro("Não consegui começar agora. Tenta de novo?");
-    } finally {
-      setOcupado(false);
-    }
+    const visiveis = passosVisiveis(valor, base);
+    const primeiro = visiveis[0] ?? null;
+
+    setCategoria(valor);
+    setRespostas(base);
+    setPassoId(primeiro?.id ?? null);
+    setRascunho(primeiro ? (base[primeiro.id] ?? "") : "");
+    setDirecao(1);
+    setTela("pergunta");
+
+    // Se o lead JA existe (voltou e trocou de categoria), o autosave precisa
+    // acompanhar a troca -- senao o painel mostra a categoria velha.
+    if (leadId) void salvar(base, primeiro?.id ?? null, valor, leadId);
   }
 
   async function avancar(valorOverride?: string) {
-    if (!passo || !categoria || !leadId || ocupado) return;
+    if (!passo || !categoria || ocupado) return;
 
     const valor = valorOverride ?? rascunho;
     const mensagem = validarResposta(passo, valor);
@@ -214,6 +231,25 @@ export function FormularioClient({ whatsappMel }: { whatsappMel: string }) {
 
     setRespostas(atualizadas);
     setDirecao(1);
+
+    // PRIMEIRO avanco: e aqui que o lead nasce, com a resposta ja dentro. E o
+    // unico avanco que ESPERA a rede -- sem id nao existe o que salvar depois, e
+    // seguir otimista deixaria a resposta orfa se a criacao falhasse.
+    if (!leadId) {
+      setOcupado(true);
+      const id = await criarLead(categoria, atualizadas, prox?.id ?? null);
+      setOcupado(false);
+
+      if (!id) {
+        setErro("Não consegui salvar agora. Confere sua conexão e tenta de novo?");
+        return;
+      }
+      if (!prox) return submeter(atualizadas, categoria, id, passo.id);
+
+      setPassoId(prox.id);
+      setRascunho(atualizadas[prox.id] ?? "");
+      return;
+    }
 
     if (prox) {
       // Avanco otimista: a tela nao espera a rede. O PATCH carrega o estado

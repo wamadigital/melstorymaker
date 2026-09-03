@@ -69,11 +69,16 @@ Estas decisões já foram tomadas e não devem ser reabertas durante o desenvolv
         v
 [Lead] abre no navegador in-app do WhatsApp (cenário principal: mobile)
         v
-Tela de boas-vindas > escolhe categoria
-        v                    (lead criado no banco, status: incompleto)
+Tela de boas-vindas: duas portas
+        |                    (esquerda: wa.me da Mel, e o fluxo acaba aqui)
+        v
+Escolhe categoria          (nada gravado ainda)
+        v
+Responde o WhatsApp        (lead criado no banco, status: incompleto)
+        v
 Responde perguntas da categoria (autosave a cada passo)
         v
-Etapa de contato (e-mail obrigatório, WhatsApp opcional)
+E-mail
         v
 Tela de confirmação        (status: aguardando_revisao)
         v
@@ -177,7 +182,7 @@ Regras do engine:
 | ID | Requisito | Critério de aceite |
 |---|---|---|
 | RF-01 | Formulário público em `/formulario`, sem login | Link abre direto na tela de boas-vindas em qualquer navegador mobile, com as duas portas (falar com a Mel / pedir orçamento) lado a lado |
-| RF-02 | Escolha da categoria cria o lead imediatamente | Registro aparece no banco com `status = incompleto` antes da 2ª pergunta |
+| RF-02 | O lead nasce quando a pessoa responde o WhatsApp e avança | Escolher a categoria não grava nada; o registro aparece com `status = incompleto`, o WhatsApp no jsonb e a coluna `whatsapp` promovida, já na criação |
 | RF-03 | Uma pergunta por tela, avanço por clique ou Enter, botão voltar, barra de progresso | Navegável 100% por teclado no desktop e por toque no mobile |
 | RF-04 | Autosave a cada avanço de passo | Fechar a aba e reabrir o link no mesmo device retoma do passo onde parou (leadId em localStorage) |
 | RF-05 | Ramificação do making of | Responder "Não" pula direto para a pergunta de entrega; "Sim" exibe o local do making of |

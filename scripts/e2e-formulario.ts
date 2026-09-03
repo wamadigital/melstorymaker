@@ -79,12 +79,20 @@ async function rodarCategoria(categoria: Categoria, makingOf: "Sim" | "Não", id
   const sufixo = temIdade ? `idade = ${idade}` : `making_of = ${makingOf}`;
   console.log(`\n\x1b[1m${categoria} (${sufixo})\x1b[0m`);
 
-  // --- RF-02: o lead nasce na escolha da categoria ------------------------
+  // --- RF-02: o lead nasce no PRIMEIRO avanco, com o WhatsApp dentro ------
+  //
+  // E nao na escolha da categoria: quem so tocou numa categoria e desistiu nao
+  // deixa registro. Este e o mesmo corpo que o formulario manda.
+  const respostas: Respostas = {};
+  const primeiro = passosVisiveis(categoria, respostas)[0];
+  respostas[primeiro.id] = responder(primeiro, makingOf, idade);
+  const segundo = passosVisiveis(categoria, respostas)[1];
+
   const criado = await json(
     await fetch(`${BASE}/api/leads`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ categoria }),
+      body: JSON.stringify({ categoria, respostas, passo_atual: segundo?.id }),
     }),
   );
 
@@ -94,13 +102,17 @@ async function rodarCategoria(categoria: Categoria, makingOf: "Sim" | "Não", id
     return null;
   }
   const id: string = criado.body.id;
-  ok(`lead criado antes da 2a pergunta (RF-02) — ${id.slice(0, 8)}`);
+  ok(`lead criado no 1o avanço (RF-02) — ${id.slice(0, 8)}`);
 
   const inicial = await json(await fetch(`${BASE}/api/leads/${id}`));
   checar(inicial.body?.status === "incompleto", "nasce com status incompleto");
+  checar(
+    inicial.body?.respostas?.[primeiro.id] === respostas[primeiro.id],
+    `nasce com "${primeiro.id}" já respondido — é o que torna o lead alcançável`,
+  );
+  checar(inicial.body?.passo_atual === segundo?.id, `passo_atual já é o seguinte (${segundo?.id})`);
 
   // --- RF-04: autosave passo a passo -------------------------------------
-  const respostas: Respostas = {};
   let passos = passosVisiveis(categoria, respostas);
 
   for (let i = 0; i < passos.length; i++) {
