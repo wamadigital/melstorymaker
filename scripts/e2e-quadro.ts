@@ -12,7 +12,8 @@
  * Cria admin e leads temporarios e remove tudo no fim.
  */
 import { createClient } from "@supabase/supabase-js";
-import type { Status } from "@/lib/form/types";
+import { STATUS, type Status } from "@/lib/form/types";
+import { ROTULO_STATUS } from "@/lib/admin/rotulos";
 
 const BASE = process.argv[2] || "http://localhost:3000";
 const URL_SB = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -179,8 +180,10 @@ async function main() {
   const pagina = await fetch(`${BASE}/admin`, { headers: { Cookie: cookie } });
   const html = await pagina.text();
   checar(pagina.status === 200, `/admin abre (HTTP ${pagina.status})`);
-  for (const rotulo of ["Novo", "Aguardando revisão", "Enviado", "Virou cliente"]) {
-    checar(html.includes(rotulo), `coluna "${rotulo}" presente no HTML`);
+  // Derivado do enum, e nao de uma lista escrita a mao: status novo passava por
+  // aqui sem nunca ser conferido -- foi o que aconteceu com "Lead perdido".
+  for (const status of STATUS) {
+    checar(html.includes(ROTULO_STATUS[status]), `coluna "${ROTULO_STATUS[status]}" no HTML`);
   }
 
   await limpar();
