@@ -32,7 +32,8 @@ export function FaixaDestinos({
   return (
     <div
       className={cn(
-        "fixed inset-x-0 top-0 z-40 grid grid-cols-4 gap-1.5 border-b p-2",
+        // grid-cols LITERAL: status novo no enum tambem precisa mexer aqui.
+        "fixed inset-x-0 top-0 z-40 grid grid-cols-5 gap-1 border-b p-2",
         "bg-background/95 backdrop-blur sm:hidden",
       )}
     >

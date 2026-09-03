@@ -8,7 +8,13 @@ export type Categoria = (typeof CATEGORIAS)[number];
 // `incompleto` aparece para a Mel como "Novo" (ver ROTULO_STATUS): o valor e
 // contrato interno -- significa "o formulario ainda aceita escrita anonima" --
 // e o rotulo e a palavra de CRM para a mesma raia.
-export const STATUS = ["incompleto", "aguardando_revisao", "enviado", "virou_cliente"] as const;
+export const STATUS = [
+  "incompleto",
+  "aguardando_revisao",
+  "enviado",
+  "virou_cliente",
+  "perdido",
+] as const;
 export type Status = (typeof STATUS)[number];
 
 export type TipoPergunta =
@@ -115,6 +121,12 @@ export type Lead = {
   pdf_url: string | null;
   pdf_gerado_em: string | null;
   enviado_em: string | null;
+  /**
+   * Quando a Mel mandou cada cobranca de quem recebeu a proposta e sumiu. O
+   * relogio conta a partir de `enviado_em`; ver `lib/admin/lembretes.ts`.
+   */
+  lembrete_7_em: string | null;
+  lembrete_30_em: string | null;
 };
 
 export function isCategoria(v: unknown): v is Categoria {

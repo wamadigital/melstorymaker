@@ -191,6 +191,8 @@ Regras do engine:
 | RF-13 | Envio via WhatsApp | Botão abre `wa.me` com mensagem pré-preenchida + link público do PDF; com número do lead vai direto pro contato, sem número abre o seletor de conversa |
 | RF-14 | Regerar PDF após edição | Novo PDF sobrescreve o anterior (mesma URL, cache-bust no preview) |
 | RF-15 | Formatação pt-BR no PDF | Data em **DD/MM/AAAA** ("14/03/2026") e horário no padrão "19h30" |
+| RF-20 | Cobrança de lead sem retorno: aos 7 dias em "Enviado" o cartão fica âmbar com "Relembrar cliente"; aos 30, vermelho com "Última tentativa" | Botão abre o WhatsApp do lead com a mensagem e o link da proposta, e carimba o lembrete; cobrado, o cartão silencia e mostra "Lembrado aos N dias" |
+| RF-21 | Coluna "Lead perdido" como 5ª raia do quadro | A Mel move o cartão pelo arraste ou pelo menu; nada vira perdido sozinho. No celular a raia nasce recolhida |
 
 ## 8. Painel admin
 

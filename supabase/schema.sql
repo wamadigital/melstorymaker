@@ -26,6 +26,7 @@ end $$;
 -- tem nenhum `default 'virou_cliente'`. Ao rodar a mao no SQL Editor, execute
 -- esta linha isolada ANTES do arquivo inteiro.
 alter type lead_status add value if not exists 'virou_cliente';
+alter type lead_status add value if not exists 'perdido';
 
 -- Tabela ------------------------------------------------------------------
 
@@ -46,6 +47,11 @@ create table if not exists leads (
   pdf_url text,
   pdf_gerado_em timestamptz,
   enviado_em timestamptz,
+  -- Cobranca de quem recebeu a proposta e sumiu. O relogio conta a partir de
+  -- `enviado_em`; estas duas colunas guardam QUANDO a Mel mandou cada lembrete,
+  -- e e a presenca delas que faz o cartao parar de gritar no quadro.
+  lembrete_7_em timestamptz,
+  lembrete_30_em timestamptz,
   -- Codigo curto do link publico da proposta: melstorymaker.com.br/p/a3f9.
   -- O UUID funcionava, mas o link ficava com 36 caracteres e a Mel manda isso
   -- por WhatsApp. Nasce so quando o PDF e gerado; lead sem proposta nao tem.
@@ -59,6 +65,8 @@ create table if not exists leads (
 -- schema do repo deixa de reproduzir o de producao -- e foi exatamente o que
 -- aconteceu com `slug`, aplicada por migration fora do arquivo.
 alter table leads add column if not exists slug text;
+alter table leads add column if not exists lembrete_7_em timestamptz;
+alter table leads add column if not exists lembrete_30_em timestamptz;
 
 create unique index if not exists leads_slug_key on leads (slug);
 create index if not exists leads_status_idx on leads (status);

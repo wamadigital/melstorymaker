@@ -54,6 +54,52 @@ export function linkPropostaWhatsApp(
   return numero ? `https://wa.me/${numero}?text=${texto}` : `https://wa.me/?text=${texto}`;
 }
 
+/**
+ * Cobranca de quem recebeu a proposta e nao respondeu.
+ *
+ * COPY PROVISORIA, escrita por mim -- a do owner entra por cima. Duas regras
+ * que valem em qualquer versao:
+ *
+ *   1. O link da proposta VOLTA na mensagem. Faz 7 (ou 30) dias que ela foi
+ *      enviada; obrigar a pessoa a procurar a conversa antiga e perder o lead
+ *      de novo pelo mesmo motivo. Sem proposta gerada, a mensagem sai sem link.
+ *   2. Aos 30 dias a saida e honrosa. E a ultima mensagem: cobrar de novo com
+ *      o tom dos 7 dias soa a insistencia, e a Mel trabalha de indicacao.
+ *
+ * Mesma diagramacao da `mensagemProposta`: o link sozinho na linha, cercado de
+ * quebras, e o que faz o WhatsApp gerar a previa.
+ */
+export function mensagemLembrete(marco: 7 | 30, pdfUrl: string | null): string {
+  const linhas =
+    marco === 7
+      ? [
+          "Oi! Passando pra saber se você conseguiu dar uma olhada na proposta 😊",
+          ...(pdfUrl ? ["", pdfUrl, ""] : [""]),
+          "Se ficou alguma dúvida, me chama que eu te explico com calma. ✨",
+        ]
+      : [
+          "Oi! Faz um tempinho que te mandei a proposta e fiquei sem retorno por aqui.",
+          ...(pdfUrl ? ["", pdfUrl, ""] : [""]),
+          "Se ainda fizer sentido, é só me chamar que a gente conversa.",
+          "E se não for o momento, sem problema nenhum — fico por aqui pra quando você quiser! ✨",
+        ];
+  return linhas.join("\n");
+}
+
+/**
+ * Link do botao de cobranca no cartao do quadro. Sem numero do lead abre o
+ * seletor de conversas da Mel, mesmo comportamento do botao da proposta.
+ */
+export function linkLembreteWhatsApp(
+  marco: 7 | 30,
+  whatsappLead: string | null | undefined,
+  pdfUrl: string | null,
+): string {
+  const texto = encodeURIComponent(mensagemLembrete(marco, pdfUrl));
+  const numero = normalizarNumero(whatsappLead);
+  return numero ? `https://wa.me/${numero}?text=${texto}` : `https://wa.me/?text=${texto}`;
+}
+
 /** Conversa com a Mel: CTA da tela de confirmacao e link dentro do e-mail. */
 export function linkWhatsAppMel(numeroMel: string): string {
   return `https://wa.me/${normalizarNumero(numeroMel) ?? numeroMel}`;

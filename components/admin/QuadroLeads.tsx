@@ -37,9 +37,12 @@ const INSTRUCOES = {
 export function QuadroLeads({
   colunas,
   termo,
+  agoraMs,
 }: {
   colunas: Record<Status, Coluna>;
   termo: string;
+  /** "Agora" do SERVIDOR, para a contagem de cobranca nao variar na hidratacao. */
+  agoraMs: number;
 }) {
   const router = useRouter();
   const [, iniciar] = useTransition();
@@ -49,8 +52,11 @@ export function QuadroLeads({
   const [otimista, setOtimista] = useState<Record<string, Status>>({});
   const [movendo, setMovendo] = useState<string | null>(null);
   const [arrastando, setArrastando] = useState<string | null>(null);
+  // No celular as raias sao accordion. "Lead perdido" nasce FECHADA: e a unica
+  // que nao pede acao nenhuma, e aberta empurraria as quatro que pedem para
+  // fora da primeira tela. No desktop o CSS forca toda coluna aberta.
   const [aberta, setAberta] = useState<Record<string, boolean>>(() =>
-    Object.fromEntries(STATUS.map((s) => [s, true])),
+    Object.fromEntries(STATUS.map((s) => [s, s !== "perdido"])),
   );
 
   const porId = useMemo(() => {
@@ -216,7 +222,10 @@ export function QuadroLeads({
         </p>
       )}
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      {/* grid-cols LITERAL, e nao derivado de STATUS.length: o scanner do
+          Tailwind nao le string interpolada. Status novo no enum = mexer aqui e
+          na FaixaDestinos. */}
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         {STATUS.map((status) => (
           <Raia
             key={status}
@@ -230,6 +239,7 @@ export function QuadroLeads({
             temProposta={!!leadArrastado?.pdf_url}
             movendo={movendo}
             onMover={mover}
+            agoraMs={agoraMs}
           />
         ))}
       </div>
@@ -242,7 +252,12 @@ export function QuadroLeads({
 
       <DragOverlay dropAnimation={{ duration: 180, easing: "cubic-bezier(0.2,0,0,1)" }}>
         {leadArrastado && colunaArrastada && (
-          <CartaoLead lead={leadArrastado} coluna={colunaArrastada} sobreposto />
+          <CartaoLead
+            lead={leadArrastado}
+            coluna={colunaArrastada}
+            agoraMs={agoraMs}
+            sobreposto
+          />
         )}
       </DragOverlay>
     </DndContext>
@@ -261,6 +276,7 @@ function Raia({
   temProposta,
   movendo,
   onMover,
+  agoraMs,
 }: {
   status: Status;
   coluna: Coluna;
@@ -272,6 +288,7 @@ function Raia({
   temProposta: boolean;
   movendo: string | null;
   onMover: (id: string, para: Status) => void;
+  agoraMs: number;
 }) {
   const router = useRouter();
   const recusa = arrastandoDe ? recusarMovimento(arrastandoDe, status, { temProposta }) : null;
@@ -320,6 +337,7 @@ function Raia({
             coluna={status}
             movendo={movendo === lead.id}
             onMover={onMover}
+            agoraMs={agoraMs}
           />
         ))
       )}
@@ -332,11 +350,13 @@ function Arrastavel({
   coluna,
   movendo,
   onMover,
+  agoraMs,
 }: {
   lead: LeadCartao;
   coluna: Status;
   movendo: boolean;
   onMover: (id: string, para: Status) => void;
+  agoraMs: number;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: lead.id });
 
@@ -349,6 +369,7 @@ function Arrastavel({
         arrastando={isDragging}
         onMover={onMover}
         handle={{ ...attributes, ...listeners }}
+        agoraMs={agoraMs}
       />
     </div>
   );

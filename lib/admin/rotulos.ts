@@ -23,6 +23,7 @@ export const ROTULO_STATUS: Record<Status, string> = {
   aguardando_revisao: "Aguardando revisão",
   enviado: "Enviado",
   virou_cliente: "Virou cliente",
+  perdido: "Lead perdido",
 };
 
 /** Linha de apoio no cabecalho da coluna e no estado vazio dela. */
@@ -31,6 +32,7 @@ export const DESCRICAO_COLUNA: Record<Status, string> = {
   aguardando_revisao: "Prontos para gerar a proposta",
   enviado: "Proposta já entregue",
   virou_cliente: "Fechou com a Mel",
+  perdido: "Cobrado e sem retorno",
 };
 
 /**
@@ -46,6 +48,7 @@ export const CLASSE_STATUS: Record<Status, string> = {
   aguardando_revisao: "bg-amber-100 text-amber-900 border-amber-200",
   enviado: "bg-sky-100 text-sky-900 border-sky-200",
   virou_cliente: "bg-emerald-100 text-emerald-900 border-emerald-200",
+  perdido: "bg-stone-100 text-stone-700 border-stone-200",
 };
 
 /**
@@ -93,6 +96,18 @@ export const TEMA_COLUNA: Record<
     ponto: "bg-emerald-500",
     alvo: "ring-emerald-300",
     barra: "bg-emerald-400",
+  },
+  // Stone e nao vermelho, de proposito: o vermelho ja e do cartao que PRECISA de
+  // cobranca, dentro de "Enviado". A raia de perdido e o lugar onde o lead para
+  // de pedir atencao -- pintar as duas coisas de vermelho faria o quadro gritar
+  // no ponto em que ele deveria silenciar.
+  perdido: {
+    fundo: "bg-stone-100",
+    corpo: "bg-stone-50/50",
+    titulo: "text-stone-600",
+    ponto: "bg-stone-400",
+    alvo: "ring-stone-300",
+    barra: "bg-stone-300",
   },
 };
 

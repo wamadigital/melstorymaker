@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { FileText, GripVertical, Mail, MessageCircle } from "lucide-react";
+import { Check, FileText, GripVertical, Mail, MessageCircle } from "lucide-react";
 import { AcoesLead } from "@/components/admin/AcoesLead";
+import { BotaoLembrete } from "@/components/admin/BotaoLembrete";
+import { estadoLembrete, SELO_LEMBRETE, TEMA_LEMBRETE } from "@/lib/admin/lembretes";
 import { DESCRICAO_COLUNA, TEMA_COLUNA, rotuloCategoria, rotuloPasso } from "@/lib/admin/rotulos";
 import type { LeadCartao } from "@/lib/admin/tipos";
 import type { Status } from "@/lib/form/types";
@@ -22,6 +24,14 @@ type Props = {
   arrastando?: boolean;
   /** Props do handle de arraste. Sem elas o cartao nao mostra o grip. */
   handle?: React.HTMLAttributes<HTMLElement>;
+  /**
+   * "Agora" em ms, carimbado pelo SERVIDOR e descido como prop.
+   *
+   * Nao e `Date.now()` aqui dentro: o painel e renderizado no servidor e o
+   * cartao e hidratado no navegador. Dois relogios diferentes na mesma arvore
+   * dariam hydration mismatch justamente na fronteira do 7o dia.
+   */
+  agoraMs: number;
 };
 
 /**
@@ -37,17 +47,26 @@ export function CartaoLead({
   sobreposto = false,
   arrastando = false,
   handle,
+  agoraMs,
 }: Props) {
   const tema = TEMA_COLUNA[coluna];
   const nome = lead.nome_display ?? "";
   // "Parou em: Local da festa" (RF-09) so faz sentido em quem nao terminou.
   const parouEm = coluna === "incompleto" ? rotuloPasso(lead.categoria, lead.passo_atual) : null;
 
+  // `coluna` e nao `lead.status`: arrastar um cartao vermelho para "Virou
+  // cliente" apaga a cobranca na hora, sem esperar o servidor responder.
+  const lembrete = estadoLembrete(lead, coluna, agoraMs);
+  const alerta = lembrete.pendente ? TEMA_LEMBRETE[lembrete.pendente] : null;
+
   return (
     <div
       className={cn(
         "relative flex overflow-hidden rounded-lg border bg-card transition-shadow",
         "shadow-[0_1px_2px_rgb(0_0_0/6%)]",
+        // Cobranca vencida pinta o cartao inteiro: dentro de uma coluna azul,
+        // um cartao ambar ou vermelho e a unica coisa que a Mel precisa ver.
+        alerta?.cartao,
         !sobreposto && "hover:border-black/15 hover:shadow-[0_2px_8px_rgb(0_0_0/8%)]",
         arrastando && "opacity-40",
         sobreposto && "rotate-2 shadow-lg",
@@ -56,7 +75,7 @@ export function CartaoLead({
     >
       {/* Barra de acento: mantem a leitura de qual coluna o cartao veio mesmo
           flutuando no overlay, onde ele perde o fundo colorido da coluna. */}
-      <span aria-hidden className={cn("w-1 shrink-0", tema.barra)} />
+      <span aria-hidden className={cn("w-1 shrink-0", alerta?.barra ?? tema.barra)} />
 
       {handle && (
         <button
@@ -106,6 +125,28 @@ export function CartaoLead({
             </span>
           </div>
         </Link>
+
+        {/* Rodape de cobranca. Fora do <Link> pelo mesmo motivo do menu: botao
+            dentro de <a> e HTML invalido. So aparece quando ha o que dizer --
+            um cartao de dois dias nao ganha linha nenhuma. */}
+        {!sobreposto && (lembrete.pendente || lembrete.cobrado) && (
+          <div className="px-3 pb-3">
+            {lembrete.pendente ? (
+              <BotaoLembrete
+                id={lead.id}
+                nome={nome}
+                marco={lembrete.pendente}
+                whatsapp={lead.whatsapp}
+                pdfUrl={lead.pdf_url}
+              />
+            ) : (
+              <p className="flex items-center gap-1 text-[0.6875rem] text-muted-foreground">
+                <Check className="size-3 shrink-0" strokeWidth={3} />
+                {SELO_LEMBRETE[lembrete.cobrado!]}
+              </p>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Fora do <Link>: botao dentro de <a> e HTML invalido, e o clique no menu

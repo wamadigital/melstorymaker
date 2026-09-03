@@ -37,7 +37,8 @@ export default async function PaginaLeads({ searchParams }: { searchParams: Prom
     return c;
   };
 
-  // 4 em paralelo custam a latencia de 1, e todas caem no leads_status_idx.
+  // Uma por status, em paralelo: custam a latencia de 1 e todas caem no
+  // leads_status_idx.
   // Com retentativa porque uma falha transitoria do Supabase em UMA consulta
   // apagava a coluna inteira, enquanto as outras tres carregavam normalmente.
   const respostas = await Promise.all(
@@ -79,7 +80,10 @@ export default async function PaginaLeads({ searchParams }: { searchParams: Prom
 
       <FiltrosLeads categoriaAtual={ehCategoria(categoria) ? categoria : "todas"} termoAtual={termo} />
 
-      <QuadroLeads colunas={colunas} termo={termo} />
+      {/* `Date.now()` do SERVIDOR, descido como prop: a contagem de cobranca
+          precisa dar o mesmo numero no HTML e na hidratacao, senao o cartao
+          pisca de cor na fronteira do 7o dia. */}
+      <QuadroLeads colunas={colunas} termo={termo} agoraMs={Date.now()} />
     </div>
   );
 }
