@@ -18,17 +18,21 @@ import { templates } from "@/lib/pdf/templates.config";
 const ids = (categoria: Parameters<typeof passosVisiveis>[0], r = {}) =>
   passosVisiveis(categoria, r).map((p) => p.id);
 
-test("contato e sempre injetado no fim de todo fluxo, WhatsApp antes do e-mail", () => {
-  for (const cat of ["debutante", "aniversario", "casamento", "corporativo"] as const) {
+test("o WhatsApp ABRE o formulario e o e-mail fecha, em toda categoria", () => {
+  for (const cat of CATEGORIAS) {
     const lista = ids(cat);
-    // A ordem importa: a proposta chega pelo WhatsApp, entao ele vem primeiro.
-    assert.deepEqual(lista.slice(-2), ["contato_whatsapp", "contato_email"]);
+    // O WhatsApp em primeiro nao e capricho de ordem: e a unica resposta que
+    // continua servindo quando o lead abandona no meio. Perguntado no fim,
+    // todo abandono virava um lead que a Mel nao tinha como contatar.
+    assert.equal(lista[0], "contato_whatsapp", `${cat} nao comeca pelo WhatsApp`);
+    assert.equal(lista.at(-1), "contato_email", `${cat} nao termina no e-mail`);
   }
 });
 
 test("os dois contatos sao obrigatorios: sem eles nao ha como entregar a proposta", () => {
-  for (const cat of ["debutante", "aniversario", "casamento", "corporativo"] as const) {
-    const contato = passosVisiveis(cat, {}).slice(-2);
+  for (const cat of CATEGORIAS) {
+    const contato = passosVisiveis(cat, {}).filter((p) => p.id.startsWith("contato_"));
+    assert.equal(contato.length, 2, `${cat} deveria ter os dois passos de contato`);
     for (const passo of contato) {
       assert.equal(passo.obrigatorio, true, `${cat}/${passo.id} deveria ser obrigatorio`);
     }
@@ -65,13 +69,13 @@ test("corporativo nao tem making of nem entrega", () => {
   assert.ok(!lista.includes("making_of"));
   assert.ok(!lista.includes("entrega"));
   assert.deepEqual(lista, [
+    "contato_whatsapp",
     "nome",
     "empresa",
     "tipo_evento",
     "data",
     "horario",
     "local",
-    "contato_whatsapp",
     "contato_email",
   ]);
 });
@@ -141,19 +145,23 @@ test("corporativo ganhou a pergunta de tipo de evento", () => {
   assert.equal(lista.indexOf("tipo_evento"), lista.indexOf("empresa") + 1);
 });
 
-test("`nome` é sempre a PRIMEIRA pergunta, em todos os fluxos", () => {
+test("`nome` é sempre a primeira pergunta DO FLUXO, em todas as categorias", () => {
   // Quem preenche nem sempre e quem o evento homenageia: a cerimonialista
   // preenche o casamento, a mae preenche os 15 anos da filha.
+  //
+  // "do fluxo" e nao "da tela": desde que o WhatsApp abre o formulario, `nome`
+  // e a segunda tela. O que importa aqui e que nenhuma categoria pergunta o
+  // sujeito do evento antes de saber quem esta do outro lado.
   for (const cat of CATEGORIAS) {
-    assert.equal(ids(cat)[0], "nome", `${cat} nao comeca por nome`);
+    assert.equal(ids(cat)[1], "nome", `${cat} nao comeca por nome`);
   }
 });
 
 test("cada categoria tem a sua variável de sujeito do evento", () => {
-  assert.equal(ids("debutante")[1], "debutante");
-  assert.equal(ids("aniversario")[1], "aniversariante");
-  assert.equal(ids("casamento")[1], "noivos");
-  assert.equal(ids("corporativo")[1], "empresa");
+  assert.equal(ids("debutante")[2], "debutante");
+  assert.equal(ids("aniversario")[2], "aniversariante");
+  assert.equal(ids("casamento")[2], "noivos");
+  assert.equal(ids("corporativo")[2], "empresa");
 });
 
 test("nome_display guarda o sujeito do evento, não quem preencheu", () => {

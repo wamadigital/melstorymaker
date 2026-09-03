@@ -58,3 +58,26 @@ export function linkPropostaWhatsApp(
 export function linkWhatsAppMel(numeroMel: string): string {
   return `https://wa.me/${normalizarNumero(numeroMel) ?? numeroMel}`;
 }
+
+/**
+ * Primeira mensagem do lead que escolhe "Falar com a Mel" na abertura do
+ * formulario, em vez de responder as perguntas.
+ *
+ * Vai pre-escrita de proposito: o link abre a conversa com a caixa de texto
+ * vazia, e escrever a primeira frase para um numero desconhecido e justamente
+ * onde a pessoa desiste. Com o texto pronto, sobra apertar enviar.
+ *
+ * Curta e na voz do lead -- e ele quem "diz" isto. Nada de dado pessoal aqui:
+ * o texto fica visivel na URL, que o navegador do WhatsApp guarda no historico.
+ */
+export function mensagemPrimeiroContato(): string {
+  return "Oi, Mel! Vim pelo site e queria falar sobre o meu evento ✨";
+}
+
+/**
+ * Link da porta "Falar com a Mel" (tela de abertura do formulario). Abre a
+ * conversa com a Mel ja com a primeira mensagem escrita.
+ */
+export function linkPrimeiroContato(numeroMel: string): string {
+  return `${linkWhatsAppMel(numeroMel)}?text=${encodeURIComponent(mensagemPrimeiroContato())}`;
+}

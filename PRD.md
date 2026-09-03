@@ -92,8 +92,9 @@ Fonte única de verdade em `/lib/form/arvore.json`. O engine renderiza a partir 
 {
   "boas_vindas": {
     "titulo": "Oi! Eu sou a Mel ✨",
-    "texto": "Vou te fazer algumas perguntinhas rápidas pra montar a proposta perfeita pro seu evento. Leva menos de 2 minutos.",
-    "cta": "Começar"
+    "texto": "Vamos eternizar o seu momento? Escolhe por onde você prefere começar.",
+    "cta_whatsapp": { "rotulo": "Falar com a Mel", "detalhe": "Tirar dúvidas agora, no WhatsApp" },
+    "cta_formulario": { "rotulo": "Quero um orçamento", "detalhe": "A proposta chega em 2 minutinhos" }
   },
   "categoria": {
     "tipo": "escolha_unica",
@@ -145,10 +146,14 @@ Fonte única de verdade em `/lib/form/arvore.json`. O engine renderiza a partir 
       { "id": "local", "tipo": "texto", "pergunta": "Local do evento", "obrigatorio": true }
     ]
   },
-  "contato": [
-    { "id": "contato_email", "tipo": "email", "pergunta": "Qual o seu melhor e-mail? É pra lá que vai a proposta ✨", "obrigatorio": true },
-    { "id": "contato_whatsapp", "tipo": "telefone", "pergunta": "E o seu WhatsApp? (opcional)", "obrigatorio": false, "mascara": "(00) 00000-0000" }
-  ],
+  "contato": {
+    "abertura": [
+      { "id": "contato_whatsapp", "tipo": "telefone", "pergunta": "Qual o seu WhatsApp? É por lá que a proposta chega ✨", "obrigatorio": true, "mascara": "(00) 00000-0000" }
+    ],
+    "fechamento": [
+      { "id": "contato_email", "tipo": "email", "pergunta": "E o seu e-mail?", "obrigatorio": true }
+    ]
+  },
   "confirmacao": {
     "titulo": "Prontinho! ✨",
     "texto": "Recebi tudo com carinho. Em breve sua proposta personalizada chega no seu e-mail.",
@@ -161,15 +166,17 @@ Regras do engine:
 
 1. `exibir_se` define a ramificação: o passo só é renderizado se a condição bater com resposta anterior. Se não bater, o engine pula para o próximo passo do array.
 2. A ordem do array é a ordem das telas.
-3. Depois do último passo do fluxo da categoria, o engine sempre injeta os passos de `contato` e encerra em `confirmacao`.
-4. `cta_whatsapp` da confirmação abre `https://wa.me/{MEL_WHATSAPP}` (env var), mantendo a conversa quente.
-5. **Categoria e arte não são a mesma coisa.** `aniversario` é uma categoria só no banco, mas resolve entre duas artes conforme a resposta de `idade`: **14 anos ou menos = infantil, 15 ou mais = adulto**. São 4 categorias e 5 artes. Acrescentar arte não mexe no enum do Postgres, logo não gera migration.
+3. `contato` é o bloco que vale para todas as categorias e vem partido em dois: `abertura` entra ANTES do fluxo da categoria, `fechamento` depois dele. A fila de telas é `contato.abertura` + fluxo da categoria + `contato.fechamento`, encerrando em `confirmacao`.
+3b. **O WhatsApp é a primeira pergunta de todo fluxo.** É a única resposta que continua servindo quando o lead abandona no meio: perguntado no fim, todo abandono virava um registro que a Mel não tinha como contatar. O e-mail continua fechando, porque só é preciso na hora de enviar a proposta.
+4. A tela de abertura tem DUAS portas, não um "Começar": `cta_whatsapp` abre `https://wa.me/{MEL_WHATSAPP}` com a primeira mensagem já escrita, e `cta_formulario` entra na escolha de categoria. Quem já sabe o que quer fala na hora; quem quer número preenche. Sem `MEL_WHATSAPP` configurada, sobra só a segunda porta.
+5. `cta_whatsapp` da confirmação abre `https://wa.me/{MEL_WHATSAPP}` (env var), mantendo a conversa quente.
+6. **Categoria e arte não são a mesma coisa.** `aniversario` é uma categoria só no banco, mas resolve entre duas artes conforme a resposta de `idade`: **14 anos ou menos = infantil, 15 ou mais = adulto**. São 4 categorias e 5 artes. Acrescentar arte não mexe no enum do Postgres, logo não gera migration.
 
 ## 7. Requisitos funcionais
 
 | ID | Requisito | Critério de aceite |
 |---|---|---|
-| RF-01 | Formulário público em `/formulario`, sem login | Link abre direto na tela de boas-vindas em qualquer navegador mobile |
+| RF-01 | Formulário público em `/formulario`, sem login | Link abre direto na tela de boas-vindas em qualquer navegador mobile, com as duas portas (falar com a Mel / pedir orçamento) lado a lado |
 | RF-02 | Escolha da categoria cria o lead imediatamente | Registro aparece no banco com `status = incompleto` antes da 2ª pergunta |
 | RF-03 | Uma pergunta por tela, avanço por clique ou Enter, botão voltar, barra de progresso | Navegável 100% por teclado no desktop e por toque no mobile |
 | RF-04 | Autosave a cada avanço de passo | Fechar a aba e reabrir o link no mesmo device retoma do passo onde parou (leadId em localStorage) |

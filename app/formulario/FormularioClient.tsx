@@ -2,9 +2,20 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, domAnimation, LazyMotion, m, useReducedMotion } from "framer-motion";
-import { ArrowLeft, ArrowRight, Check, ChevronDown, ChevronUp, Loader2, WifiOff } from "lucide-react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  Check,
+  ChevronDown,
+  ChevronUp,
+  Loader2,
+  MessageCircle,
+  Sparkles,
+  WifiOff,
+} from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { linkPrimeiroContato } from "@/lib/whatsapp";
 import { BarraProgresso } from "@/components/form/BarraProgresso";
 import { CampoPergunta } from "@/components/form/CampoPergunta";
 import { OpcaoEscolha } from "@/components/form/OpcaoEscolha";
@@ -21,6 +32,16 @@ import { validarResposta } from "@/lib/form/validacao";
 import { isCategoria, type Categoria, type Respostas } from "@/lib/form/types";
 
 const CHAVE_LEAD = "mel:lead_id";
+
+/**
+ * Caixa das duas portas da abertura. Mesma forma e mesma altura minima nas
+ * duas: elas sao alternativas de peso igual, e uma mais baixa que a outra
+ * leria como opcao secundaria. A altura vem daqui e nao do conteudo porque os
+ * rotulos tem tamanhos diferentes -- em 360px um quebra em duas linhas e o
+ * outro nao.
+ */
+const PORTA =
+  "flex min-h-40 flex-col justify-between gap-4 rounded-md p-4 text-left transition-all active:scale-[0.99]";
 
 type Tela = "boas_vindas" | "categoria" | "pergunta" | "confirmacao";
 
@@ -42,6 +63,7 @@ export function FormularioClient({ whatsappMel }: { whatsappMel: string }) {
   const [direcao, setDirecao] = useState<1 | -1>(1);
 
   const semMovimento = useReducedMotion();
+  const temWhatsapp = whatsappMel.trim() !== "";
   // Guarda o ultimo estado salvo com sucesso, para o botao "tentar de novo".
   const ultimoEnvio = useRef<Respostas>({});
 
@@ -314,29 +336,76 @@ export function FormularioClient({ whatsappMel }: { whatsappMel: string }) {
               className="w-full"
             >
               {tela === "boas_vindas" && (
-                <div className="flex flex-col gap-6 text-center">
-                  <h1 className="text-4xl leading-tight font-semibold text-balance">
-                    {arvore.boas_vindas.titulo}
-                  </h1>
-                  {/* whitespace-pre-line: a copy do arvore.json quebra linha de
-                      propósito, e sem isto o \n viraria um espaço. */}
-                  <p className="text-lg whitespace-pre-line text-pretty text-muted-foreground">
-                    {arvore.boas_vindas.texto}
-                  </p>
-                  <Button
-                    size="lg"
-                    // Enquanto a retomada esta em voo, entrar aqui criaria um
-                    // lead novo por cima de um que ja existe.
-                    disabled={retomando}
-                    className="mt-2 h-12 self-center px-8 text-lg font-bold"
-                    onClick={() => {
-                      setDirecao(1);
-                      setTela("categoria");
-                    }}
-                  >
-                    {retomando && <Loader2 className="mr-2 size-4 animate-spin" />}
-                    {arvore.boas_vindas.cta}
-                  </Button>
+                <div className="flex flex-col gap-8">
+                  <div className="flex flex-col gap-4 text-center">
+                    <h1 className="text-4xl leading-tight font-semibold text-balance">
+                      {arvore.boas_vindas.titulo}
+                    </h1>
+                    <p className="text-lg text-pretty text-muted-foreground">
+                      {arvore.boas_vindas.texto}
+                    </p>
+                  </div>
+
+                  {/* Duas portas lado a lado. Quem ja sabe o que quer fala com
+                      a Mel na hora; quem quer numero segue no formulario.
+                      grid-cols-2 e nao flex: o grid iguala a altura das duas
+                      sozinho, mesmo com rotulos de tamanhos diferentes. */}
+                  <div className="grid w-full max-w-md grid-cols-2 gap-3 self-center">
+                    {temWhatsapp && (
+                      <a
+                        href={linkPrimeiroContato(whatsappMel)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={cn(
+                          PORTA,
+                          "border border-foreground/25 bg-card hover:border-foreground",
+                        )}
+                      >
+                        <MessageCircle className="size-7" strokeWidth={1.75} aria-hidden="true" />
+                        <span className="flex flex-col gap-1">
+                          <span className="text-base leading-tight font-bold sm:text-lg">
+                            {arvore.boas_vindas.cta_whatsapp.rotulo}
+                          </span>
+                          <span className="text-xs leading-snug text-muted-foreground">
+                            {arvore.boas_vindas.cta_whatsapp.detalhe}
+                          </span>
+                        </span>
+                      </a>
+                    )}
+
+                    <button
+                      type="button"
+                      // Enquanto a retomada esta em voo, entrar aqui criaria um
+                      // lead novo por cima de um que ja existe.
+                      disabled={retomando}
+                      onClick={() => {
+                        setDirecao(1);
+                        setTela("categoria");
+                      }}
+                      className={cn(
+                        PORTA,
+                        "bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-60",
+                        // Sem MEL_WHATSAPP configurado nao ha porta da esquerda:
+                        // um link wa.me sem numero abriria o seletor de conversas
+                        // do proprio lead, que nao leva a lugar nenhum.
+                        !temWhatsapp && "col-span-2",
+                      )}
+                    >
+                      {retomando ? (
+                        <Loader2 className="size-7 animate-spin" />
+                      ) : (
+                        <Sparkles className="size-7" strokeWidth={1.75} aria-hidden="true" />
+                      )}
+                      <span className="flex flex-col gap-1">
+                        <span className="text-base leading-tight font-bold sm:text-lg">
+                          {arvore.boas_vindas.cta_formulario.rotulo}
+                        </span>
+                        <span className="text-xs leading-snug text-primary-foreground/70">
+                          {arvore.boas_vindas.cta_formulario.detalhe}
+                        </span>
+                      </span>
+                    </button>
+                  </div>
                 </div>
               )}
 

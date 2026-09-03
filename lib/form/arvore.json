@@ -1,8 +1,15 @@
 {
   "boas_vindas": {
     "titulo": "Oi! Eu sou a Mel ✨",
-    "texto": "Vou te fazer algumas perguntinhas rápidas para entender melhor o seu evento e preparar a proposta ideal para você.\nÉ rapidinho e leva menos de 2 minutos!",
-    "cta": "Começar"
+    "texto": "Vamos eternizar o seu momento? Escolhe por onde você prefere começar.",
+    "cta_whatsapp": {
+      "rotulo": "Falar com a Mel",
+      "detalhe": "Tirar dúvidas agora, no WhatsApp"
+    },
+    "cta_formulario": {
+      "rotulo": "Quero um orçamento",
+      "detalhe": "A proposta chega em 2 minutinhos"
+    }
   },
   "categoria": {
     "tipo": "escolha_unica",
@@ -249,21 +256,25 @@
       }
     ]
   },
-  "contato": [
-    {
-      "id": "contato_whatsapp",
-      "tipo": "telefone",
-      "pergunta": "Qual o seu WhatsApp?",
-      "obrigatorio": true,
-      "mascara": "(00) 00000-0000"
-    },
-    {
-      "id": "contato_email",
-      "tipo": "email",
-      "pergunta": "E o seu e-mail?",
-      "obrigatorio": true
-    }
-  ],
+  "contato": {
+    "abertura": [
+      {
+        "id": "contato_whatsapp",
+        "tipo": "telefone",
+        "pergunta": "Qual o seu WhatsApp? É por lá que a proposta chega ✨",
+        "obrigatorio": true,
+        "mascara": "(00) 00000-0000"
+      }
+    ],
+    "fechamento": [
+      {
+        "id": "contato_email",
+        "tipo": "email",
+        "pergunta": "E o seu e-mail?",
+        "obrigatorio": true
+      }
+    ]
+  },
   "confirmacao": {
     "titulo": "Prontinho! ✨",
     "texto": "Recebi tudo com carinho. Em breve sua proposta personalizada chegará no seu WhatsApp.",

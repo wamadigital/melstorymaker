@@ -64,14 +64,37 @@ export type Passo = {
   exibir_se?: Record<string, string>;
 };
 
-export type BoasVindas = { titulo: string; texto: string; cta: string };
+/**
+ * As duas portas da tela de abertura. O lead que ja sabe o que quer fala com a
+ * Mel na hora; quem quer numero preenche o formulario. Antes havia so a
+ * segunda, e quem nao estava disposto a responder oito perguntas simplesmente
+ * fechava a aba -- sem virar lead e sem virar conversa.
+ */
+export type Porta = { rotulo: string; detalhe: string };
+export type BoasVindas = {
+  titulo: string;
+  texto: string;
+  cta_whatsapp: Porta;
+  cta_formulario: Porta;
+};
 export type Confirmacao = { titulo: string; texto: string; cta_whatsapp: string };
+
+/**
+ * `contato` e o bloco de perguntas que vale para TODAS as categorias, partido
+ * em dois porque as duas metades nao ficam no mesmo lugar da fila:
+ * `abertura` vem antes do fluxo da categoria, `fechamento` depois.
+ *
+ * O WhatsApp esta na abertura de proposito: e a unica resposta que continua
+ * util quando o lead abandona no meio. Perguntado no fim, todo abandono virava
+ * um registro que a Mel nao tinha como contatar.
+ */
+export type Contato = { abertura: Passo[]; fechamento: Passo[] };
 
 export type Arvore = {
   boas_vindas: BoasVindas;
   categoria: { tipo: TipoPergunta; pergunta: string; opcoes: OpcaoBruta[] };
   fluxos: Record<Categoria, Passo[]>;
-  contato: Passo[];
+  contato: Contato;
   confirmacao: Confirmacao;
 };
 

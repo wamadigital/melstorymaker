@@ -39,27 +39,40 @@ function condicaoAtendida(passo: Passo, respostas: Respostas): boolean {
 }
 
 /**
- * Passos de pergunta na ordem das telas: fluxo da categoria (com `exibir_se`
- * resolvido) seguido sempre pelos passos de contato. Boas-vindas, escolha de
- * categoria e confirmacao sao telas proprias, fora desta lista.
+ * A fila completa de passos da categoria, na ordem das telas e sem filtrar
+ * ramificacao: contato.abertura, fluxo da categoria, contato.fechamento.
+ *
+ * A ordem sai inteira do arvore.json -- nenhum id aparece hardcoded aqui. Por
+ * isso `contato` e um par de listas e nao uma lista so: e o JSON que diz que o
+ * WhatsApp abre o formulario e o e-mail fecha.
+ */
+function sequencia(categoria: Categoria): Passo[] {
+  return [
+    ...arvore.contato.abertura,
+    ...(arvore.fluxos[categoria] ?? []),
+    ...arvore.contato.fechamento,
+  ];
+}
+
+/**
+ * Passos de pergunta na ordem das telas, com `exibir_se` resolvido.
+ * Boas-vindas, escolha de categoria e confirmacao sao telas proprias, fora
+ * desta lista.
  *
  * Recalcular a cada resposta e obrigatorio: responder making_of = "Nao" remove
  * um passo do total e o denominador do progresso muda junto.
  */
 export function passosVisiveis(categoria: Categoria, respostas: Respostas): Passo[] {
-  const fluxo = arvore.fluxos[categoria] ?? [];
-  return [...fluxo, ...arvore.contato].filter((p) => condicaoAtendida(p, respostas));
+  return sequencia(categoria).filter((p) => condicaoAtendida(p, respostas));
 }
 
 /** Todos os ids que a categoria pode ter, incluindo os escondidos por ramificacao. */
 export function idsValidos(categoria: Categoria): Set<string> {
-  const fluxo = arvore.fluxos[categoria] ?? [];
-  return new Set([...fluxo, ...arvore.contato].map((p) => p.id));
+  return new Set(sequencia(categoria).map((p) => p.id));
 }
 
 export function passoPorId(categoria: Categoria, id: string): Passo | undefined {
-  const fluxo = arvore.fluxos[categoria] ?? [];
-  return [...fluxo, ...arvore.contato].find((p) => p.id === id);
+  return sequencia(categoria).find((p) => p.id === id);
 }
 
 export function proximoPasso(

@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { linkPropostaWhatsApp, mensagemProposta, normalizarNumero } from "./whatsapp";
+import {
+  linkPrimeiroContato,
+  linkPropostaWhatsApp,
+  mensagemPrimeiroContato,
+  mensagemProposta,
+  normalizarNumero,
+} from "./whatsapp";
 
 test("numero brasileiro ganha o DDI", () => {
   assert.equal(normalizarNumero("(19) 99999-8888"), "5519999998888");
@@ -44,4 +50,15 @@ test("a URL do PDF sobrevive ao encode", () => {
   const link = linkPropostaWhatsApp("19999998888", url);
   const texto = decodeURIComponent(new URL(link).searchParams.get("text") ?? "");
   assert.ok(texto.includes(url));
+});
+
+test("a porta 'Falar com a Mel' abre a conversa com a mensagem ja escrita", () => {
+  const link = linkPrimeiroContato("(19) 99999-8888");
+  // Caixa de texto vazia e onde a pessoa desiste: o texto pre-escrito e o
+  // motivo de esta porta existir.
+  assert.equal(
+    link,
+    `https://wa.me/5519999998888?text=${encodeURIComponent(mensagemPrimeiroContato())}`,
+  );
+  assert.ok(mensagemPrimeiroContato().length > 0);
 });

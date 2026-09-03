@@ -55,6 +55,24 @@ const SONDA = `(() => {
   // card. A terracota (#823B25) entra so como anel de foco, que nao cai em
   // color/background/border -- fica listada para o dia em que cair.
   const PALETA = new Set(['rgb(32, 19, 10)', 'rgb(241, 241, 241)', 'rgb(255, 255, 255)', 'rgb(130, 59, 37)', 'rgba(0, 0, 0, 0)']);
+  // Os modificadores de opacidade do Tailwind v4 (border-foreground/25,
+  // text-primary-foreground/70) nao viram rgba(): compilam para
+  // color-mix(in oklab, ...) e o getComputedStyle devolve oklab(). E o mesmo
+  // pigmento da marca com alfa -- a comparacao aqui e por valor, com
+  // tolerancia, porque a serializacao tem casas decimais que variam.
+  const OKLAB_MARCA = [
+    [0.201556, 0.0155654, 0.0223916],  // #20130A, o escuro da marca
+    [0.958141, 0.0000436902, 0.0000191331],  // #F1F1F1, o claro
+    [1, 0, 0],  // branco, a superficie de card
+  ];
+  const ehOklabDaMarca = (v) => {
+    const m = /^oklab\\(\\s*(-?[\\d.]+)\\s+(-?[\\d.]+)\\s+(-?[\\d.]+)/.exec(v);
+    if (!m) return false;
+    const [l, a, b] = [Number(m[1]), Number(m[2]), Number(m[3])];
+    return OKLAB_MARCA.some(
+      ([L, A, B]) => Math.abs(l - L) < 0.01 && Math.abs(a - A) < 0.01 && Math.abs(b - B) < 0.01,
+    );
+  };
   for (const el of document.querySelectorAll('*')) {
     // O indicador de dev do Next.js (<nextjs-portal>) nao e o app: usa Geist e
     // some no build de producao. Contar as cores e fontes dele daria falha
@@ -83,6 +101,7 @@ const SONDA = `(() => {
       const v = s[prop];
       // Escuro/claro com alfa continuam sendo a paleta: e o mesmo pigmento.
       const daPaleta = PALETA.has(v)
+        || ehOklabDaMarca(v)
         || /^rgba?\\(32, 19, 10(,|\\))/.test(v)
         || /^rgba?\\(0, 0, 0, 0(\\)|,)/.test(v)
         || /^rgba?\\(241, 241, 241(,|\\))/.test(v)
