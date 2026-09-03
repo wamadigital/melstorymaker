@@ -29,8 +29,22 @@ export default async function PaginaLeads({ searchParams }: { searchParams: Prom
       .from("leads")
       .select(COLUNAS_CARTAO, { count: "exact" })
       .eq("status", status)
-      .order("created_at", { ascending: false })
       .limit(LIMITE_COLUNA);
+
+    // "Enviado" ordena pelo ENVIO, do mais antigo para o mais novo. As outras
+    // raias seguem por criacao, do mais novo para o mais velho.
+    //
+    // A razao e o teto de LIMITE_COLUNA: "Enviado" e a raia que acumula (todo
+    // lead fica ali ate virar cliente ou perdido), e cobranca vencida so existe
+    // em quem foi enviado ha MAIS tempo. Ordenando por criacao, o dia em que a
+    // coluna passasse do teto seria o dia em que os vencidos parariam de ser
+    // buscados -- e o quadro deixaria de mostrar exatamente os cartoes que
+    // pedem acao, em silencio. Assim o corte cai sobre os envios recentes, que
+    // sao justamente os que nao precisam de nada.
+    c =
+      status === "enviado"
+        ? c.order("enviado_em", { ascending: true, nullsFirst: false })
+        : c.order("created_at", { ascending: false });
 
     if (termo) c = c.ilike("nome_display", `%${termo}%`);
     if (ehCategoria(categoria)) c = c.eq("categoria", categoria);

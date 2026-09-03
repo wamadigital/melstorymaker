@@ -84,6 +84,43 @@ export function estadoLembrete(
   return { dias, marco, pendente: jaCobrado ? null : marco, cobrado };
 }
 
+/**
+ * Ordem de atencao dentro da coluna: quem precisa de cobranca sobe.
+ *
+ * 30 dias vem antes de 7 porque e a ultima chance antes de o lead virar
+ * perdido -- o de 7 dias ainda aguenta um dia sem perder nada. Todo o resto
+ * empata em 2 e mantem a ordem que veio do servidor (mais novo primeiro),
+ * porque `sort` e estavel.
+ */
+export function prioridadeLembrete(estado: EstadoLembrete): number {
+  if (estado.pendente === 30) return 0;
+  if (estado.pendente === 7) return 1;
+  return 2;
+}
+
+/**
+ * Comparador de cartoes de uma mesma coluna. Cobranca vencida primeiro e,
+ * dentro da mesma faixa, quem espera ha mais tempo.
+ *
+ * Fora das faixas devolve 0 de proposito: ordenar os demais por tempo de
+ * espera inverteria, sem ninguem pedir, a ordem "mais novo primeiro" que o
+ * servidor ja aplicou.
+ */
+export function compararPorCobranca(
+  a: CamposLembrete,
+  b: CamposLembrete,
+  coluna: Status,
+  agoraMs: number,
+): number {
+  const ea = estadoLembrete(a, coluna, agoraMs);
+  const eb = estadoLembrete(b, coluna, agoraMs);
+  const pa = prioridadeLembrete(ea);
+  const pb = prioridadeLembrete(eb);
+  if (pa !== pb) return pa - pb;
+  if (pa === 2) return 0;
+  return (eb.dias ?? 0) - (ea.dias ?? 0);
+}
+
 /** Coluna do banco que guarda a data de cada marco. */
 export const COLUNA_LEMBRETE: Record<Marco, "lembrete_7_em" | "lembrete_30_em"> = {
   7: "lembrete_7_em",

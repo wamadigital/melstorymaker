@@ -98,7 +98,7 @@ export function ColunaKanban({
 
         {mostrando < total && (
           <p className="px-1 pt-1 text-center text-[0.6875rem] text-muted-foreground">
-            Mostrando os {mostrando} mais recentes de {total} — use a busca para achar um lead
+            Mostrando {mostrando} de {total} — use a busca para achar um lead
             antigo.
           </p>
         )}

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { diasCorridos, estadoLembrete, SEM_LEMBRETE } from "./lembretes";
+import { compararPorCobranca, diasCorridos, estadoLembrete, SEM_LEMBRETE } from "./lembretes";
 import { ROTULO_STATUS, TEMA_COLUNA } from "./rotulos";
 import { recusarMovimento } from "./status";
 import { STATUS, type Status } from "@/lib/form/types";
@@ -86,6 +86,69 @@ test("com as duas cobranças feitas o cartão silencia e mostra o selo de 30 dia
   const estado = estadoLembrete(tudoCobrado, "enviado", AGORA);
   assert.equal(estado.pendente, null);
   assert.equal(estado.cobrado, 30, "é este selo que diz à Mel que dá para arquivar");
+});
+
+test("cobrança vencida sobe na coluna, e o vermelho passa na frente do âmbar", () => {
+  // Ordem de leitura da Mel: o que precisa de ação primeiro. Os 30 dias vêm
+  // antes porque são a última chance antes do lead virar perdido; o de 7 dias
+  // ainda aguenta um dia.
+  const fila = [
+    { id: "novo", ...enviadoHa(1) },
+    { id: "ambar", ...enviadoHa(9) },
+    { id: "cobrado", ...enviadoHa(12), lembrete_7_em: new Date(AGORA - DIA).toISOString() },
+    { id: "vermelho", ...enviadoHa(33) },
+  ];
+  const ordenada = [...fila]
+    .sort((a, b) => compararPorCobranca(a, b, "enviado", AGORA))
+    .map((l) => l.id);
+  assert.deepEqual(ordenada, ["vermelho", "ambar", "novo", "cobrado"]);
+});
+
+test("dentro da mesma faixa, quem espera há mais tempo vem antes", () => {
+  const fila = [
+    { id: "8d", ...enviadoHa(8) },
+    { id: "25d", ...enviadoHa(25) },
+    { id: "12d", ...enviadoHa(12) },
+  ];
+  const ordenada = [...fila]
+    .sort((a, b) => compararPorCobranca(a, b, "enviado", AGORA))
+    .map((l) => l.id);
+  assert.deepEqual(ordenada, ["25d", "12d", "8d"]);
+});
+
+test("fora de Enviado o comparador não reordena nada", () => {
+  // Devolver 0 é o ponto: `sort` é estável, então a ordem que veio do servidor
+  // (mais novo primeiro) sobrevive nas outras quatro raias.
+  const fila = [
+    { id: "a", ...enviadoHa(40) },
+    { id: "b", ...enviadoHa(2) },
+    { id: "c", ...enviadoHa(90) },
+  ];
+  for (const coluna of ["incompleto", "aguardando_revisao", "virou_cliente", "perdido"] as const) {
+    const ordenada = [...fila]
+      .sort((a, b) => compararPorCobranca(a, b, coluna, AGORA))
+      .map((l) => l.id);
+    assert.deepEqual(ordenada, ["a", "b", "c"], `${coluna} não devia reordenar`);
+  }
+});
+
+test("cartões sem cobrança pendente mantêm a ordem do servidor", () => {
+  // Todos com lembrete já feito: nenhum é "vencido", então o comparador não
+  // pode inverter a fila só porque um é mais velho que o outro.
+  const feito = (d: number) => ({
+    ...enviadoHa(d),
+    lembrete_7_em: new Date(AGORA - DIA).toISOString(),
+    lembrete_30_em: d >= 30 ? new Date(AGORA - DIA).toISOString() : null,
+  });
+  const fila = [
+    { id: "primeiro", ...feito(35) },
+    { id: "segundo", ...feito(10) },
+    { id: "terceiro", ...feito(60) },
+  ];
+  const ordenada = [...fila]
+    .sort((a, b) => compararPorCobranca(a, b, "enviado", AGORA))
+    .map((l) => l.id);
+  assert.deepEqual(ordenada, ["primeiro", "segundo", "terceiro"]);
 });
 
 test("a mensagem de cobrança leva o link da proposta de volta", () => {
