@@ -94,7 +94,7 @@ Fonte única de verdade em `/lib/form/arvore.json`. O engine renderiza a partir 
     "titulo": "Oi! Eu sou a Mel ✨",
     "texto": "Vamos eternizar o seu momento? Escolhe por onde você prefere começar.",
     "cta_whatsapp": { "rotulo": "Falar com a Mel", "detalhe": "Tirar dúvidas agora, no WhatsApp" },
-    "cta_formulario": { "rotulo": "Quero um orçamento", "detalhe": "A proposta chega em 2 minutinhos" }
+    "cta_formulario": { "rotulo": "Quero um orçamento", "detalhe": "Proposta agilizada" }
   },
   "categoria": {
     "tipo": "escolha_unica",
