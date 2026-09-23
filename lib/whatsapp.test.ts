@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   linkPrimeiroContato,
+  linkRetomadaWhatsApp,
+  mensagemRetomada,
   linkPropostaWhatsApp,
   mensagemPrimeiroContato,
   mensagemProposta,
@@ -61,4 +63,28 @@ test("a porta 'Falar com a Mel' abre a conversa com a mensagem ja escrita", () =
     `https://wa.me/5519999998888?text=${encodeURIComponent(mensagemPrimeiroContato())}`,
   );
   assert.ok(mensagemPrimeiroContato().length > 0);
+});
+
+test("dá para chamar quem parou no meio do formulário, se deixou telefone", () => {
+  const link = linkRetomadaWhatsApp("(19) 99999-8888");
+  assert.equal(link, `https://wa.me/5519999998888?text=${encodeURIComponent(mensagemRetomada())}`);
+});
+
+test("sem telefone não há link de retomada — e não deve virar o seletor da Mel", () => {
+  // Devolver null é o ponto: o botão some. Um wa.me sem destinatário abriria a
+  // lista de conversas da própria Mel, o que não é chamar ninguém.
+  assert.equal(linkRetomadaWhatsApp(null), null);
+  assert.equal(linkRetomadaWhatsApp(""), null);
+  assert.equal(linkRetomadaWhatsApp("   "), null);
+});
+
+test("a mensagem de retomada não cumprimenta pelo nome nem manda link", () => {
+  const msg = mensagemRetomada();
+  // O lead abandonado típico respondeu SÓ o telefone: `nome` está vazio, e um
+  // "Oi, !" seria pior do que nenhum nome.
+  assert.ok(!msg.includes("Oi,"), "não pode tentar saudação nominal");
+  assert.ok(!msg.includes("undefined") && !msg.includes("null"));
+  // Sem link de volta ao formulário: quem parou já disse que não quer preencher.
+  assert.ok(!msg.includes("http"));
+  assert.ok(msg.trim().length > 0);
 });

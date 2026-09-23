@@ -5,6 +5,7 @@ import { Check, FileText, GripVertical, Mail, MessageCircle } from "lucide-react
 import { AcoesLead } from "@/components/admin/AcoesLead";
 import { BotaoLembrete } from "@/components/admin/BotaoLembrete";
 import { estadoLembrete, SELO_LEMBRETE, TEMA_LEMBRETE } from "@/lib/admin/lembretes";
+import { linkRetomadaWhatsApp } from "@/lib/whatsapp";
 import { DESCRICAO_COLUNA, TEMA_COLUNA, rotuloCategoria, rotuloPasso } from "@/lib/admin/rotulos";
 import type { LeadCartao } from "@/lib/admin/tipos";
 import type { Status } from "@/lib/form/types";
@@ -58,6 +59,12 @@ export function CartaoLead({
   // cliente" apaga a cobranca na hora, sem esperar o servidor responder.
   const lembrete = estadoLembrete(lead, coluna, agoraMs);
   const alerta = lembrete.pendente ? TEMA_LEMBRETE[lembrete.pendente] : null;
+
+  // Quem parou no meio do formulario mas deixou telefone: da para puxar a
+  // conversa. So em "Novo" -- de `aguardando_revisao` em diante a acao certa e
+  // gerar a proposta, nao conversar. Sem telefone nao ha botao, porque desde
+  // 03/09/2026 o lead so nasce COM ele: quem nao tem e registro antigo.
+  const chamar = coluna === "incompleto" ? linkRetomadaWhatsApp(lead.whatsapp) : null;
 
   return (
     <div
@@ -129,6 +136,24 @@ export function CartaoLead({
         {/* Rodape de cobranca. Fora do <Link> pelo mesmo motivo do menu: botao
             dentro de <a> e HTML invalido. So aparece quando ha o que dizer --
             um cartao de dois dias nao ganha linha nenhuma. */}
+        {!sobreposto && chamar && (
+          <div className="px-3 pb-3">
+            <a
+              href={chamar}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={cn(
+                "flex w-full items-center justify-center gap-1.5 rounded-md border px-2 py-1.5",
+                "text-xs font-semibold transition-colors",
+                "border-border bg-background hover:bg-muted",
+              )}
+            >
+              <MessageCircle className="size-3.5" />
+              Chamar no WhatsApp
+            </a>
+          </div>
+        )}
+
         {!sobreposto && (lembrete.pendente || lembrete.cobrado) && (
           <div className="px-3 pb-3">
             {lembrete.pendente ? (

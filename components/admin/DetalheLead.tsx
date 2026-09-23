@@ -22,7 +22,7 @@ import { sujeitoDoEvento } from "@/lib/leads";
 import { PreviaProposta } from "@/components/admin/PreviaProposta";
 import { CLASSE_STATUS, ROTULO_STATUS, rotuloCategoria } from "@/lib/admin/rotulos";
 import { dataHoraLocal } from "@/lib/pdf/formatadores";
-import { linkPropostaWhatsApp } from "@/lib/whatsapp";
+import { linkPropostaWhatsApp, linkRetomadaWhatsApp } from "@/lib/whatsapp";
 import { cn } from "@/lib/utils";
 
 type Aviso = { tom: "erro" | "ok" | "atencao"; texto: string };
@@ -52,6 +52,11 @@ export function DetalheLead({ lead }: { lead: Lead }) {
   // Cache-bust: sem isso o iframe mostra o PDF antigo depois de regerar, porque
   // a URL do Storage e sempre a mesma (de proposito, para o link do WhatsApp).
   const urlPreview = pdfUrl ? `${pdfUrl}?v=${encodeURIComponent(pdfGeradoEm ?? "")}` : null;
+
+  // Puxar conversa so faz sentido ANTES de existir proposta: com PDF gerado, o
+  // botao certo e "Enviar via WhatsApp", logo abaixo. Dois botoes de WhatsApp
+  // lado a lado obrigariam a Mel a escolher entre eles a cada lead.
+  const linkChamar = pdfUrl ? null : linkRetomadaWhatsApp(whatsapp);
 
   async function salvar() {
     setAcao("salvar");
@@ -321,6 +326,18 @@ export function DetalheLead({ lead }: { lead: Lead }) {
             )}
             Enviar por e-mail
           </Button>
+
+          {linkChamar && (
+            <a
+              href={linkChamar}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex h-9 items-center rounded-lg border border-border bg-background px-3 text-sm font-medium hover:bg-muted"
+            >
+              <MessageCircle className="mr-1.5 size-4" />
+              Chamar no WhatsApp
+            </a>
+          )}
 
           {pdfUrl && (
             <>

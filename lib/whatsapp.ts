@@ -55,6 +55,43 @@ export function linkPropostaWhatsApp(
 }
 
 /**
+ * Primeira mensagem para quem comecou o formulario e parou no meio.
+ *
+ * COPY PROVISORIA, escrita por mim -- a do owner entra por cima.
+ *
+ * Nao cumprimenta pelo nome de proposito: desde que o WhatsApp virou a PRIMEIRA
+ * pergunta, o lead abandonado tipico respondeu so o telefone, e `nome` esta
+ * vazio. Um "Oi, !" seria pior do que nenhum nome. Tambem nao diz em que
+ * pergunta a pessoa parou -- o painel sabe, mas repetir isso na conversa soa a
+ * vigilancia, e nao ajuda em nada.
+ *
+ * Sem link de volta para o formulario: a pessoa ja demonstrou que nao quer
+ * preencher. O caminho curto agora e a Mel puxar a conversa e perguntar ela
+ * mesma -- que e exatamente a porta "Falar com a Mel" da abertura.
+ */
+export function mensagemRetomada(): string {
+  return [
+    "Oi! Aqui é a Mel ✨",
+    "",
+    "Você começou a pedir um orçamento no meu site e acabou parando no meio 😊",
+    "",
+    "Se preferir, a gente resolve por aqui mesmo — me conta qual é o evento e a data que eu já te ajudo!",
+  ].join("\n");
+}
+
+/**
+ * Link do botao "Chamar no WhatsApp", no cartao da coluna "Novo" e no detalhe
+ * do lead. Sem numero devolve null: o botao simplesmente nao aparece, porque
+ * um wa.me sem destinatario abriria o seletor de conversas da propria Mel --
+ * que nao e chamar ninguem.
+ */
+export function linkRetomadaWhatsApp(whatsappLead: string | null | undefined): string | null {
+  const numero = normalizarNumero(whatsappLead);
+  if (!numero) return null;
+  return `https://wa.me/${numero}?text=${encodeURIComponent(mensagemRetomada())}`;
+}
+
+/**
  * Cobranca de quem recebeu a proposta e nao respondeu.
  *
  * COPY PROVISORIA, escrita por mim -- a do owner entra por cima. Duas regras
