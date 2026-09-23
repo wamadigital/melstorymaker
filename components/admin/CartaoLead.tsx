@@ -5,7 +5,7 @@ import { Check, FileText, GripVertical, Mail, MessageCircle } from "lucide-react
 import { AcoesLead } from "@/components/admin/AcoesLead";
 import { BotaoLembrete } from "@/components/admin/BotaoLembrete";
 import { estadoLembrete, SELO_LEMBRETE, TEMA_LEMBRETE } from "@/lib/admin/lembretes";
-import { linkRetomadaWhatsApp } from "@/lib/whatsapp";
+import { linkConversaLead } from "@/lib/whatsapp";
 import { DESCRICAO_COLUNA, TEMA_COLUNA, rotuloCategoria, rotuloPasso } from "@/lib/admin/rotulos";
 import type { LeadCartao } from "@/lib/admin/tipos";
 import type { Status } from "@/lib/form/types";
@@ -64,7 +64,10 @@ export function CartaoLead({
   // conversa. So em "Novo" -- de `aguardando_revisao` em diante a acao certa e
   // gerar a proposta, nao conversar. Sem telefone nao ha botao, porque desde
   // 03/09/2026 o lead so nasce COM ele: quem nao tem e registro antigo.
-  const chamar = coluna === "incompleto" ? linkRetomadaWhatsApp(lead.whatsapp) : null;
+  //
+  // Abre a conversa VAZIA: a mensagem quem escreve e a Mel (ver
+  // `linkConversaLead`).
+  const chamar = coluna === "incompleto" ? linkConversaLead(lead.whatsapp) : null;
 
   return (
     <div

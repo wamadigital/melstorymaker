@@ -198,7 +198,7 @@ Regras do engine:
 | RF-15 | Formatação pt-BR no PDF | Data em **DD/MM/AAAA** ("14/03/2026") e horário no padrão "19h30" |
 | RF-20 | Cobrança de lead sem retorno: aos 7 dias em "Enviado" o cartão fica âmbar com "Relembrar cliente"; aos 30, vermelho com "Última tentativa" | Botão abre o WhatsApp do lead com a mensagem e o link da proposta, e carimba o lembrete; cobrado, o cartão silencia e mostra "Lembrado aos N dias". Os vencidos sobem para o topo da coluna, o de 30 dias na frente do de 7 |
 | RF-21 | Coluna "Lead perdido" como 5ª raia do quadro | A Mel move o cartão pelo arraste ou pelo menu; nada vira perdido sozinho. No celular a raia nasce recolhida |
-| RF-22 | Botão "Chamar no WhatsApp" no lead de "Novo" que deixou telefone | Aparece no cartão do quadro e no detalhe do lead; abre a conversa com mensagem pronta convidando a terminar por lá. Some sem telefone, fora de "Novo", e no detalhe quando já há proposta gerada |
+| RF-22 | Botão "Chamar no WhatsApp" no lead de "Novo" que deixou telefone | Aparece no cartão do quadro e no detalhe do lead; abre a conversa do lead com a caixa vazia — a Mel escreve manualmente. Some sem telefone, fora de "Novo", e no detalhe quando já há proposta gerada |
 
 ## 8. Painel admin
 

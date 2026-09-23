@@ -22,7 +22,7 @@ import { sujeitoDoEvento } from "@/lib/leads";
 import { PreviaProposta } from "@/components/admin/PreviaProposta";
 import { CLASSE_STATUS, ROTULO_STATUS, rotuloCategoria } from "@/lib/admin/rotulos";
 import { dataHoraLocal } from "@/lib/pdf/formatadores";
-import { linkPropostaWhatsApp, linkRetomadaWhatsApp } from "@/lib/whatsapp";
+import { linkConversaLead, linkPropostaWhatsApp } from "@/lib/whatsapp";
 import { cn } from "@/lib/utils";
 
 type Aviso = { tom: "erro" | "ok" | "atencao"; texto: string };
@@ -56,7 +56,7 @@ export function DetalheLead({ lead }: { lead: Lead }) {
   // Puxar conversa so faz sentido ANTES de existir proposta: com PDF gerado, o
   // botao certo e "Enviar via WhatsApp", logo abaixo. Dois botoes de WhatsApp
   // lado a lado obrigariam a Mel a escolher entre eles a cada lead.
-  const linkChamar = pdfUrl ? null : linkRetomadaWhatsApp(whatsapp);
+  const linkChamar = pdfUrl ? null : linkConversaLead(whatsapp);
 
   async function salvar() {
     setAcao("salvar");
