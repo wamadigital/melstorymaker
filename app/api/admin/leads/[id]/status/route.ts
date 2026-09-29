@@ -1,9 +1,10 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { z } from "zod";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getSessaoAdmin } from "@/lib/supabase/server";
 import { STATUS, type Status } from "@/lib/form/types";
 import { MENSAGEM_RECUSA, recusarMovimento } from "@/lib/admin/status";
+import { enviarEventoDeStatus } from "@/lib/meta/lead";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -109,6 +110,10 @@ export async function PATCH(req: Request, { params }: Ctx) {
   // Unica trilha de auditoria que existe (logs da Vercel). Este e o primeiro
   // endpoint que deixa uma pessoa reescrever o pipeline: vale a linha.
   console.log(`[admin] status ${id}: ${atual} -> ${para}`);
+
+  // Meta: so depois de gravado. Status sem evento (ex.: voltar para revisao) e
+  // no-op dentro da funcao.
+  after(() => enviarEventoDeStatus(id, para));
 
   return NextResponse.json({ ok: true, status: salvo.status, enviado_em: salvo.enviado_em });
 }

@@ -46,6 +46,15 @@ const schema = z
       .string()
       .optional()
       .transform((v) => v === "1" || v?.toLowerCase() === "true"),
+
+    // --- Meta Pixel + Conversions API ---------------------------------------
+    // Todos opcionais e SEM validacao de formato aqui, de proposito: um id de
+    // Pixel torto nao pode derrubar a validacao inteira e levar junto o PDF e o
+    // e-mail. O formato e conferido na hora do uso (`configCapi`, `PixelMeta`),
+    // e o que nao bate so desliga a Meta.
+    META_PIXEL_ID: z.string().optional(),
+    META_CAPI_TOKEN: z.string().optional(),
+    META_CAPI_TEST_CODE: z.string().optional(),
   })
   // As credenciais do Gmail so sao exigidas quando o envio e real: com
   // MAIL_DRY_RUN=1 o e-mail vai para o log e nao precisa de conta nenhuma.

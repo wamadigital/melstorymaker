@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { BUCKET_PROPOSTAS, supabaseAdmin } from "@/lib/supabase/admin";
 import { getSessaoAdmin } from "@/lib/supabase/server";
 import { env } from "@/lib/env";
@@ -7,6 +7,7 @@ import { LIMITE_ANEXO_BYTES, montarEmail, NOME_ANEXO } from "@/lib/mail/template
 import { nomeContato, nomeDisplay } from "@/lib/leads";
 import { linkWhatsAppMel } from "@/lib/whatsapp";
 import type { Lead } from "@/lib/form/types";
+import { enviarEventoDeStatus } from "@/lib/meta/lead";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -86,6 +87,10 @@ export async function POST(_req: Request, { params }: Ctx) {
       .eq("id", id);
 
     if (error) throw new Error(error.message);
+
+    // Mesmo evento do cartao arrastado para "Enviado", com o mesmo event_id:
+    // reenviar o e-mail, ou mandar pelos dois caminhos, conta uma vez so.
+    after(() => enviarEventoDeStatus(id, "enviado"));
 
     return NextResponse.json({
       ok: true,

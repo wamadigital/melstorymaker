@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { PixelMeta } from "@/components/meta/PixelMeta";
 import { FormularioClient } from "./FormularioClient";
 
 export const metadata: Metadata = {
@@ -18,5 +19,11 @@ export default function PaginaFormulario() {
   // so nesta pagina, em vez de virar variavel publica de build.
   const whatsappMel = process.env.MEL_WHATSAPP ?? "";
 
-  return <FormularioClient whatsappMel={whatsappMel} />;
+  return (
+    <>
+      {/* Mesmo motivo do MEL_WHATSAPP: lido em runtime, sem virar NEXT_PUBLIC. */}
+      <PixelMeta pixelId={process.env.META_PIXEL_ID} />
+      <FormularioClient whatsappMel={whatsappMel} />
+    </>
+  );
 }

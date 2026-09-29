@@ -4,11 +4,14 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { passosVisiveis } from "@/lib/form/engine";
 import { validarPassos } from "@/lib/form/validacao";
 import type { Respostas } from "@/lib/form/types";
-import { colunasPromovidas } from "@/lib/leads";
+import { colunasPromovidas, nomeContato } from "@/lib/leads";
 import { excedeuLimite, ipDaRequisicao, LIMITES } from "@/lib/rate-limit";
 import { notificarMel } from "@/lib/notifica/adapter";
 import { mensagemNovoLead } from "@/lib/notifica/mensagem";
 import { env } from "@/lib/env";
+import { EVENTO, idEvento } from "@/lib/meta/eventos";
+import { enviarConversao } from "@/lib/meta/conversoes";
+import { origemDaRequisicao, rastreioDaRequisicao } from "@/lib/meta/rastreio";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -61,9 +64,10 @@ export async function POST(req: Request, { params }: Ctx) {
     );
   }
 
+  const promovidas = colunasPromovidas(lead.categoria, respostas);
   const { error } = await supabaseAdmin()
     .from("leads")
-    .update({ status: "aguardando_revisao", ...colunasPromovidas(lead.categoria, respostas) })
+    .update({ status: "aguardando_revisao", ...promovidas })
     .eq("id", id)
     .eq("status", "incompleto");
 
@@ -80,6 +84,30 @@ export async function POST(req: Request, { params }: Ctx) {
     await notificarMel(
       mensagemNovoLead(lead.categoria, respostas, `${env.APP_URL.replace(/\/+$/, "")}/admin`),
     );
+  });
+
+  // Meta Pixel: `SubmitApplication`, espelhando o que o navegador dispara com o
+  // mesmo event_id. Mesmo guard da notificacao -- so na transicao de fato.
+  // after() separado: um nao depende do outro terminar.
+  const rastreio = rastreioDaRequisicao(req);
+  const origem = origemDaRequisicao(req);
+  after(async () => {
+    await enviarConversao({
+      nome: EVENTO.submit,
+      id: idEvento("submit", id),
+      origem: "website",
+      url: origem.url,
+      categoria: lead.categoria,
+      pessoa: {
+        leadId: id,
+        email: promovidas.email,
+        whatsapp: promovidas.whatsapp,
+        nome: nomeContato(respostas),
+        ...rastreio,
+        ip: origem.ip,
+        userAgent: origem.userAgent,
+      },
+    });
   });
 
   return NextResponse.json({ ok: true, status: "aguardando_revisao" });

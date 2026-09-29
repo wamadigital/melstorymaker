@@ -30,6 +30,8 @@ import {
 } from "@/lib/form/engine";
 import { validarResposta } from "@/lib/form/validacao";
 import { isCategoria, type Categoria, type Respostas } from "@/lib/form/types";
+import { EVENTO, idEvento } from "@/lib/meta/eventos";
+import { rastrear } from "@/lib/meta/pixel";
 
 const CHAVE_LEAD = "mel:lead_id";
 
@@ -171,6 +173,9 @@ export function FormularioClient({ whatsappMel }: { whatsappMel: string }) {
         setLeadId(id);
         ultimoEnvio.current = rec;
         setOffline(false);
+        // O lead NASCEU: e aqui, e nao na escolha da categoria nem no fim, que
+        // mora o `Lead` da Meta. Mesmo event_id do servidor, que manda a copia.
+        rastrear(EVENTO.lead, { content_category: cat }, idEvento("lead", id));
         return id;
       } catch {
         setOffline(true);
@@ -281,6 +286,7 @@ export function FormularioClient({ whatsappMel }: { whatsappMel: string }) {
       if (!r.ok) throw new Error("submit");
 
       window.localStorage.removeItem(CHAVE_LEAD);
+      rastrear(EVENTO.submit, { content_category: cat }, idEvento("submit", id));
       setTela("confirmacao");
     } catch {
       setErro("Não consegui enviar agora. Confere sua conexão e tenta de novo?");
@@ -392,6 +398,10 @@ export function FormularioClient({ whatsappMel }: { whatsappMel: string }) {
                         href={linkPrimeiroContato(whatsappMel)}
                         target="_blank"
                         rel="noopener noreferrer"
+                        // Quem sai por esta porta nao vira lead no banco: o
+                        // `Contact` da Meta e o unico registro de que o anuncio
+                        // trouxe uma conversa.
+                        onClick={() => rastrear(EVENTO.contato)}
                         className={cn(
                           PORTA,
                           "border border-foreground/25 bg-card hover:border-foreground",

@@ -1,10 +1,14 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { z } from "zod";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { idsValidos, limparRespostasOrfas, passosVisiveis } from "@/lib/form/engine";
 import { CATEGORIAS, type Respostas } from "@/lib/form/types";
-import { colunasPromovidas } from "@/lib/leads";
+import { colunasPromovidas, nomeContato } from "@/lib/leads";
 import { excedeuLimite, ipDaRequisicao, LIMITES } from "@/lib/rate-limit";
+import { EVENTO, idEvento } from "@/lib/meta/eventos";
+import { enviarConversao } from "@/lib/meta/conversoes";
+import { guardarRastreio } from "@/lib/meta/lead";
+import { origemDaRequisicao, rastreioDaRequisicao } from "@/lib/meta/rastreio";
 
 // `respostas` e opcional no schema mas nao na pratica: o formulario so chama
 // esta rota no PRIMEIRO avanco, ja com o WhatsApp respondido. Opcional aqui
@@ -57,6 +61,7 @@ export async function POST(req: Request) {
   const passo_atual =
     pedido && visiveis.some((p) => p.id === pedido) ? pedido : (visiveis[0]?.id ?? null);
 
+  const promovidas = colunasPromovidas(categoria, respostas);
   const { data, error } = await supabaseAdmin()
     .from("leads")
     .insert({
@@ -66,7 +71,7 @@ export async function POST(req: Request) {
       passo_atual,
       // Promovidas ja na criacao: e o que faz o telefone aparecer na lista do
       // painel sem esperar o proximo autosave.
-      ...colunasPromovidas(categoria, respostas),
+      ...promovidas,
     })
     .select("id, categoria, passo_atual")
     .single();
@@ -75,6 +80,32 @@ export async function POST(req: Request) {
     console.error("[leads] falha ao criar lead", error);
     return NextResponse.json({ erro: "Não consegui salvar agora. Tenta de novo?" }, { status: 500 });
   }
+
+  // Meta Pixel (CLAUDE.md, "Meta Pixel"): o `Lead` sai aqui, no nascimento do
+  // lead, com o mesmo event_id que o navegador usa -- a Meta conta um so. Lido
+  // do request AGORA, antes do after(): e o request do proprio lead, com os
+  // cookies do Pixel, o ip e o navegador dele.
+  const rastreio = rastreioDaRequisicao(req);
+  const origem = origemDaRequisicao(req);
+  after(async () => {
+    await guardarRastreio(data.id, rastreio);
+    await enviarConversao({
+      nome: EVENTO.lead,
+      id: idEvento("lead", data.id),
+      origem: "website",
+      url: origem.url,
+      categoria,
+      pessoa: {
+        leadId: data.id,
+        email: promovidas.email,
+        whatsapp: promovidas.whatsapp,
+        nome: nomeContato(respostas),
+        ...rastreio,
+        ip: origem.ip,
+        userAgent: origem.userAgent,
+      },
+    });
+  });
 
   return NextResponse.json(data, { status: 201 });
 }
