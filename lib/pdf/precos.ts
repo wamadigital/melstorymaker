@@ -18,7 +18,7 @@ import type { TemplateId } from "@/lib/form/types";
  * preco, sem soma e sem calculo. O que existe aqui e roteamento de asset.
  */
 
-export const TABELAS_PRECO = ["2026", "2027"] as const;
+export const TABELAS_PRECO = ["2026", "2027", "2028"] as const;
 export type TabelaPreco = (typeof TABELAS_PRECO)[number];
 
 /**
@@ -40,6 +40,18 @@ const VIGENCIAS: { desdeAno: number; tabela: TabelaPreco }[] = [
   // passada, mas um lead antigo reaberto no painel nao pode ficar sem tabela.
   { desdeAno: 0, tabela: "2026" },
   { desdeAno: 2027, tabela: "2027" },
+  // A 2028 NAO entra aqui ainda, de proposito -- ver o comentario de PACOTES.
+];
+
+/**
+ * As tabelas que ALGUMA data alcanca -- ou seja, as que estao em vigencia.
+ *
+ * Diferente de `TABELAS_PRECO`, que inclui tabela ja aprovada mas ainda sem
+ * arte publicada. Quem precisa saber "esta tabela ja vale para um lead?" usa
+ * esta lista; quem precisa do conjunto de valores aprovados usa a outra.
+ */
+export const TABELAS_EM_VIGENCIA: readonly TabelaPreco[] = [
+  ...new Set(VIGENCIAS.map((v) => v.tabela)),
 ];
 
 /**
@@ -93,6 +105,27 @@ export function resolverTabelaPreco(dataISO: string): TabelaPreco | null {
  * arredondado para cima ate o numero comercial mais proximo. SO os pacotes
  * mudaram -- opcionais, locomocao, reserva de 30% e a validade de 3 meses
  * seguem identicos nas duas tabelas.
+ *
+ * Tabela 2028 aprovada pelo owner em 30/09/2026: +20% sobre a de 2027, com a
+ * MESMA grade de arredondamento da de 2027 -- para cima, ate o proximo numero
+ * terminado em 50 ou 90. A grade nao e folclore: aplicada com +15% sobre 2026
+ * ela reproduz os catorze valores de 2027 exatamente, e `precos.test.ts` prova
+ * isso. Desta vez os OPCIONAIS tambem foram reajustados (numa grade propria,
+ * ver `lib/contrato/catalogo.ts`); locomocao, reserva de 30% e validade de 3
+ * meses seguem iguais nas tres tabelas.
+ *
+ * A 2028 esta FORA de `VIGENCIAS` ate as cinco artes dela existirem. Ligar a
+ * vigencia sem a arte nao daria preco velho -- daria erro: arte faltando aborta
+ * a geracao (gotcha 6e do CLAUDE.md), e a Mel ficaria sem conseguir gerar
+ * proposta nenhuma para evento de 2028. Enquanto isso, evento de 2028 segue na
+ * tabela 2027, que e o comportamento de hoje.
+ *
+ * `npm run pdf:verificar` fica vermelho enquanto isso durar, e e ele que lembra
+ * de ligar a vigencia junto com a arte. A saida diz "tabela 2028 ainda nao tem
+ * vigencia" e lista as cinco combinacoes arte x tabela sem cenario
+ * (`debutante.2028` etc.). Nao lista caminho de arquivo: como nenhuma data cai
+ * em 2028, `gerarProposta` nunca tenta abrir a arte e o `ArteFaltandoError`
+ * nao chega a disparar -- isso so acontece depois que a vigencia for ligada.
  */
 export const PACOTES: Record<TabelaPreco, Record<TemplateId, { nome: string; valor: number }[]>> = {
   "2026": {
@@ -145,6 +178,32 @@ export const PACOTES: Record<TabelaPreco, Record<TemplateId, { nome: string; val
       { nome: "Pacote Pocket", valor: 950 },
       { nome: "Pacote Premium", valor: 1590 },
       { nome: "Pacote Luxo", valor: 2190 },
+    ],
+  },
+  "2028": {
+    debutante: [
+      { nome: "Pacote Básico", valor: 1550 },
+      { nome: "Pacote Premium", valor: 2150 },
+      { nome: "Pacote Luxo", valor: 2750 },
+    ],
+    aniversario_infantil: [
+      { nome: "Pacote Básico", valor: 1550 },
+      { nome: "Pacote Premium", valor: 1750 },
+      { nome: "Pacote Luxo", valor: 2390 },
+    ],
+    aniversario_adulto: [
+      { nome: "Pacote Pocket", valor: 1550 },
+      { nome: "Pacote Premium", valor: 1750 },
+      { nome: "Pacote Luxo", valor: 2150 },
+    ],
+    casamento: [
+      { nome: "Pacote Principal", valor: 1790 },
+      { nome: "Pacote Real Time", valor: 2550 },
+    ],
+    corporativo: [
+      { nome: "Pacote Pocket", valor: 1150 },
+      { nome: "Pacote Premium", valor: 1950 },
+      { nome: "Pacote Luxo", valor: 2650 },
     ],
   },
 };

@@ -12,6 +12,7 @@ import {
   catalogoDaArte,
   novoAdicional,
   pacoteDoCatalogo,
+  itensArteDaTabela,
   precoPacote,
   proximoIdLivre,
   valorCatalogoAdicional,
@@ -141,36 +142,146 @@ test("ids de adicional sao unicos na arte e levam o prefixo da arte (menos os co
   }
 });
 
-test("precos dos adicionais conforme a arte, em centavos", () => {
-  const valor = (t: (typeof TEMPLATES)[number], id: string) => adicionalDoCatalogo(t, id)?.valor;
-  assert.equal(valor("casamento", "casamento.hora_adicional"), 35000);
-  assert.equal(valor("casamento", "casamento.reels"), 30000);
-  assert.equal(valor("casamento", "casamento.making_of_noiva"), 38000);
-  assert.equal(valor("casamento", "casamento.making_of_noivo"), 38000);
-  assert.equal(valor("casamento", "casamento.polaroid"), 95000);
-  assert.equal(valor("debutante", "debutante.hora_adicional"), 20000);
-  assert.equal(valor("debutante", "debutante.trend"), 15000);
-  assert.equal(valor("debutante", "debutante.storymaker"), 50000);
-  assert.equal(valor("aniversario_infantil", "aniversario_infantil.hora_adicional"), 30000);
-  assert.equal(valor("aniversario_infantil", "aniversario_infantil.trend"), 18000);
-  assert.equal(valor("aniversario_infantil", "aniversario_infantil.storymaker"), 10000);
-  assert.equal(valor("aniversario_adulto", "aniversario_adulto.hora_adicional"), 35000);
-  assert.equal(valor("aniversario_adulto", "aniversario_adulto.reels"), 30000);
-  assert.equal(valor("aniversario_adulto", "aniversario_adulto.polaroid"), null, "sob consulta na arte");
-  assert.equal(valor("corporativo", "corporativo.hora_adicional"), 35000);
-  assert.equal(valor("corporativo", "corporativo.trend"), 25000);
-  assert.equal(valor("corporativo", "corporativo.reels"), 33000);
-  assert.equal(valor("corporativo", "locomocao"), null);
+/**
+ * Precos dos adicionais em CENTAVOS, como estao na pagina de Opcionais de cada
+ * arte: o que vale ate a tabela 2027 e o que passou a valer na de 2028.
+ *
+ * As duas colunas existem por causa de uma armadilha concreta: o catalogo
+ * pre-preenche contrato de QUALQUER ano, inclusive um de 2026 que a Mel reabra
+ * hoje. Se o reajuste de 2028 fosse escrito por cima do valor antigo, ele
+ * retroagiria sobre proposta ja aceita -- e ninguem veria, porque o numero
+ * simplesmente apareceria diferente no painel.
+ */
+const PRECOS_ADICIONAIS: [(typeof TEMPLATES)[number], string, number | null, number | null][] = [
+  ["casamento", "casamento.hora_adicional", 35000, 45000],
+  ["casamento", "casamento.reels", 30000, 40000],
+  ["casamento", "casamento.making_of_noiva", 38000, 50000],
+  ["casamento", "casamento.making_of_noivo", 38000, 50000],
+  ["casamento", "casamento.polaroid", 95000, 115000],
+  ["debutante", "debutante.hora_adicional", 20000, 25000],
+  ["debutante", "debutante.trend", 15000, 20000],
+  ["debutante", "debutante.storymaker", 50000, 60000],
+  ["aniversario_infantil", "aniversario_infantil.hora_adicional", 30000, 40000],
+  ["aniversario_infantil", "aniversario_infantil.trend", 18000, 25000],
+  ["aniversario_infantil", "aniversario_infantil.storymaker", 10000, 15000],
+  ["aniversario_adulto", "aniversario_adulto.hora_adicional", 35000, 45000],
+  ["aniversario_adulto", "aniversario_adulto.reels", 30000, 40000],
+  ["aniversario_adulto", "aniversario_adulto.polaroid", null, null],
+  ["corporativo", "corporativo.hora_adicional", 35000, 45000],
+  ["corporativo", "corporativo.trend", 25000, 30000],
+  ["corporativo", "corporativo.reels", 33000, 40000],
+];
+
+test("precos dos adicionais conforme a arte, em centavos, tabela a tabela", () => {
+  for (const [t, id, ate2027, de2028] of PRECOS_ADICIONAIS) {
+    const a = adicionalDoCatalogo(t, id);
+    assert.ok(a, `${t} / ${id} sumiu do catálogo`);
+    assert.equal(a.valor["2026"], ate2027, `${id} na tabela 2026`);
+    assert.equal(a.valor["2027"], ate2027, `${id} na tabela 2027`);
+    assert.equal(a.valor["2028"], de2028, `${id} na tabela 2028`);
+  }
+  assert.equal(adicionalDoCatalogo("corporativo", "locomocao")?.valor["2028"], null);
+});
+
+/**
+ * O reajuste de 2028 NAO pode retroagir. Este e o teste que pega alguem
+ * "atualizando o preco" no lugar, em vez de acrescentar a coluna da tabela nova.
+ */
+test("o reajuste de 2028 nao mexeu nas tabelas 2026 e 2027", () => {
+  for (const t of TEMPLATES) {
+    for (const a of catalogoDaArte(t).adicionais) {
+      assert.equal(a.valor["2026"], a.valor["2027"], `${a.id}: 2027 nunca reajustou opcional`);
+      for (const [pacote, porTab] of Object.entries(a.valorPorPacote ?? {})) {
+        assert.equal(porTab["2026"], porTab["2027"], `${a.id} / ${pacote}`);
+      }
+    }
+  }
+});
+
+/**
+ * Regra aprovada pelo owner em 30/09/2026: +20% sobre 2027, arredondado para
+ * CIMA ate o proximo multiplo de R$ 50. Grade propria, diferente da dos pacotes
+ * (50 ou 90) -- aplicada a valor de 2 ou 3 digitos, a dos pacotes distorceria
+ * demais. Este teste e o registro executavel da aprovacao: valor digitado
+ * errado e pego aqui, e nao na arte, onde preco e pixel e nenhum teste le.
+ */
+test("tabela 2028: +20% sobre a de 2027, teto no proximo multiplo de R$ 50", () => {
+  const grade = (centavos: number) => Math.ceil((centavos * 1.2) / 5000) * 5000;
+  let conferidos = 0;
+
+  for (const t of TEMPLATES) {
+    for (const a of catalogoDaArte(t).adicionais) {
+      const de2027 = a.valor["2027"];
+      if (de2027 !== null) {
+        assert.equal(a.valor["2028"], grade(de2027), `${a.id}`);
+        conferidos++;
+      } else {
+        assert.equal(a.valor["2028"], null, `${a.id} sem preço na arte continua sem preço`);
+      }
+      for (const [pacote, porTab] of Object.entries(a.valorPorPacote ?? {})) {
+        const base = porTab["2027"];
+        if (base === null) continue;
+        assert.equal(porTab["2028"], grade(base), `${a.id} / ${pacote}`);
+        conferidos++;
+      }
+    }
+  }
+  // Numero EXATO, e nao um minimo: 16 adicionais com preco na arte mais os 3
+  // do tempo real por pacote. Assim o teste tambem acusa preco que sumiu do
+  // catalogo -- que, sem isto, o faria passar em silencio, conferindo menos.
+  assert.equal(conferidos, 19, "mudou a quantidade de preços no catálogo");
 });
 
 test("entrega em tempo real do adulto tem preco por pacote, e so para pacotes que existem", () => {
   const item = adicionalDoCatalogo("aniversario_adulto", "aniversario_adulto.tempo_real")!;
-  assert.equal(valorCatalogoAdicional(item, "Pacote Pocket"), 40000);
-  assert.equal(valorCatalogoAdicional(item, "Pacote Premium"), 50000);
-  assert.equal(valorCatalogoAdicional(item, "Pacote Luxo"), 60000);
-  assert.equal(valorCatalogoAdicional(item, PACOTE_PERSONALIZADO), null);
+  assert.equal(valorCatalogoAdicional(item, "Pacote Pocket", "2027"), 40000);
+  assert.equal(valorCatalogoAdicional(item, "Pacote Premium", "2027"), 50000);
+  assert.equal(valorCatalogoAdicional(item, "Pacote Luxo", "2027"), 60000);
+  assert.equal(valorCatalogoAdicional(item, "Pacote Pocket", "2028"), 50000);
+  assert.equal(valorCatalogoAdicional(item, "Pacote Premium", "2028"), 60000);
+  assert.equal(valorCatalogoAdicional(item, "Pacote Luxo", "2028"), 75000);
+  assert.equal(valorCatalogoAdicional(item, PACOTE_PERSONALIZADO, "2027"), null);
+  assert.equal(valorCatalogoAdicional(item, PACOTE_PERSONALIZADO, "2028"), null);
   const nomes = PACOTES["2026"].aniversario_adulto.map((p) => p.nome);
   for (const pacote of Object.keys(item.valorPorPacote ?? {})) assert.ok(nomes.includes(pacote), pacote);
+});
+
+/**
+ * O bullet do tempo real (aniversario adulto) cita um preco que muda por
+ * tabela, entao ele e montado com marcador e resolvido por `itensArteDaTabela`.
+ *
+ * Este e o UNICO lugar onde esse texto pode ser provado: `itensArte` nunca
+ * chega ao PDF do contrato -- e lido so pelo painel --, entao o
+ * `contrato:verificar`, que inspeciona o texto renderizado, nao passa nem perto.
+ * Sem este teste, um marcador nao resolvido apareceria literalmente na tela em
+ * que a Mel confere "o que o lead leu", e nada acusaria.
+ */
+test("nenhum bullet da arte vaza marcador, em tabela nenhuma", () => {
+  for (const t of TEMPLATES) {
+    for (const p of catalogoDaArte(t).pacotes) {
+      for (const tabela of TABELAS_PRECO) {
+        for (const item of itensArteDaTabela(t, p.nome, tabela)) {
+          assert.ok(!item.includes("{") && !item.includes("}"), `${t} / ${p.nome} / ${tabela}: ${item}`);
+        }
+      }
+    }
+  }
+});
+
+test("o bullet do tempo real mostra o preço da tabela pedida", () => {
+  const bullet = (pacote: string, tabela: (typeof TABELAS_PRECO)[number]) =>
+    itensArteDaTabela("aniversario_adulto", pacote, tabela).find((i) =>
+      i.startsWith("Entrega em tempo real"),
+    );
+
+  assert.equal(bullet("Pacote Pocket", "2027"), "Entrega em tempo real: Adicional de R$ 400");
+  assert.equal(bullet("Pacote Premium", "2027"), "Entrega em tempo real: Adicional de R$ 500");
+  assert.equal(bullet("Pacote Luxo", "2027"), "Entrega em tempo real: Adicional de R$ 600");
+  // A tabela 2028 reajustou o tempo real: o texto acompanha, sem ninguem
+  // reescrever bullet nenhum.
+  assert.equal(bullet("Pacote Pocket", "2028"), "Entrega em tempo real: Adicional de R$ 500");
+  assert.equal(bullet("Pacote Premium", "2028"), "Entrega em tempo real: Adicional de R$ 600");
+  assert.equal(bullet("Pacote Luxo", "2028"), "Entrega em tempo real: Adicional de R$ 750");
 });
 
 test("making of do catalogo tem duracao padrao", () => {
@@ -189,7 +300,11 @@ test("adicional de outra arte nao e encontrado; o livre e encontrado em qualquer
 });
 
 test("novo adicional sai pre-preenchido e valido pelo schema", () => {
-  const noiva = novoAdicional(adicionalDoCatalogo("casamento", "casamento.making_of_noiva")!, "Pacote Principal");
+  const noiva = novoAdicional(
+    adicionalDoCatalogo("casamento", "casamento.making_of_noiva")!,
+    "Pacote Principal",
+    "2027",
+  );
   assert.deepEqual(noiva, {
     id: "casamento.making_of_noiva",
     tipo: "making_of",
@@ -201,15 +316,20 @@ test("novo adicional sai pre-preenchido e valido pelo schema", () => {
   assert.deepEqual(adicionalSchema.parse(noiva), noiva);
 
   const tempoReal = adicionalDoCatalogo("aniversario_adulto", "aniversario_adulto.tempo_real")!;
-  assert.equal(novoAdicional(tempoReal, "Pacote Premium").valorUnitario, 50000);
-  assert.equal(novoAdicional(tempoReal, PACOTE_PERSONALIZADO).valorUnitario, 0, "sem preco: a Mel digita");
-  assert.equal(novoAdicional(ADICIONAL_LOCOMOCAO, "Pacote Premium").valorUnitario, 0);
+  assert.equal(novoAdicional(tempoReal, "Pacote Premium", "2027").valorUnitario, 50000);
+  assert.equal(novoAdicional(tempoReal, "Pacote Premium", "2028").valorUnitario, 60000);
+  assert.equal(
+    novoAdicional(tempoReal, PACOTE_PERSONALIZADO, "2027").valorUnitario,
+    0,
+    "sem preco: a Mel digita",
+  );
+  assert.equal(novoAdicional(ADICIONAL_LOCOMOCAO, "Pacote Premium", "2027").valorUnitario, 0);
 });
 
 test("adicional livre ganha id 'livre-<n>' sem reusar numero", () => {
   assert.equal(proximoIdLivre([]), "livre-1");
   assert.equal(proximoIdLivre([{ id: "livre-1" }, { id: "casamento.reels" }, { id: "livre-4" }]), "livre-5");
-  const livre = novoAdicional(ADICIONAL_LIVRE, "Pacote Principal", [{ id: "livre-1" }]);
+  const livre = novoAdicional(ADICIONAL_LIVRE, "Pacote Principal", "2027", [{ id: "livre-1" }]);
   assert.equal(livre.id, "livre-2");
   assert.equal(livre.tipo, "outro");
   assert.equal(livre.descricao, "");
@@ -219,11 +339,18 @@ test("o catalogo devolvido e copia: editar o escopo no painel nao altera o catal
   const primeiro = catalogoDaArte("debutante");
   primeiro.pacotes[2].escopo.reels.push("inventado");
   primeiro.pacotes[2].escopo.minutosCobertura = 1;
-  primeiro.adicionais[0].valor = 1;
   const segundo = catalogoDaArte("debutante");
   assert.deepEqual(segundo.pacotes[2].escopo.reels, ["do ensaio fotográfico", "do making of", "resumo do evento"]);
   assert.equal(segundo.pacotes[2].escopo.minutosCobertura, 300);
-  assert.equal(segundo.adicionais[0].valor, 20000);
+  // `valor` e um objeto CONGELADO, compartilhado entre as copias: em vez de
+  // copiar a cada chamada ele simplesmente nao aceita edicao -- garantia mais
+  // forte, e barata, porque preco de catalogo nunca se edita em memoria.
+  try {
+    (primeiro.adicionais[0].valor as Record<string, number | null>)["2026"] = 1;
+  } catch {
+    // Em strict mode congelado lanca em vez de ignorar. As duas saidas servem.
+  }
+  assert.equal(segundo.adicionais[0].valor["2026"], 20000);
 
   const pacote = pacoteDoCatalogo("casamento", "Pacote Principal")!;
   pacote.escopo.extras.push("x");

@@ -266,7 +266,7 @@ export function dadosIniciais(lead: Lead, hojeISO: string): DadosContrato {
       pacote: doCatalogo ? doCatalogo.nome : "",
       valorPacote: doCatalogo && templateId ? (precoPacote(templateId, tabela, doCatalogo.nome) ?? 0) : 0,
       ...(doCatalogo ? { escopo: doCatalogo.escopo } : {}),
-      adicionais: makingOfNoiva ? [novoAdicional(makingOfNoiva, pacote)] : [],
+      adicionais: makingOfNoiva ? [novoAdicional(makingOfNoiva, pacote, tabela)] : [],
       desconto: 0,
     },
     pagamento: pagamentoDoPreset("30/70"),

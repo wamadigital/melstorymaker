@@ -58,7 +58,7 @@ function casamento(extra: (d: DadosContrato) => void = () => {}): DadosContrato 
       pacote: "Pacote Principal",
       valorPacote: 149000,
       escopo: pacoteDoCatalogo("casamento", "Pacote Principal")!.escopo,
-      adicionais: [novoAdicional(adicionalDoCatalogo("casamento", "casamento.making_of_noiva")!, "Pacote Principal")],
+      adicionais: [novoAdicional(adicionalDoCatalogo("casamento", "casamento.making_of_noiva")!, "Pacote Principal", "2027")],
     },
     pagamento: pagamentoDoPreset("30/70"),
   });
@@ -278,7 +278,7 @@ test("resumo com auxiliar por hora e com ensaio: o revisor le a equipe parcial e
       valorPacote: 145000,
       escopo: pacoteDoCatalogo("aniversario_infantil", "Pacote Premium")!.escopo,
       adicionais: [
-        { ...novoAdicional(adicionalDoCatalogo("aniversario_infantil", "aniversario_infantil.storymaker")!, "Pacote Premium"), quantidade: 2 },
+        { ...novoAdicional(adicionalDoCatalogo("aniversario_infantil", "aniversario_infantil.storymaker")!, "Pacote Premium", "2027"), quantidade: 2 },
       ],
     },
     pagamento: pagamentoDoPreset("30/70"),

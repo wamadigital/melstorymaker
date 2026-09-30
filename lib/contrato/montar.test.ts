@@ -145,7 +145,7 @@ function dadosDe(t: TemplateId, pacote: string, extra: Parcial = {}): DadosContr
 function adicional(t: TemplateId, id: string, pacote = "", extra: Parcial = {}) {
   const item = adicionalDoCatalogo(t, id);
   assert.ok(item, `adicional ${id} existe em ${t}`);
-  return { ...novoAdicional(item, pacote), ...extra };
+  return { ...novoAdicional(item, pacote, "2027"), ...extra };
 }
 
 // ------------------------------------------------------- conferencia geral --
@@ -678,7 +678,7 @@ test("adicionais variados: hora extra, trend por unidade, locomocao e servico li
         adicional("aniversario_infantil", "aniversario_infantil.hora_adicional", "Pacote Luxo", { quantidade: 2 }),
         adicional("aniversario_infantil", "aniversario_infantil.trend", "Pacote Luxo", { quantidade: 2 }),
         adicional("aniversario_infantil", "aniversario_infantil.storymaker", "Pacote Luxo", { quantidade: 3 }),
-        { ...novoAdicional(ADICIONAL_LOCOMOCAO, "Pacote Luxo"), valorUnitario: 15000 },
+        { ...novoAdicional(ADICIONAL_LOCOMOCAO, "Pacote Luxo", "2027"), valorUnitario: 15000 },
         {
           id: "livre-1",
           tipo: "outro",
@@ -811,7 +811,7 @@ test("anuente incompleto, local sem endereco e adicional sem valor entram na lis
         { rotulo: "", endereco: "" },
       ],
     },
-    servico: { adicionais: [{ ...novoAdicional(ADICIONAL_LOCOMOCAO, ""), valorUnitario: 0 }] },
+    servico: { adicionais: [{ ...novoAdicional(ADICIONAL_LOCOMOCAO, "", "2027"), valorUnitario: 0 }] },
   });
   const campos = faltantes(dados, contextoDe("casamento"));
   assert.ok(campos.includes("Anuente: nome completo"));
@@ -876,7 +876,7 @@ test("total de tabela: pacote e adicionais pelo catalogo; personalizado nao tem 
       valorPacote: 1,
       adicionais: [
         adicional("casamento", "casamento.making_of_noiva", "", { valorUnitario: 1 }),
-        { ...novoAdicional(ADICIONAL_LOCOMOCAO, ""), valorUnitario: 20000 },
+        { ...novoAdicional(ADICIONAL_LOCOMOCAO, "", "2027"), valorUnitario: 20000 },
       ],
     },
   });
@@ -917,7 +917,7 @@ test("aviso de making of a definir e de aniversario sem idade", () => {
 });
 
 test("storymaker adicional 'para a cobertura em tempo real' sem tempo real no escopo gera atencao", () => {
-  const storymaker = novoAdicional(adicionalDoCatalogo("debutante", "debutante.storymaker")!, "Pacote Luxo");
+  const storymaker = novoAdicional(adicionalDoCatalogo("debutante", "debutante.storymaker")!, "Pacote Luxo", "2027");
   const semTempoReal = dadosDe("debutante", "Pacote Luxo", { servico: { adicionais: [storymaker] } });
   const avisos = avisosDeterministicos(semTempoReal, contextoDe("debutante"));
   const aviso = avisos.find((a) => a.texto.startsWith("O storymaker adicional está descrito"));

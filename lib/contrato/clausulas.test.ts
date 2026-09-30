@@ -279,7 +279,7 @@ test("making of adicional: duracao por extenso", () => {
 });
 
 test("making ofs contados: o do pacote mais os adicionais", () => {
-  const noiva = novoAdicional(adicionalDoCatalogo("casamento", "casamento.making_of_noiva")!, "");
+  const noiva = novoAdicional(adicionalDoCatalogo("casamento", "casamento.making_of_noiva")!, "", "2027");
   const b = base("debutante", "Pacote Premium", (d) => {
     d.servico.adicionais = [noiva];
   }, 15);
@@ -526,7 +526,7 @@ function comStorymakerPorHora(horas: number, mudar: Mudar = () => {}) {
     "Pacote Premium",
     (d) => {
       const item = adicionalDoCatalogo("aniversario_infantil", "aniversario_infantil.storymaker")!;
-      d.servico.adicionais = [{ ...novoAdicional(item, "Pacote Premium"), quantidade: horas }];
+      d.servico.adicionais = [{ ...novoAdicional(item, "Pacote Premium", "2027"), quantidade: horas }];
       mudar(d);
     },
     6,
@@ -562,7 +562,7 @@ test("auxiliar por hora que cobre a cobertura inteira (ja somada a hora adiciona
   // Com 1 hora adicional a cobertura vai a 6 h, e as mesmas 5 h de auxiliar voltam a ser parciais.
   const comHoraExtra = comStorymakerPorHora(5, (d) => {
     const hora = adicionalDoCatalogo("aniversario_infantil", "aniversario_infantil.hora_adicional")!;
-    d.servico.adicionais.push(novoAdicional(hora, "Pacote Premium"));
+    d.servico.adicionais.push(novoAdicional(hora, "Pacote Premium", "2027"));
   });
   assert.equal(comHoraExtra.escopo.storymakers, 1);
   assert.ok(clausulaObjeto(comHoraExtra).paragrafos.includes("A cobertura contará, por até 5 (cinco) horas, com 1 (um) storymaker auxiliar."));
@@ -573,7 +573,7 @@ test("storymaker adicional por evento (debutante) continua sendo equipe a cobert
     "debutante",
     "Pacote Básico",
     (d) => {
-      d.servico.adicionais = [novoAdicional(adicionalDoCatalogo("debutante", "debutante.storymaker")!, "Pacote Básico")];
+      d.servico.adicionais = [novoAdicional(adicionalDoCatalogo("debutante", "debutante.storymaker")!, "Pacote Básico", "2027")];
     },
     15,
   );
@@ -596,7 +596,7 @@ test("adicional que indica segunda pessoa: todo storymaker e o livre que fala em
 });
 
 test("dois making ofs com adicional livre de auxiliar simultaneo: sem o paragrafo 'impossibilitando a realização simultânea'", () => {
-  const making = (id: string) => novoAdicional(adicionalDoCatalogo("casamento", id)!, "Pacote Principal");
+  const making = (id: string) => novoAdicional(adicionalDoCatalogo("casamento", id)!, "Pacote Principal", "2027");
   const semAuxiliar = base("casamento", "Pacote Principal", (d) => {
     d.servico.adicionais = [making("casamento.making_of_noiva"), making("casamento.making_of_noivo")];
   });

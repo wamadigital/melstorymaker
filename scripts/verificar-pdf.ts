@@ -110,6 +110,7 @@ const DATA_POR_TABELA: Record<TabelaPreco, string> = {
   // 1º de janeiro de proposito: e o dia em que a tabela vira, e onde um bug de
   // fuso horario apareceria.
   "2027": "2027-01-01",
+  "2028": "2028-01-01",
 };
 
 /** Cruzamento arte x tabela: e ele que prova que os DOIS jogos de PDF existem. */
@@ -137,15 +138,32 @@ async function main() {
   // As datas de exemplo precisam cair mesmo na tabela que dizem cobrir; sem
   // isto, mudar uma vigencia faria o script gerar a mesma arte duas vezes e
   // continuar verde, sem cobrir a outra tabela.
+  //
+  // Tabela SEM VIGENCIA e um estado previsto e diferente de data errada: a
+  // tabela nasce no codigo antes da arte existir, porque ligar a vigencia sem
+  // arte nao daria preco velho -- daria 409 na cara da Mel (gotcha 6e). As duas
+  // situacoes contam como falha, mas cada uma manda o leitor para um lugar.
+  const semVigencia = new Set<TabelaPreco>();
   for (const tabela of TABELAS_PRECO) {
     const resolvida = resolverTabelaPreco(DATA_POR_TABELA[tabela]);
-    if (resolvida !== tabela) {
+    if (resolvida === tabela) continue;
+
+    const nenhumaDataAlcanca = TABELAS_PRECO.every(
+      (t) => resolverTabelaPreco(DATA_POR_TABELA[t]) !== tabela,
+    );
+    if (nenhumaDataAlcanca) {
+      semVigencia.add(tabela);
+      console.error(
+        `✗ tabela ${tabela} ainda não tem vigência: nenhuma data cai nela, ` +
+          `então este script não consegue exercitá-la.`,
+      );
+    } else {
       console.error(
         `✗ data de exemplo da tabela ${tabela} (${DATA_POR_TABELA[tabela]}) ` +
           `resolve para ${resolvida ?? "nenhuma"}. Ajuste DATA_POR_TABELA.`,
       );
-      falhas++;
     }
+    falhas++;
   }
 
   for (const { rotulo, categoria, respostas, tabela } of CENARIOS) {
@@ -216,6 +234,14 @@ async function main() {
   if (semCenario.length) {
     console.error(`\n✗ combinações arte × tabela sem cenário: ${semCenario.join(", ")}`);
     falhas++;
+  }
+
+  if (semVigencia.size) {
+    console.error(
+      `\n  Para ligar a vigência de ${[...semVigencia].sort().join(", ")}: publique as 5 artes ` +
+        `da tabela\n  e acrescente a linha em VIGENCIAS, em lib/pdf/precos.ts. As duas coisas ` +
+        `andam juntas —\n  vigência sem arte faz a geração abortar com 409 para todo evento do ano.\n`,
+    );
   }
 
   if (artesAusentes.size) {

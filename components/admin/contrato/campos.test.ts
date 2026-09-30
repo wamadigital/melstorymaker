@@ -91,8 +91,8 @@ test("CEP pela metade (PF e sede da empresa) leva ao campo do CEP", () => {
 test("adicional e citado pela posicao ou pela descricao, e o atalho vai para o adicional certo", () => {
   const noiva = adicionalDoCatalogo("casamento", "casamento.making_of_noiva");
   assert.ok(noiva);
-  const livre = { ...novoAdicional(ADICIONAL_LIVRE, "Pacote Principal"), descricao: "" };
-  const comValorZero = { ...novoAdicional(noiva, "Pacote Principal"), valorUnitario: 0, minutos: 0 };
+  const livre = { ...novoAdicional(ADICIONAL_LIVRE, "Pacote Principal", "2027"), descricao: "" };
+  const comValorZero = { ...novoAdicional(noiva, "Pacote Principal", "2027"), valorUnitario: 0, minutos: 0 };
   const d = dados({ servico: { tabela: "2026", adicionais: [livre, comValorZero] } });
   const lista = faltantes(d, ctx("casamento", "casamento"));
   assert.deepEqual(semAtalho(lista, d), []);

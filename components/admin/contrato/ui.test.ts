@@ -167,7 +167,7 @@ async function registrarTestes() {
         pacote: p.nome,
         valorPacote: 148500,
         escopo: p.escopo,
-        adicionais: [novoAdicional(noiva, p.nome)],
+        adicionais: [novoAdicional(noiva, p.nome, "2027")],
       },
       pagamento: pagamentoDoPreset("30/70"),
     });

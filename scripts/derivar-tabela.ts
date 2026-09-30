@@ -24,6 +24,7 @@ import path from "node:path";
 import { PDFDocument } from "pdf-lib";
 import { TEMPLATES, type TemplateId } from "@/lib/form/types";
 import { PACOTES, TABELAS_PRECO, type TabelaPreco } from "@/lib/pdf/precos";
+import { catalogoDaArte } from "@/lib/contrato/catalogo";
 import {
   ALTURA_A4,
   ALTURA_RASTER,
@@ -171,6 +172,27 @@ async function main() {
   console.log(`\n  \x1b[1mConfira na página de Pacotes (tabela ${destino}):\x1b[0m`);
   for (const { nome, valor } of PACOTES[destino][arte]) {
     console.log(`    ${nome.padEnd(22)} R$ ${valor}`);
+  }
+
+  // Desde a tabela 2028 os OPCIONAIS tambem mudam entre tabelas, e a pagina de
+  // Opcionais entra na derivacao junto com a de Pacotes. Como o preco e pixel e
+  // nenhum teste consegue le-lo da pagina, esta lista e a unica conferencia que
+  // existe para ela -- imprimi-la e o equivalente do que ja se fazia com os
+  // pacotes. Adicional sem preco na arte ("sob consulta") nao entra.
+  const opcionais = catalogoDaArte(arte).adicionais.flatMap((a) => {
+    if (a.valorPorPacote) {
+      return Object.entries(a.valorPorPacote)
+        .filter(([, v]) => v[destino] !== null)
+        .map(([pacote, v]) => ({ nome: `${a.nome} (${pacote})`, centavos: v[destino]! }));
+    }
+    return a.valor[destino] === null ? [] : [{ nome: a.nome, centavos: a.valor[destino]! }];
+  });
+
+  if (opcionais.length) {
+    console.log(`\n  \x1b[1mE na página de Opcionais (tabela ${destino}):\x1b[0m`);
+    for (const { nome, centavos } of opcionais) {
+      console.log(`    ${nome.padEnd(34)} R$ ${Math.round(centavos / 100)}`);
+    }
   }
 
   if (final > LIMITE_ALERTA) {

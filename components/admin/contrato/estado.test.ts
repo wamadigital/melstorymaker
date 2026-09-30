@@ -255,7 +255,7 @@ test("acrescentar um adicional depois do texto desatualiza (objeto e pagamento m
   const item = adicionalDoCatalogo("casamento", "casamento.hora_adicional");
   assert.ok(item);
   const comAdicional = structuredClone(dados);
-  comAdicional.servico.adicionais = [novoAdicional(item, dados.servico.pacote)];
+  comAdicional.servico.adicionais = [novoAdicional(item, dados.servico.pacote, "2027")];
   assert.equal(textoDesatualizado(documento, comAdicional, CTX), true);
 });
 

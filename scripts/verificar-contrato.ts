@@ -34,6 +34,7 @@ import path from "node:path";
 import { PDFDocument } from "pdf-lib";
 import { TEMPLATES, type Categoria, type TemplateId } from "@/lib/form/types";
 import { precoPacote, catalogoDaArte, adicionalDoCatalogo, novoAdicional, ADICIONAL_LIVRE, ADICIONAL_LOCOMOCAO, PACOTE_PERSONALIZADO } from "@/lib/contrato/catalogo";
+import { TABELAS_PRECO, type TabelaPreco } from "@/lib/pdf/precos";
 import { pagamentoDoPreset } from "@/lib/contrato/pagamento";
 import { formatarReais } from "@/lib/contrato/extenso";
 import { faltantes, montarContrato, totalContrato, type ContextoMontagem } from "@/lib/contrato/montar";
@@ -141,10 +142,10 @@ function dadosBase(t: TemplateId, pacote: string): DadosContrato {
       alimentacao: true,
     },
     servico: {
-      tabela: "2027",
+      tabela: TABELA_CENARIO,
       pacote,
       // Personalizado nao tem preco de tabela: a Mel digita.
-      valorPacote: precoPacote(t, "2027", pacote) ?? 1_200_00,
+      valorPacote: precoPacote(t, TABELA_CENARIO, pacote) ?? 1_200_00,
       escopo: doCatalogo.escopo,
       adicionais: [],
       desconto: 0,
@@ -154,10 +155,23 @@ function dadosBase(t: TemplateId, pacote: string): DadosContrato {
   });
 }
 
-function adicional(t: TemplateId, id: string, pacote: string, ajuste: Partial<Adicional> = {}): Adicional {
+/**
+ * Tabela dos cenarios. Constante, e nao "2027" solto: os adicionais passaram a
+ * ter preco por tabela, entao o pacote e o adicional de um mesmo cenario tem de
+ * sair da MESMA tabela -- senao o script compara um total contra outro ano.
+ */
+const TABELA_CENARIO: TabelaPreco = "2027";
+
+function adicional(
+  t: TemplateId,
+  id: string,
+  pacote: string,
+  ajuste: Partial<Adicional> = {},
+  tabela: TabelaPreco = TABELA_CENARIO,
+): Adicional {
   const item = adicionalDoCatalogo(t, id);
   if (!item) throw new Error(`adicional "${id}" não existe em ${t}`);
-  return { ...novoAdicional(item, pacote), ...ajuste };
+  return { ...novoAdicional(item, pacote, tabela), ...ajuste };
 }
 
 type Cenario = {
@@ -241,12 +255,12 @@ function cenarios(): Cenario[] {
   lista.push(
     cenario("casamento · adicionais variados + desconto", "casamento", "Pacote Principal", (d) => {
       const pacote = "Pacote Principal";
-      const livre = novoAdicional(ADICIONAL_LIVRE, pacote);
+      const livre = novoAdicional(ADICIONAL_LIVRE, pacote, TABELA_CENARIO);
       d.servico.adicionais = [
         adicional("casamento", "casamento.hora_adicional", pacote, { quantidade: 2 }),
         adicional("casamento", "casamento.reels", pacote),
         adicional("casamento", "casamento.polaroid", pacote),
-        { ...novoAdicional(ADICIONAL_LOCOMOCAO, pacote), valorUnitario: 150_00 },
+        { ...novoAdicional(ADICIONAL_LOCOMOCAO, pacote, TABELA_CENARIO), valorUnitario: 150_00 },
         {
           ...livre,
           descricao: "Vídeo de até 20 (vinte) minutos com os melhores momentos do evento, com captação e edição",
@@ -403,6 +417,24 @@ function cenarios(): Cenario[] {
     }),
   );
 
+  // A tabela 2028 reajustou TAMBEM os opcionais -- as anteriores nao. Este
+  // cenario e o unico lugar em que um contrato sai montado e renderizado com os
+  // valores novos de adicional, e por isso usa o tempo real do aniversario
+  // adulto: e o item cujo preco depende do pacote E da tabela, e o unico cujo
+  // valor tambem aparece no texto do bullet da arte.
+  lista.push(
+    cenario("adulto · tabela 2028 com tempo real", "aniversario_adulto", "Pacote Luxo", (d) => {
+      d.evento.data = "2028-05-20";
+      d.servico.tabela = "2028";
+      d.servico.valorPacote = precoPacote("aniversario_adulto", "2028", "Pacote Luxo") ?? 0;
+      d.servico.escopo.tempoReal = true;
+      d.servico.adicionais = [
+        adicional("aniversario_adulto", "aniversario_adulto.tempo_real", "Pacote Luxo", {}, "2028"),
+        adicional("aniversario_adulto", "aniversario_adulto.hora_adicional", "Pacote Luxo", { quantidade: 2 }, "2028"),
+      ];
+    }),
+  );
+
   lista.push(
     cenario("infantil · tabela 2026", "aniversario_infantil", "Pacote Básico", (d) => {
       d.evento.data = "2026-12-12";
@@ -542,7 +574,11 @@ async function textoDasPaginas(bytes: Uint8Array): Promise<string[]> {
 
 // ------------------------------------------------------------- conferencia --
 
-const PROIBIDOS = ["{{", "}}", "undefined", "NaN", "null", "R$ NaN"];
+// "{" e "}" sozinhos entram junto com a chave dupla: o catalogo passou a usar
+// marcador de chave SIMPLES ("{tempo_real}") no texto dos bullets da arte, e o
+// texto de contrato nao usa chave nenhuma -- entao proibir custa zero e pega o
+// marcador que escapou.
+const PROIBIDOS = ["{{", "}}", "{", "}", "undefined", "NaN", "null", "R$ NaN"];
 
 /** Tudo que o texto RESOLVIDO precisa cumprir. Devolve os problemas. */
 function conferirTexto(doc: DocumentoContrato): string[] {
@@ -663,6 +699,7 @@ async function main() {
   const lista = cenarios();
   let falhas = 0;
   const cobertos = new Set<string>();
+  const tabelasCobertas = new Set<TabelaPreco>();
 
   console.log(
     `\n  ${"cenário".padEnd(48)} ${"cláus.".padStart(6)} ${"pág".padStart(3)} ${"kB".padStart(4)} ${"ms".padStart(5)}  total`,
@@ -722,6 +759,7 @@ async function main() {
     }
 
     cobertos.add(`${t}|${c.dados.servico.pacote}`);
+    tabelasCobertas.add(c.dados.servico.tabela);
 
     if (problemas.length) {
       falhas++;
@@ -743,6 +781,20 @@ async function main() {
   }
   if (!TEMPLATES.every((t) => cobertos.has(`${t}|${PACOTE_PERSONALIZADO}`))) {
     console.error("\n✗ falta o pacote Personalizado em alguma arte");
+    falhas++;
+  }
+
+  // O contrato e o unico lugar do sistema em que preco vira NUMERO, e desde a
+  // tabela 2028 os adicionais tambem mudam por tabela. Sem esta trava, uma
+  // tabela nova entrava sem nenhum contrato montado com os valores dela -- e o
+  // script ficava verde, ao contrario do pdf:verificar, que cruza arte x tabela.
+  const semTabela = TABELAS_PRECO.filter((tp) => !tabelasCobertas.has(tp));
+  if (semTabela.length) {
+    console.error(
+      `\n✗ tabela(s) de preço sem nenhum cenário: ${semTabela.join(", ")}` +
+        `\n  Acrescente um cenário com essa tabela — de preferência um com adicional,` +
+        `\n  que é o que o reajuste de opcional pode quebrar em silêncio.`,
+    );
     falhas++;
   }
 

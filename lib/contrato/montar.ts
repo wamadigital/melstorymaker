@@ -211,7 +211,7 @@ export function totalDeTabela(servico: Servico, templateId: TemplateId): number 
   let total = pacote;
   for (const a of servico.adicionais) {
     const item = adicionalDoCatalogo(templateId, a.id);
-    const unitario = item ? valorCatalogoAdicional(item, servico.pacote) : null;
+    const unitario = item ? valorCatalogoAdicional(item, servico.pacote, servico.tabela) : null;
     total += a.quantidade * (unitario ?? a.valorUnitario);
   }
   return total;

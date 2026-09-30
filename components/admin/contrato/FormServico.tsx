@@ -19,13 +19,20 @@ import {
   adicionalDoCatalogo,
   novoAdicional,
   valorCatalogoAdicional,
+  itensArteDaTabela,
   type AdicionalCatalogo,
 } from "@/lib/contrato/catalogo";
 import { duracaoCurta, formatarReais, valorComExtenso } from "@/lib/contrato/extenso";
 import { totalContrato, totalDeTabela } from "@/lib/contrato/montar";
 import type { Adicional, Escopo, Servico } from "@/lib/contrato/tipos";
 import type { TemplateId } from "@/lib/form/types";
-import { anoDoEvento, resolverTabelaPreco, TABELAS_PRECO, type TabelaPreco } from "@/lib/pdf/precos";
+import {
+  anoDoEvento,
+  resolverTabelaPreco,
+  TABELAS_EM_VIGENCIA,
+  TABELAS_PRECO,
+  type TabelaPreco,
+} from "@/lib/pdf/precos";
 import { cn } from "@/lib/utils";
 import {
   Campo,
@@ -53,8 +60,8 @@ const OPCOES_EQUIPE = [
   { valor: "4", rotulo: "A Mel + 3 storymakers auxiliares" },
 ];
 
-function rotuloPrecoCatalogo(item: AdicionalCatalogo, pacote: string): string {
-  const valor = valorCatalogoAdicional(item, pacote);
+function rotuloPrecoCatalogo(item: AdicionalCatalogo, pacote: string, tabela: TabelaPreco): string {
+  const valor = valorCatalogoAdicional(item, pacote, tabela);
   if (valor === null) return item.valorPorPacote ? "depende do pacote" : "valor a combinar";
   const reais = formatarReais(valor);
   if (item.unidade === "hora") return `${reais} por hora`;
@@ -88,8 +95,27 @@ export function FormServico({
   const total = totalContrato(servico);
   const deTabela = templateId ? totalDeTabela(servico, templateId) : null;
 
+  // Os bullets vem da TABELA escolhida: no aniversario adulto o texto cita o
+  // preco da entrega em tempo real, que mudou na tabela 2028.
+  const itensDaArte =
+    templateId && servico.pacote ? itensArteDaTabela(templateId, servico.pacote, servico.tabela) : [];
+
   const tabelaDoEvento = resolverTabelaPreco(dataEvento);
   const anoEvento = anoDoEvento(dataEvento);
+
+  // Uma tabela nasce no codigo ANTES de a arte dela existir: os valores sao
+  // aprovados primeiro, a arte vem depois. Nesse intervalo ela aparece aqui
+  // para escolher, mas a PROPOSTA continua saindo pela tabela do ano do evento.
+  // Sem este aviso, contrato e proposta poderiam sair de anos diferentes sem
+  // ninguem perceber -- o risco que o cabecalho do catalogo diz querer evitar.
+  const tabelaSemArte = !TABELAS_EM_VIGENCIA.includes(servico.tabela);
+  const dicaTabela = tabelaSemArte
+    ? `A tabela ${servico.tabela} ainda não tem arte de proposta: o orçamento que o lead recebe sai pela tabela ${tabelaDoEvento ?? "do ano do evento"}. Use só se combinou o preço novo com o cliente.`
+    : anoEvento !== null && tabelaDoEvento
+      ? tabelaDoEvento === servico.tabela
+        ? `O evento é em ${anoEvento}: tabela ${tabelaDoEvento}.`
+        : `O evento é em ${anoEvento} (tabela ${tabelaDoEvento}). Use outra só se a proposta aceita foi dessa tabela.`
+      : "Sem a data do evento, confira a tabela à mão.";
 
   // ------------------------------------------------------------- acoes
   function escolherPacote(nome: string) {
@@ -108,7 +134,10 @@ export function FormServico({
       adicionais: servico.adicionais.map((a) => {
         const item = adicionalDoCatalogo(templateId, a.id);
         if (!item?.valorPorPacote) return a;
-        return { ...a, valorUnitario: valorCatalogoAdicional(item, nome) ?? a.valorUnitario };
+        return {
+          ...a,
+          valorUnitario: valorCatalogoAdicional(item, nome, servico.tabela) ?? a.valorUnitario,
+        };
       }),
     });
   }
@@ -121,12 +150,35 @@ export function FormServico({
     const novo = templateId ? precoPacote(templateId, tabela, servico.pacote) : null;
     const acompanha =
       novo !== null && (antigo === null || servico.valorPacote === antigo || servico.valorPacote === 0);
-    set({ tabela, valorPacote: acompanha ? novo : servico.valorPacote });
+
+    // Os ADICIONAIS seguem a MESMA regra. Ate a tabela 2027 isto nao era
+    // preciso -- opcional custava o mesmo nas duas --, mas a 2028 reajustou os
+    // opcionais tambem. Sem isto, trocar a tabela deixaria o contrato com
+    // pacote de um ano e opcionais de outro: sem erro, sem aviso, e invisivel
+    // para o compilador, porque a assinatura de `set` nao muda.
+    const adicionais = servico.adicionais.map((a) => {
+      const item = templateId ? adicionalDoCatalogo(templateId, a.id) : null;
+      if (!item) return a;
+      const deAgora = valorCatalogoAdicional(item, servico.pacote, tabela);
+      // Item sem preco na arte (locomocao, livre, polaroid do adulto) e sempre
+      // valor da Mel: nao ha tabela de onde puxar.
+      if (deAgora === null) return a;
+      const deAntes = valorCatalogoAdicional(item, servico.pacote, servico.tabela);
+      const naoMexeu = deAntes === null || a.valorUnitario === deAntes || a.valorUnitario === 0;
+      return naoMexeu ? { ...a, valorUnitario: deAgora } : a;
+    });
+
+    set({ tabela, valorPacote: acompanha ? novo : servico.valorPacote, adicionais });
   }
 
   function incluir(item: AdicionalCatalogo) {
     if (servico.adicionais.length >= MAXIMO_ADICIONAIS) return;
-    set({ adicionais: [...servico.adicionais, novoAdicional(item, servico.pacote, servico.adicionais)] });
+    set({
+      adicionais: [
+        ...servico.adicionais,
+        novoAdicional(item, servico.pacote, servico.tabela, servico.adicionais),
+      ],
+    });
   }
 
   const idsIncluidos = new Set(servico.adicionais.map((a) => a.id));
@@ -148,13 +200,7 @@ export function FormServico({
           valor={servico.tabela}
           onValor={escolherTabela}
           opcoes={TABELAS_PRECO.map((t) => ({ valor: t, rotulo: `Tabela ${t}` }))}
-          dica={
-            anoEvento !== null && tabelaDoEvento
-              ? tabelaDoEvento === servico.tabela
-                ? `O evento é em ${anoEvento}: tabela ${tabelaDoEvento}.`
-                : `O evento é em ${anoEvento} (tabela ${tabelaDoEvento}). Use outra só se a proposta aceita foi dessa tabela.`
-              : "Sem a data do evento, confira a tabela à mão."
-          }
+          dica={dicaTabela}
         />
         <CampoSelect
           id={ID.svPacote}
@@ -184,11 +230,11 @@ export function FormServico({
         />
       </div>
 
-      {pacoteAtual && pacoteAtual.itensArte.length > 0 && (
+      {pacoteAtual && itensDaArte.length > 0 && (
         <div className="rounded-lg bg-muted p-3 text-xs">
           <p className="font-medium">Como o {pacoteAtual.nome} está na arte</p>
           <ul className="mt-1 list-disc space-y-0.5 pl-4 text-muted-foreground">
-            {pacoteAtual.itensArte.map((item) => (
+            {itensDaArte.map((item) => (
               <li key={item}>{item}</li>
             ))}
           </ul>
@@ -224,6 +270,7 @@ export function FormServico({
             adicional={a}
             templateId={templateId}
             pacote={servico.pacote}
+            tabela={servico.tabela}
             onMudar={(patch) => setAdicional(i, patch)}
             onRemover={() => set({ adicionais: servico.adicionais.filter((_, j) => j !== i) })}
           />
@@ -240,7 +287,7 @@ export function FormServico({
                     <div className="min-w-0 flex-1">
                       <p className="text-sm">{item.nome}</p>
                       <p className="text-xs text-muted-foreground">
-                        {rotuloPrecoCatalogo(item, servico.pacote)}
+                        {rotuloPrecoCatalogo(item, servico.pacote, servico.tabela)}
                         {item.observacaoArte ? ` · ${item.observacaoArte}` : ""}
                       </p>
                     </div>
@@ -542,6 +589,7 @@ function AdicionalIncluido({
   adicional,
   templateId,
   pacote,
+  tabela,
   onMudar,
   onRemover,
 }: {
@@ -549,6 +597,7 @@ function AdicionalIncluido({
   adicional: Adicional;
   templateId: TemplateId | null;
   pacote: string;
+  tabela: TabelaPreco;
   onMudar: (patch: Partial<Adicional>) => void;
   onRemover: () => void;
 }) {
@@ -556,7 +605,7 @@ function AdicionalIncluido({
   const nome = item && item.tipo !== "outro" ? item.nome : "Adicional personalizado";
   const unidade = unidadeDoAdicional(templateId, adicional);
   const comQuantidade = temQuantidade(templateId, adicional);
-  const deCatalogo = item ? valorCatalogoAdicional(item, pacote) : null;
+  const deCatalogo = item ? valorCatalogoAdicional(item, pacote, tabela) : null;
   const subtotal = adicional.quantidade * adicional.valorUnitario;
   const rotuloValor =
     unidade === "hora" ? "Valor por hora" : unidade === "unidade" ? "Valor por unidade" : "Valor";
