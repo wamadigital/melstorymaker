@@ -53,7 +53,7 @@ Estas decisões já foram tomadas e não devem ser reabertas durante o desenvolv
 ### Fora do MVP (v2)
 
 1. Checagem de agenda / conflito de datas
-2. Aceite digital da proposta, contrato e pagamento
+2. Aceite digital da proposta e pagamento (o contrato saiu desta lista em 29/09/2026: ver seção 19, item 3)
 3. Notificações em tempo real para a Mel
 4. Analytics de funil e abandono por etapa
 5. Editor de template para a Mel (arte é controlada pelo Henrique via PR)
@@ -556,7 +556,7 @@ O MVP está pronto quando este cenário roda sem intervenção técnica:
 
 1. Tracking de abertura de e-mail e da proposta (exigiria migrar para um serviço transacional)
 2. Aceite da proposta na própria página (proposta como link web, PDF como derivado)
-3. Contrato e sinal (Stripe/Pix)
+3. Cobrança do sinal (Stripe/Pix). O contrato em si entrou no escopo em 29/09/2026, a pedido do owner: gerado no painel a partir do lead, com IA para as condições especiais e assinatura eletrônica pela iLoveAPI. Regras no CLAUDE.md, regra 8c e seção "Contrato: gotchas obrigatórios".
 4. Notificação de novo lead pra Mel
 5. Funil de abandono por etapa pra otimizar as perguntas
 6. Precificação dinâmica por pacote no formulário
