@@ -57,6 +57,7 @@ import {
 } from "@/lib/contrato/marcacao";
 import { sanitizarPdf } from "@/lib/contrato/texto";
 import type { Assinante, DocumentoContrato, PosicaoAssinatura } from "@/lib/contrato/tipos";
+import { CAIXA_LOGO_MEL, TRACADOS_LOGO_MEL } from "@/lib/marca/logo";
 import { carregarFontes } from "@/lib/pdf/fontes";
 import { hexParaRgb } from "@/lib/pdf/geometria";
 
@@ -101,6 +102,23 @@ const ESPACO_DEPOIS_TITULO_CLAUSULA = 4;
 const TITULO_DOCUMENTO = 14;
 const ENTRELINHA_TITULO_DOCUMENTO = TITULO_DOCUMENTO * 1.35;
 const ESPACO_DEPOIS_TITULO_DOCUMENTO = 22;
+
+/**
+ * Logo da Mel no topo da PRIMEIRA pagina, centrado (pedido do owner em
+ * 30/09/2026). 150 pt de largura e o tamanho de papel timbrado: le como marca
+ * sem disputar com o titulo em 14 pt logo abaixo, que e o que diz que tipo de
+ * documento e este. A altura sai da proporcao do desenho (274 x 38).
+ *
+ * So na primeira pagina: nas outras ele roubaria espaco de clausula sem dizer
+ * nada novo, e o rodape "Pagina X de Y" ja amarra as folhas.
+ */
+const LARGURA_LOGO = 150;
+const ALTURA_LOGO = (LARGURA_LOGO * CAIXA_LOGO_MEL.altura) / CAIXA_LOGO_MEL.largura;
+/** Topo do logo, a partir do topo da pagina: um pouco ACIMA da margem, como num timbrado. */
+const TOPO_LOGO = 48;
+const ESPACO_DEPOIS_LOGO = 26;
+/** Onde o titulo comeca na primeira pagina (nas outras, o corpo comeca na margem). */
+const INICIO_PRIMEIRA_PAGINA = Math.max(MARGEM_TOPO, TOPO_LOGO + ALTURA_LOGO + ESPACO_DEPOIS_LOGO);
 
 /** Item "A." pendurado: a letra na margem, o texto (e as linhas seguintes) alinhados depois dela. */
 const RECUO_ITEM = 20;
@@ -1066,6 +1084,8 @@ function diagramar(
   const localData = d.linhas(conteudo.localData, ESTILO_LOCAL_DATA);
   const fileiras = emFileiras(conteudo.assinaturas.map((a) => d.assinante(a)));
 
+  // O logo ocupa o topo da primeira pagina; o titulo comeca abaixo dele.
+  d.y = INICIO_PRIMEIRA_PAGINA;
   d.colocar(titulo, ESTILO_TITULO_DOCUMENTO, 0);
   partes.forEach((parte, i) =>
     d.colocar(parte, ESTILO_CORPO, i === 0 ? ESPACO_DEPOIS_TITULO_DOCUMENTO : ESPACO_PARAGRAFO),
@@ -1152,6 +1172,21 @@ export type ContratoRenderizado = {
   usouFallbackDeFonte: boolean;
 };
 
+/**
+ * O logo vetorial, centrado no topo. `drawSvgPath` poe a origem do SVG no
+ * ponto dado e inverte o eixo y (o SVG cresce para baixo), por isso o `y` e o
+ * TOPO do logo convertido para a base da pagina. Os furos das letras saem
+ * certos com o preenchimento padrao do pdf-lib (conferido em imagem contra o
+ * preenchimento par-impar em 30/09/2026).
+ */
+function desenharLogo(page: PDFPage): void {
+  const escala = LARGURA_LOGO / CAIXA_LOGO_MEL.largura;
+  const x = (LARGURA_PAGINA - LARGURA_LOGO) / 2;
+  for (const tracado of TRACADOS_LOGO_MEL) {
+    page.drawSvgPath(tracado.d, { x, y: ALTURA_PAGINA - TOPO_LOGO, scale: escala, color: TINTA });
+  }
+}
+
 const METADADOS = {
   titulo: "Contrato de prestação de serviços de storymaker",
   autor: "Mel Simão | Storymaker",
@@ -1195,6 +1230,7 @@ export async function renderizarContrato(
       negrito: page.node.newFontDictionary(fontes.negrito.name, fontes.negrito.ref),
     };
     for (const comando of comandos) desenharComando(page, chaves, fontes, comando);
+    if (i === 0) desenharLogo(page);
 
     const rodape = `Página ${i + 1} de ${paginas.length}`;
     desenharComando(page, chaves, fontes, {
