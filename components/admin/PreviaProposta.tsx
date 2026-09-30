@@ -1,12 +1,21 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Loader2, Maximize2 } from "lucide-react";
 import type { PDFDocumentLoadingTask, PDFDocumentProxy, RenderTask } from "pdfjs-dist";
 import { Button } from "@/components/ui/button";
 
 // O mesmo `sm` do Tailwind: acima disso vale o <iframe>, abaixo o nosso.
 const LARGURA_SM = 640;
+
+// A mesma previa serve a proposta e o contrato. O nome entra no titulo do
+// iframe (leitor de tela), na navegacao e nos recados de erro -- e "contrato"
+// e masculino, entao o artigo vem junto em vez de ser montado na hora.
+const NOMES = {
+  proposta: { da: "da proposta", a: "a proposta" },
+  contrato: { da: "do contrato", a: "o contrato" },
+} as const;
+type DocumentoPrevia = keyof typeof NOMES;
 
 /**
  * Previa da proposta no painel.
@@ -19,7 +28,7 @@ const LARGURA_SM = 640;
  * chegar nas outras paginas. Por isso abaixo de 640px a previa e desenhada por
  * nos, pagina inteira e uma de cada vez, com paginacao embaixo.
  */
-export function PreviaProposta({ url }: { url: string }) {
+export function PreviaProposta({ url, documento = "proposta" }: { url: string; documento?: DocumentoPrevia }) {
   const [celular, setCelular] = useState<boolean | null>(null);
 
   useEffect(() => {
@@ -49,13 +58,13 @@ export function PreviaProposta({ url }: { url: string }) {
     return <div className="aspect-[595/842] w-full rounded-lg border bg-muted sm:aspect-auto sm:h-[70vh]" />;
   }
 
-  if (celular) return <VisualizadorPaginado url={url} />;
+  if (celular) return <VisualizadorPaginado url={url} documento={documento} />;
 
   return (
     <iframe
       key={url}
       src={url}
-      title="Prévia da proposta"
+      title={`Prévia ${NOMES[documento].da}`}
       className="h-[70vh] w-full rounded-lg border bg-muted"
     />
   );
@@ -69,7 +78,28 @@ const DPR_MAX = 3;
 // bastante para o gesto nao parecer preso.
 const ARRASTE_MINIMO = 48;
 
-function VisualizadorPaginado({ url }: { url: string }) {
+/**
+ * A pagina inteira no canvas cabe na largura do celular, e por isso o corpo de
+ * 12 pt do contrato sai com ~5 px: serve para conferir a cara da pagina, nao
+ * para ler. Para ler, o mesmo arquivo em outra aba, no visualizador do
+ * aparelho (que tem zoom). Mesma URL: e o link que o painel ja usa.
+ */
+function LinkTelaCheia({ url }: { url: string }) {
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="inline-flex h-9 items-center rounded-lg border border-border bg-background px-3 text-sm font-medium hover:bg-muted"
+    >
+      <Maximize2 className="mr-1.5 size-4" />
+      Abrir PDF em tela cheia
+    </a>
+  );
+}
+
+/** Exportado para o teste de renderizacao; na tela, so a `PreviaProposta` o usa. */
+export function VisualizadorPaginado({ url, documento }: { url: string; documento: DocumentoPrevia }) {
   const caixaRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const docRef = useRef<PDFDocumentProxy | null>(null);
@@ -82,7 +112,9 @@ function VisualizadorPaginado({ url }: { url: string }) {
   const [pagina, setPagina] = useState(1);
   const [largura, setLargura] = useState(0);
   const [pintando, setPintando] = useState(true);
-  const [erro, setErro] = useState<string | null>(null);
+  // O que falhou, e nao a frase: a frase leva o nome do documento, que e
+  // prop, e mora na renderizacao para os efeitos dependerem so da url.
+  const [erro, setErro] = useState<"abrir" | "desenhar" | null>(null);
 
   // ------------------------------------------------------------ carregamento
   useEffect(() => {
@@ -124,7 +156,7 @@ function VisualizadorPaginado({ url }: { url: string }) {
       } catch (e) {
         console.error("[previa] falha ao abrir o PDF", e);
         if (vivo) {
-          setErro("Não consegui abrir a prévia aqui. Toque em Baixar PDF para ver a proposta.");
+          setErro("abrir");
           setPintando(false);
         }
       }
@@ -190,7 +222,7 @@ function VisualizadorPaginado({ url }: { url: string }) {
         if ((e as { name?: string })?.name === "RenderingCancelledException") return;
         console.error("[previa] falha ao desenhar a página", e);
         if (vivo) {
-          setErro("Não consegui desenhar esta página. Toque em Baixar PDF para ver a proposta.");
+          setErro("desenhar");
           setPintando(false);
         }
       }
@@ -227,9 +259,15 @@ function VisualizadorPaginado({ url }: { url: string }) {
 
   if (erro) {
     return (
-      <p role="status" className="rounded-lg border bg-muted p-4 text-sm text-muted-foreground">
-        {erro}
-      </p>
+      <div className="space-y-3">
+        <p role="status" className="rounded-lg border bg-muted p-4 text-sm text-muted-foreground">
+          {erro === "abrir" ? "Não consegui abrir a prévia aqui." : "Não consegui desenhar esta página."} Toque
+          em Baixar PDF para ver {NOMES[documento].a}.
+        </p>
+        <div className="flex justify-center">
+          <LinkTelaCheia url={url} />
+        </div>
+      </div>
     );
   }
 
@@ -253,7 +291,7 @@ function VisualizadorPaginado({ url }: { url: string }) {
       </div>
 
       {total > 1 && (
-        <nav aria-label="Páginas da proposta" className="flex items-center justify-center gap-4">
+        <nav aria-label={`Páginas ${NOMES[documento].da}`} className="flex items-center justify-center gap-4">
           <Button
             variant="outline"
             size="icon-lg"
@@ -279,6 +317,10 @@ function VisualizadorPaginado({ url }: { url: string }) {
           </Button>
         </nav>
       )}
+
+      <div className="flex justify-center">
+        <LinkTelaCheia url={url} />
+      </div>
     </div>
   );
 }

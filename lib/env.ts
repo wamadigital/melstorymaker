@@ -55,6 +55,31 @@ const schema = z
     META_PIXEL_ID: z.string().optional(),
     META_CAPI_TOKEN: z.string().optional(),
     META_CAPI_TEST_CODE: z.string().optional(),
+
+    // --- Contrato: IA (Anthropic) --------------------------------------------
+    // Opcional: sem ela o painel monta o contrato do mesmo jeito (o nucleo e
+    // deterministico) e so desliga as tres ajudas da IA -- preencher quem assina
+    // a partir de um texto colado, redigir as condicoes especiais e revisar.
+    // Sem `.min(1)` de proposito, como as da Meta: o .env.example traz a linha
+    // vazia, e "" aqui precisa significar "desligado", nao derrubar a validacao
+    // inteira e levar junto o PDF da proposta e o e-mail.
+    ANTHROPIC_API_KEY: z.string().optional(),
+
+    // --- Contrato: assinatura eletronica (iLoveAPI) --------------------------
+    // Todas opcionais. Sem a chave publica e com o dry run desligado, o botao
+    // "Enviar para assinatura" fica desabilitado com explicacao, e a rota
+    // responde 503. A secreta so seria usada para assinar o JWT localmente
+    // (hoje o token vem de /v1/auth com a publica); existe aqui para entrar na
+    // varredura de segredos do bundle desde ja.
+    ILOVEAPI_PUBLIC_KEY: z.string().optional(),
+    ILOVEAPI_SECRET_KEY: z.string().optional(),
+    // Mesma trava e mesma leitura do MAIL_DRY_RUN ("1" ou "true"): ligado, o
+    // envio loga um resumo sem PII e nada sai para o e-mail de ninguem. O
+    // .env.example traz 1; na Vercel vai 0.
+    ASSINATURA_DRY_RUN: z
+      .string()
+      .optional()
+      .transform((v) => v === "1" || v?.toLowerCase() === "true"),
   })
   // As credenciais do Gmail so sao exigidas quando o envio e real: com
   // MAIL_DRY_RUN=1 o e-mail vai para o log e nao precisa de conta nenhuma.

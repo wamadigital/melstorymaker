@@ -20,14 +20,63 @@ import { normalizarOpcoes, passosVisiveis } from "@/lib/form/engine";
 import type { Lead, Respostas, Status } from "@/lib/form/types";
 import { sujeitoDoEvento } from "@/lib/leads";
 import { PreviaProposta } from "@/components/admin/PreviaProposta";
+import { SecaoContrato } from "@/components/admin/contrato/SecaoContrato";
 import { CLASSE_STATUS, ROTULO_STATUS, rotuloCategoria } from "@/lib/admin/rotulos";
 import { dataHoraLocal } from "@/lib/pdf/formatadores";
 import { linkConversaLead, linkPropostaWhatsApp } from "@/lib/whatsapp";
 import { cn } from "@/lib/utils";
+import type { RegistroContrato, StatusContrato } from "@/lib/contrato/tipos";
 
 type Aviso = { tom: "erro" | "ok" | "atencao"; texto: string };
 
-export function DetalheLead({ lead }: { lead: Lead }) {
+/**
+ * O que a pagina (server component) le para a secao de contrato: o registro e
+ * as flags de ambiente. `hojeISO` e calculado no SERVIDOR, em America/Sao_Paulo
+ * -- sem isso o componente precisaria de `Date.now()` na renderizacao, e
+ * servidor e navegador discordariam na virada do dia.
+ */
+export type PropsContratoDoLead = {
+  registroContrato: RegistroContrato | null;
+  falhaAoLerContrato: boolean;
+  hojeISO: string;
+  iaDisponivel: boolean;
+  assinaturaConfigurada: boolean;
+  assinaturaDryRun: boolean;
+};
+
+/** O que a exclusao do lead leva junto, dito conforme o estado do contrato. */
+function textoExclusao(
+  sujeito: string,
+  statusContrato: StatusContrato | null,
+  contratoDesconhecido: boolean,
+): string {
+  const cabeca = `Excluir o lead ${sujeito || "sem nome"}?`;
+  const fim = "Não dá para desfazer.";
+  if (contratoDesconhecido) {
+    // A leitura do contrato falhou: pelo pior caso, que e haver um assinado.
+    return `${cabeca}\n\nIsso apaga também a proposta em PDF e o contrato deste lead, se houver, inclusive um contrato já assinado.\n\n${fim}`;
+  }
+  if (statusContrato === "assinado") {
+    return `${cabeca}\n\nIsso apaga também a proposta em PDF e o CONTRATO ASSINADO, com a trilha de auditoria. Se precisar guardar, baixe as cópias antes.\n\n${fim}`;
+  }
+  if (statusContrato === "enviado") {
+    return `${cabeca}\n\nIsso apaga também a proposta em PDF e o contrato, e cancela o envio para assinatura (os links que as pessoas receberam deixam de valer).\n\n${fim}`;
+  }
+  if (statusContrato) {
+    return `${cabeca}\n\nIsso apaga também a proposta em PDF e o contrato (dados, texto e PDF).\n\n${fim}`;
+  }
+  return `${cabeca}\n\nIsso apaga também a proposta em PDF. ${fim}`;
+}
+
+export function DetalheLead({
+  lead,
+  registroContrato,
+  falhaAoLerContrato,
+  hojeISO,
+  iaDisponivel,
+  assinaturaConfigurada,
+  assinaturaDryRun,
+}: { lead: Lead } & PropsContratoDoLead) {
   const router = useRouter();
 
   const [respostas, setRespostas] = useState<Respostas>(lead.respostas ?? {});
@@ -42,6 +91,14 @@ export function DetalheLead({ lead }: { lead: Lead }) {
 
   const [acao, setAcao] = useState<null | "salvar" | "gerar" | "enviar" | "excluir">(null);
   const [aviso, setAviso] = useState<Aviso | null>(null);
+
+  // Estado do contrato espelhado aqui so para a exclusao: a confirmacao diz o
+  // que vai junto, e o botao trava enquanto uma acao do contrato esta no meio
+  // (excluir durante um envio para assinatura deixaria o envio orfao).
+  const [statusContrato, setStatusContrato] = useState<StatusContrato | null>(
+    registroContrato?.status ?? null,
+  );
+  const [contratoOcupado, setContratoOcupado] = useState(false);
 
   const passos = passosVisiveis(lead.categoria, respostas);
   const email = respostas.contato_email ?? lead.email ?? "";
@@ -156,9 +213,7 @@ export function DetalheLead({ lead }: { lead: Lead }) {
   async function excluir() {
     // window.confirm de proposito, igual a lista: exclusao e irreversivel e nao
     // ha lixeira nem backup no plano gratuito.
-    const certeza = window.confirm(
-      `Excluir o lead ${sujeito || "sem nome"}?\n\nIsso apaga também a proposta em PDF. Não dá para desfazer.`,
-    );
+    const certeza = window.confirm(textoExclusao(sujeito, statusContrato, falhaAoLerContrato));
     if (!certeza) return;
 
     setAcao("excluir");
@@ -205,7 +260,7 @@ export function DetalheLead({ lead }: { lead: Lead }) {
             size="sm"
             className="ml-auto"
             onClick={excluir}
-            disabled={acao !== null}
+            disabled={acao !== null || contratoOcupado}
           >
             {acao === "excluir" ? (
               <Loader2 className="mr-1.5 size-4 animate-spin" />
@@ -402,6 +457,21 @@ export function DetalheLead({ lead }: { lead: Lead }) {
 
         {urlPreview && <PreviaProposta url={urlPreview} />}
       </section>
+
+      {/* ---------------------------------------------------------- contrato */}
+      <SecaoContrato
+        lead={lead}
+        registro={registroContrato}
+        falhaAoCarregar={falhaAoLerContrato}
+        hojeISO={hojeISO}
+        iaDisponivel={iaDisponivel}
+        assinaturaConfigurada={assinaturaConfigurada}
+        assinaturaDryRun={assinaturaDryRun}
+        statusLead={status}
+        onStatusLead={setStatus}
+        onStatusContrato={setStatusContrato}
+        onOcupado={setContratoOcupado}
+      />
     </div>
   );
 }

@@ -127,3 +127,117 @@ alter table leads enable row level security;
 insert into storage.buckets (id, name, public)
 values ('propostas', 'propostas', true)
 on conflict (id) do update set public = true;
+
+-- Contratos ----------------------------------------------------------------
+--
+-- Contrato de prestacao de servicos com o CLIENTE (a Mel e a CONTRATADA).
+-- Uma linha por lead: o contrato nasce do lead e morre com ele (`on delete
+-- cascade`). Os arquivos no bucket NAO caem pelo cascade -- a rota de exclusao
+-- do lead apaga a pasta `{lead_id}/` do bucket ANTES de apagar a linha.
+--
+-- E PII (CPF, endereco, e-mail de quem assina): tabela com RLS e zero
+-- policies, bucket PRIVADO, e o PDF so sai pela rota admin autenticada.
+--
+-- `dados` (o que a Mel preencheu), `documento` (o texto montado) e `avisos`
+-- sao jsonb pelo mesmo motivo de `leads.respostas`: mudar o formulario do
+-- contrato ou acrescentar uma clausula ao modelo nao vira migration.
+--
+-- Colunas INTERNAS (nunca vao para o navegador; o select do painel e
+-- explicito, em lib/supabase/contratos.ts): pdf_path, posicoes_assinatura,
+-- assinatura_token, assinado_path, trilha_path.
+
+create table if not exists contratos (
+  lead_id uuid primary key references leads(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  -- rascunho > redigido > pdf_gerado > enviado > assinado (ver o check abaixo).
+  -- Em `enviado` e `assinado` o texto esta TRAVADO.
+  status text not null default 'rascunho',
+  dados jsonb not null default '{}'::jsonb,
+  documento jsonb,
+  avisos jsonb not null default '[]'::jsonb,
+  redigido_em timestamptz,
+  revisado_em timestamptz,
+  pdf_path text,
+  pdf_sha256 text,
+  pdf_gerado_em timestamptz,
+  -- Onde o campo de assinatura de cada parte vai no PDF (pt, origem no topo).
+  -- Sai da mesma renderizacao que gravou o PDF: um nao existe sem o outro.
+  posicoes_assinatura jsonb,
+  assinatura_provedor text,
+  assinatura_token text,
+  assinatura_status text,
+  assinatura_signatarios jsonb,
+  assinatura_enviada_em timestamptz,
+  assinatura_atualizada_em timestamptz,
+  assinado_em timestamptz,
+  -- O PDF assinado e a trilha de auditoria sao IMUTAVEIS: gravados uma vez,
+  -- num caminho proprio de cada envio, e nunca sobrescritos.
+  assinado_path text,
+  trilha_path text
+);
+
+-- Mesma regra da tabela leads: `create table if not exists` nao acrescenta
+-- coluna a tabela que ja existe. Toda coluna tambem aqui embaixo. (`lead_id`
+-- fica de fora: nasce com a tabela, e `add column if not exists ... primary
+-- key` ja criou indice duplicado em versao antiga do Postgres.)
+alter table contratos add column if not exists created_at timestamptz not null default now();
+alter table contratos add column if not exists updated_at timestamptz not null default now();
+alter table contratos add column if not exists status text not null default 'rascunho';
+alter table contratos add column if not exists dados jsonb not null default '{}'::jsonb;
+alter table contratos add column if not exists documento jsonb;
+alter table contratos add column if not exists avisos jsonb not null default '[]'::jsonb;
+alter table contratos add column if not exists redigido_em timestamptz;
+alter table contratos add column if not exists revisado_em timestamptz;
+alter table contratos add column if not exists pdf_path text;
+alter table contratos add column if not exists pdf_sha256 text;
+alter table contratos add column if not exists pdf_gerado_em timestamptz;
+alter table contratos add column if not exists posicoes_assinatura jsonb;
+alter table contratos add column if not exists assinatura_provedor text;
+alter table contratos add column if not exists assinatura_token text;
+alter table contratos add column if not exists assinatura_status text;
+alter table contratos add column if not exists assinatura_signatarios jsonb;
+alter table contratos add column if not exists assinatura_enviada_em timestamptz;
+alter table contratos add column if not exists assinatura_atualizada_em timestamptz;
+alter table contratos add column if not exists assinado_em timestamptz;
+alter table contratos add column if not exists assinado_path text;
+alter table contratos add column if not exists trilha_path text;
+
+-- Status como text + check, e nao enum: valor novo e `drop` + `add` aqui, sem
+-- a danca do `alter type ... add value` fora de transacao que o lead_status
+-- exige. Os valores espelham STATUS_CONTRATO e STATUS_ASSINATURA
+-- (lib/contrato/tipos.ts) -- mudou la, muda aqui.
+alter table contratos drop constraint if exists contratos_status_check;
+alter table contratos add constraint contratos_status_check
+  check (status in ('rascunho', 'redigido', 'pdf_gerado', 'enviado', 'assinado'));
+
+alter table contratos drop constraint if exists contratos_assinatura_status_check;
+alter table contratos add constraint contratos_assinatura_status_check
+  check (
+    assinatura_status is null
+    or assinatura_status in ('enviado', 'concluido', 'recusado', 'expirado', 'cancelado')
+  );
+
+drop trigger if exists contratos_set_updated_at on contratos;
+create trigger contratos_set_updated_at
+  before update on contratos
+  for each row
+  execute function set_updated_at();
+
+-- RLS ligado e ZERO policies, como em leads: todo acesso passa pelas rotas do
+-- painel com a service role. O revoke e uma segunda porta: mesmo que alguem
+-- crie uma policy por engano, anon e authenticated nao tem privilegio na
+-- tabela. (A service role tem os proprios grants e atravessa o RLS.)
+alter table contratos enable row level security;
+revoke all on table contratos from anon, authenticated;
+
+-- Bucket PRIVADO: sem URL publica. O PDF sai so por
+-- /api/admin/leads/[id]/contrato/arquivo, com sessao e `Cache-Control:
+-- no-store`. So PDF e ate 10 MB: um contrato de 6 paginas tem ~30 kB, e a
+-- trava impede que o bucket vire deposito de outra coisa.
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('contratos', 'contratos', false, 10485760, array['application/pdf'])
+on conflict (id) do update
+  set public = false,
+      file_size_limit = excluded.file_size_limit,
+      allowed_mime_types = excluded.allowed_mime_types;

@@ -17,6 +17,11 @@ const SEGREDOS: [string, string][] = [
   ["SUPABASE_SERVICE_ROLE_KEY", process.env.SUPABASE_SERVICE_ROLE_KEY ?? ""],
   ["GMAIL_APP_PASSWORD", process.env.GMAIL_APP_PASSWORD ?? ""],
   ["META_CAPI_TOKEN", process.env.META_CAPI_TOKEN ?? ""],
+  // Contrato. A chave "publica" da iLoveAPI tambem e segredo: e ela que troca
+  // por token em /v1/auth e gasta os creditos de assinatura da conta.
+  ["ANTHROPIC_API_KEY", process.env.ANTHROPIC_API_KEY ?? ""],
+  ["ILOVEAPI_PUBLIC_KEY", process.env.ILOVEAPI_PUBLIC_KEY ?? ""],
+  ["ILOVEAPI_SECRET_KEY", process.env.ILOVEAPI_SECRET_KEY ?? ""],
 ];
 
 function* arquivos(dir: string): Generator<string> {

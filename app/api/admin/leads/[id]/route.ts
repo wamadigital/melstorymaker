@@ -5,6 +5,8 @@ import { getSessaoAdmin } from "@/lib/supabase/server";
 import { idsValidos, limparRespostasOrfas } from "@/lib/form/engine";
 import type { Respostas } from "@/lib/form/types";
 import { colunasPromovidas } from "@/lib/leads";
+import { lerRegistroInterno, removerArquivosDoLead } from "@/lib/supabase/contratos";
+import { AssinaturaError, provedorDoToken } from "@/lib/assinatura/adapter";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -66,6 +68,8 @@ export async function PATCH(req: Request, { params }: Ctx) {
  * de 19/08/2026 quem decide o que sai e a Mel, na tela. Apaga o PDF do Storage
  * junto -- deixar o arquivo orfao no bucket significaria que o link publico
  * continua abrindo a proposta de um lead que ela achou que tinha removido.
+ * Pelo mesmo motivo leva junto os PDFs do contrato (bucket privado `contratos`)
+ * e cancela o envio para assinatura que estiver aberto.
  *
  * Irreversivel: nao ha lixeira nem backup no plano gratuito. A confirmacao
  * mora na interface.
@@ -88,6 +92,25 @@ export async function DELETE(_req: Request, { params }: Ctx) {
 
   if (!lead) {
     return NextResponse.json({ erro: "Lead não encontrado." }, { status: 404 });
+  }
+
+  // Contrato primeiro. Um contrato aguardando assinatura tem links vivos na
+  // caixa de e-mail do cliente: sem cancelar, ele continuaria podendo assinar
+  // um contrato cujo lead a Mel apagou. Best effort -- a plataforma fora do ar
+  // nao pode impedir a Mel de apagar um lead; a falha fica no log.
+  await cancelarAssinaturaPendente(id);
+
+  // Os PDFs do contrato (rascunho, assinado, trilha) tem CPF e endereco: mesma
+  // regra do PDF da proposta, logo abaixo -- se nao sairem do bucket, o lead
+  // nao sai. A linha em `contratos` cai sozinha pelo `on delete cascade`.
+  try {
+    await removerArquivosDoLead(id);
+  } catch {
+    console.error(`[admin] exclusão abortada, arquivos do contrato de ${id} não saíram`);
+    return NextResponse.json(
+      { erro: "Não consegui apagar os arquivos do contrato, então não excluí o lead. Tenta de novo?" },
+      { status: 502 },
+    );
   }
 
   // Storage ANTES do banco: se a ordem fosse inversa e o remove falhasse, a
@@ -118,4 +141,25 @@ export async function DELETE(_req: Request, { params }: Ctx) {
   }
 
   return NextResponse.json({ ok: true, nome: lead.nome_display });
+}
+
+/**
+ * Anula na plataforma um envio para assinatura ainda aberto. Nunca lanca: ler
+ * o registro, achar o provedor ou cancelar podem falhar, e nenhum desses
+ * motivos justifica manter um lead que a Mel decidiu apagar. O log leva so o
+ * codigo do erro.
+ */
+async function cancelarAssinaturaPendente(id: string): Promise<void> {
+  try {
+    const contrato = await lerRegistroInterno(id);
+    const token = contrato?.assinatura_token;
+    if (contrato?.status !== "enviado" || !token) return;
+
+    const provedor = await provedorDoToken(token);
+    await provedor.cancelar(token);
+    console.log(`[admin] ${id}: envio para assinatura cancelado antes da exclusão (${provedor.nome})`);
+  } catch (e) {
+    const codigo = e instanceof AssinaturaError ? e.codigo : (e as Error)?.name ?? "erro";
+    console.warn(`[admin] ${id}: não consegui cancelar a assinatura pendente (${codigo})`);
+  }
 }

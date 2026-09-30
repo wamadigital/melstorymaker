@@ -8,6 +8,9 @@ const nextConfig: NextConfig = {
   outputFileTracingIncludes: {
     "/api/admin/leads/[id]/gerar-pdf": ["./assets/**/*"],
     "/admin/debug-template": ["./assets/**/*"],
+    // O contrato nao tem arte de fundo: so as fontes. Sem elas o PDF sai em
+    // Helvetica (fallback) e o painel avisa -- funciona, mas nao e a marca.
+    "/api/admin/leads/[id]/contrato/pdf": ["./assets/fonts/**/*"],
   },
 };
 
