@@ -56,3 +56,10 @@ next-env.d.ts
 
 # vinculo local do projeto Vercel
 .vercel
+
+# Contratos reais da Mel (CPF, endereço e e-mail de clientes). Servem só de
+# referência local para o modelo de contrato e NUNCA vão para o repositório.
+/contratos-passados/
+
+# saida do npm run contrato:verificar (contratos de exemplo, dados ficticios)
+/.contrato-verificacao
