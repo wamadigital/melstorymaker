@@ -9,7 +9,7 @@
 // Sem "server-only": o painel mostra cada parcela em R$ ao vivo e os erros de
 // `validarPagamento` inline, com as mesmas funcoes que a montagem usa.
 
-import type { Pagamento, Parcela, Vencimento } from "@/lib/contrato/tipos";
+import type { DadosContrato, InterpretacaoPagamento, Pagamento, Parcela, Vencimento } from "@/lib/contrato/tipos";
 import { centesimosDePercentual, formatarReais } from "@/lib/contrato/extenso";
 import { dataCurta } from "@/lib/pdf/formatadores";
 
@@ -70,68 +70,88 @@ export function dataDoVencimento(v: Vencimento, dataEventoISO: string): string |
 
 // ---------------------------------------------------------------- presets --
 
-export const PRESETS_PAGAMENTO_IDS = ["30/70", "15/15/70", "integral", "quitado"] as const;
+/**
+ * Os modelos que aparecem como botao no painel, nesta ordem. Pedido do owner em
+ * 30/09/2026: poucas opcoes prontas e, para o resto, texto livre ("8 vezes de
+ * R$ 100", "tudo depois da entrega") em vez de um editor de parcelas.
+ */
+export const PRESETS_PAGAMENTO_IDS = ["30/70", "50/50", "quitado", "personalizado"] as const;
 export type PresetPagamento = (typeof PRESETS_PAGAMENTO_IDS)[number];
+
+/**
+ * Estruturas que o painel nao oferece mais como botao, mas que continuam sendo
+ * dados validos: contrato salvo com elas segue montando igual, e os testes e o
+ * `contrato:verificar` as usam para exercitar sinal partido e pagamento a vista.
+ * Para a Mel, hoje, isso e "Personalizado".
+ */
+export type ModeloPagamento = PresetPagamento | "15/15/70" | "integral";
 
 type Preset = { rotulo: string; pagamento: () => Pagamento };
 
-const PRESETS: Record<PresetPagamento, Preset> = {
+const vazio = { quitadoEm: "", percentualSinalQuitado: 30, textoLivre: "", interpretacao: null } as const;
+
+const MODELOS: Record<ModeloPagamento, Preset> = {
   // O de sempre nas artes: 30% de reserva e o resto ate 10 dias antes (PIX).
   "30/70": {
     rotulo: "30% + 70%",
     pagamento: () => ({
+      ...vazio,
       modo: "parcelas",
       parcelas: [
         { percentual: 30, sinal: true, vencimento: { tipo: "assinatura" } },
         { percentual: 70, sinal: false, vencimento: { tipo: "dias_antes", dias: 10 } },
       ],
-      quitadoEm: "",
-      percentualSinalQuitado: 30,
     }),
   },
-  // Sinal partido em dois. A data da segunda metade fica VAZIA de proposito:
-  // e a Mel que combina, e a montagem acusa a falta em vez de inventar uma.
-  // As DUAS parcelas de 15% sao sinal, e isso nao e descuido (recomendacao
+  // Metade na assinatura (e ela que reserva a data) e metade no prazo de
+  // sempre do saldo. Decisao do owner em 30/09/2026.
+  "50/50": {
+    rotulo: "Metade-metade",
+    pagamento: () => ({
+      ...vazio,
+      modo: "parcelas",
+      parcelas: [
+        { percentual: 50, sinal: true, vencimento: { tipo: "assinatura" } },
+        { percentual: 50, sinal: false, vencimento: { tipo: "dias_antes", dias: 10 } },
+      ],
+    }),
+  },
+  // Ja pago antes do contrato. A data de quitacao e da Mel.
+  quitado: {
+    rotulo: "Já pago",
+    pagamento: () => ({ ...vazio, modo: "quitado", parcelas: [] }),
+  },
+  // Texto livre, interpretado pela IA na hora de gerar o texto do contrato.
+  personalizado: {
+    rotulo: "Personalizado",
+    pagamento: () => ({ ...vazio, modo: "personalizado", parcelas: [] }),
+  },
+  // Sinal partido em dois. As DUAS parcelas de 15% sao sinal (recomendacao
   // C03 da revisao juridica): nos contratos antigos so a primeira era
-  // "entrada", e lida contra quem redigiu a retencao caia de 30% para 15%. O
-  // texto trata cada uma como "parte do sinal" e deixa a reserva da data so
-  // no paragrafo-resumo (clausulas.ts, `clausulaPagamento`).
+  // "entrada", e lida contra quem redigiu a retencao caia de 30% para 15%.
   "15/15/70": {
     rotulo: "15% + 15% + 70%",
     pagamento: () => ({
+      ...vazio,
       modo: "parcelas",
       parcelas: [
         { percentual: 15, sinal: true, vencimento: { tipo: "assinatura" } },
         { percentual: 15, sinal: true, vencimento: { tipo: "data", data: "" } },
         { percentual: 70, sinal: false, vencimento: { tipo: "dias_antes", dias: 10 } },
       ],
-      quitadoEm: "",
-      percentualSinalQuitado: 30,
     }),
   },
-  // Tudo na assinatura, mas ainda com 30% identificado como SINAL: e o sinal
-  // que fica retido em caso de desistencia, e um contrato sem sinal deixaria a
-  // clausula de desistencia sem objeto.
+  // Tudo na assinatura, com 30% identificado como SINAL: e o sinal que fica
+  // retido em caso de desistencia.
   integral: {
     rotulo: "Tudo na assinatura",
     pagamento: () => ({
+      ...vazio,
       modo: "parcelas",
       parcelas: [
         { percentual: 30, sinal: true, vencimento: { tipo: "assinatura" } },
         { percentual: 70, sinal: false, vencimento: { tipo: "assinatura" } },
       ],
-      quitadoEm: "",
-      percentualSinalQuitado: 30,
-    }),
-  },
-  // Ja pago antes do contrato. A data de quitacao e da Mel.
-  quitado: {
-    rotulo: "Já pago",
-    pagamento: () => ({
-      modo: "quitado",
-      parcelas: [],
-      quitadoEm: "",
-      percentualSinalQuitado: 30,
     }),
   },
 };
@@ -145,23 +165,39 @@ function congelar<T>(obj: T): T {
 }
 
 /**
- * Os presets para os botoes do painel ("30% + 70%", "Tudo na assinatura"...),
- * na ordem de `PRESETS_PAGAMENTO_IDS`.
+ * Os modelos, com o rotulo do botao ("30% + 70%", "Metade-metade"...). Os
+ * botoes do painel sao os de `PRESETS_PAGAMENTO_IDS`.
  *
  * CONGELADOS: sao compartilhados. Para editar, use `pagamentoDoPreset`, que
  * devolve um objeto novo a cada chamada -- sem isso, a Mel mudando o
  * percentual de um contrato mudaria o preset do contrato seguinte.
  */
-export const PRESETS_PAGAMENTO: Readonly<Record<PresetPagamento, { readonly rotulo: string; readonly pagamento: Pagamento }>> =
+export const PRESETS_PAGAMENTO: Readonly<Record<ModeloPagamento, { readonly rotulo: string; readonly pagamento: Pagamento }>> =
   congelar(
     Object.fromEntries(
-      PRESETS_PAGAMENTO_IDS.map((id) => [id, { rotulo: PRESETS[id].rotulo, pagamento: PRESETS[id].pagamento() }]),
-    ) as Record<PresetPagamento, { rotulo: string; pagamento: Pagamento }>,
+      (Object.keys(MODELOS) as ModeloPagamento[]).map((id) => [id, { rotulo: MODELOS[id].rotulo, pagamento: MODELOS[id].pagamento() }]),
+    ) as Record<ModeloPagamento, { rotulo: string; pagamento: Pagamento }>,
   );
 
-/** Um pagamento NOVO a partir do preset (objeto proprio: pode ser editado a vontade). */
-export function pagamentoDoPreset(id: PresetPagamento): Pagamento {
-  return PRESETS[id].pagamento();
+/** Um pagamento NOVO a partir do modelo (objeto proprio: pode ser editado a vontade). */
+export function pagamentoDoPreset(id: ModeloPagamento): Pagamento {
+  return MODELOS[id].pagamento();
+}
+
+/**
+ * Qual botao do painel corresponde ao pagamento salvo, ou `null` quando as
+ * parcelas nao batem com nenhum modelo (contrato salvo antes da simplificacao,
+ * com 15/15/70 ou parcelas editadas a mao).
+ */
+export function presetDoPagamento(p: Pagamento): PresetPagamento | null {
+  if (p.modo === "quitado") return "quitado";
+  if (p.modo === "personalizado") return "personalizado";
+  const chave = (x: Pagamento) =>
+    JSON.stringify(x.parcelas.map((q) => [q.percentual, q.sinal, q.vencimento]));
+  for (const id of ["30/70", "50/50"] as const) {
+    if (chave(MODELOS[id].pagamento()) === chave(p)) return id;
+  }
+  return null;
 }
 
 // --------------------------------------------------------------- calculo --
@@ -188,6 +224,19 @@ function parteDoTotal(totalCentavos: number, centesimos: number): number {
   const quociente = Math.floor(produto / 10_000);
   const resto = produto % 10_000;
   return resto * 2 >= 10_000 ? quociente + 1 : quociente;
+}
+
+/**
+ * Como `parteDoTotal`, mas com o percentual em ate QUATRO casas (16,6667%): e
+ * o que a IA manda para "o resto em 3 vezes". Duas casas perderiam centavos
+ * demais para o residuo caber numa parcela so. Inteiros ate o fim.
+ */
+function parteDoTotalPrecisa(totalCentavos: number, percentual: number): number {
+  const p = Math.round(Math.max(0, percentual) * 10_000);
+  const produto = totalCentavos * p;
+  const quociente = Math.floor(produto / 1_000_000);
+  const resto = produto % 1_000_000;
+  return resto * 2 >= 1_000_000 ? quociente + 1 : quociente;
 }
 
 export function somaPercentuais(parcelas: readonly Pick<Parcela, "percentual">[]): number {
@@ -243,6 +292,10 @@ export function valorSinal(totalCentavos: number, pagamento: Pagamento): number 
   if (pagamento.modo === "quitado") {
     return parteDoTotal(totalCentavos, centesimosDePercentual(pagamento.percentualSinalQuitado));
   }
+  if (pagamento.modo === "personalizado") {
+    const interp = interpretacaoVigente(pagamento);
+    return interp ? calcularPersonalizado(totalCentavos, interp).sinal : 0;
+  }
   return calcularParcelas(totalCentavos, pagamento.parcelas)
     .filter((p) => p.sinal)
     .reduce((s, p) => s + p.valor, 0);
@@ -285,6 +338,14 @@ export function validarPagamento(p: Pagamento, total: number, dataEventoISO: str
   const erros: string[] = [];
   const hoje = diaDoCalendario(hojeISO);
   const evento = diaDoCalendario(dataEventoISO);
+
+  if (p.modo === "personalizado") {
+    // O resto (soma, vencimentos) so da para conferir depois que a IA
+    // interpreta o texto, na redacao -- e vira problema da clausula.
+    return p.textoLivre.trim().length < 5
+      ? ["Descreva a forma de pagamento (ex.: “30% de entrada na assinatura e o restante em 4 vezes, todo dia 10”)."]
+      : [];
+  }
 
   if (p.modo === "quitado") {
     const problema = problemaDaData(p.quitadoEm);
@@ -363,4 +424,122 @@ export function validarPagamento(p: Pagamento, total: number, dataEventoISO: str
   }
 
   return erros;
+}
+
+// ---------------------------------------------------------- personalizado --
+
+export type ItemPersonalizado = {
+  quantidade: number;
+  /** Centavos de cada parcela do grupo (menos a ultima, quando o arredondamento a acertou). */
+  valorParcela: number;
+  /** Centavos da ULTIMA parcela do grupo: igual a `valorParcela`, salvo o acerto de centavos. */
+  valorUltima: number;
+  /** Centavos do grupo inteiro (quantidade x valorParcela). */
+  valorGrupo: number;
+  vencimento: string;
+  sinal: boolean;
+  determinavel: boolean;
+};
+
+export type PersonalizadoCalculado = {
+  itens: ItemPersonalizado[];
+  /** Centavos. */
+  soma: number;
+  /** Centavos: a soma dos grupos que a Mel chamou de entrada/sinal/reserva. */
+  sinal: number;
+  /** O que BLOQUEIA o PDF: soma diferente do total, parcela sem vencimento, parcela zerada. */
+  problemas: string[];
+  /** O que a IA perguntou. Nao bloqueia sozinho; a montagem transforma em aviso. */
+  pendencias: string[];
+};
+
+/**
+ * A interpretacao da IA, se ela ainda descreve o texto ATUAL da Mel. Texto
+ * mudado depois da redacao = interpretacao velha, e o contrato pede para gerar
+ * o texto de novo em vez de sair com o combinado anterior.
+ */
+export function interpretacaoVigente(p: Pagamento): InterpretacaoPagamento | null {
+  if (p.modo !== "personalizado" || !p.interpretacao) return null;
+  return p.interpretacao.textoFonte.trim() === p.textoLivre.trim() ? p.interpretacao : null;
+}
+
+/**
+ * Os grupos da IA em centavos, com as conferencias que a IA nao faz por nos.
+ *
+ * O modelo so TRANSCREVE ("8 parcelas de R$ 100", "30%"); a conta e daqui, com
+ * a mesma aritmetica inteira dos modelos prontos. Percentual vira valor
+ * half-up e, se TODOS os grupos vieram em percentual e fecham 100%, o residuo
+ * de arredondamento vai para o ultimo grupo quando ele e de uma parcela so --
+ * exatamente como `calcularParcelas`. A soma que nao bate com o total NAO e
+ * corrigida: e o erro que a Mel precisa ver ("as 8 parcelas somam R$ 800,00").
+ */
+export function calcularPersonalizado(totalCentavos: number, interp: InterpretacaoPagamento): PersonalizadoCalculado {
+  exigirTotal(totalCentavos);
+
+  const itens: ItemPersonalizado[] = interp.grupos.map((g) => {
+    const valorParcela = g.valorCentavos ?? (g.percentual !== null ? parteDoTotalPrecisa(totalCentavos, g.percentual) : 0);
+    return {
+      quantidade: g.quantidade,
+      valorParcela,
+      valorUltima: valorParcela,
+      valorGrupo: valorParcela * g.quantidade,
+      vencimento: g.vencimento.trim(),
+      sinal: g.sinal,
+      determinavel: g.determinavel,
+    };
+  });
+
+  // Residuo de arredondamento: "o resto em 3 vezes" de R$ 1.970,00 da tres de
+  // R$ 656,67, que somam R$ 1.970,01. Quando o ULTIMO grupo veio em percentual
+  // e a diferenca nao passa de 1 centavo por parcela dele, ela vai para a
+  // ultima parcela ("2 de R$ 656,67 e 1 de R$ 656,66"), como nos modelos
+  // prontos. Diferenca maior e combinado errado, e fica para a Mel ver. O
+  // grupo continua um item so ("3 parcelas, sendo 2 de X e a ultima de Y"):
+  // partido em dois, o vencimento do grupo sairia repetido nos dois itens.
+  const ultimoGrupo = interp.grupos[interp.grupos.length - 1];
+  if (ultimoGrupo && ultimoGrupo.valorCentavos === null && ultimoGrupo.percentual !== null) {
+    const diferenca = totalCentavos - itens.reduce((s, i) => s + i.valorGrupo, 0);
+    const ultimo = itens[itens.length - 1];
+    if (diferenca !== 0 && Math.abs(diferenca) <= ultimo.quantidade) {
+      ultimo.valorUltima += diferenca;
+      ultimo.valorGrupo += diferenca;
+      if (ultimo.quantidade === 1) ultimo.valorParcela = ultimo.valorUltima;
+    }
+  }
+
+  const soma = itens.reduce((s, i) => s + i.valorGrupo, 0);
+  const sinal = itens.filter((i) => i.sinal).reduce((s, i) => s + i.valorGrupo, 0);
+
+  const problemas: string[] = [];
+  if (itens.length === 0) {
+    problemas.push(
+      "A IA não conseguiu identificar as parcelas no texto do pagamento. Reescreva a forma de pagamento com os valores e os vencimentos e gere o texto de novo.",
+    );
+  } else if (soma !== totalCentavos) {
+    problemas.push(
+      `As parcelas descritas somam ${formatarReais(soma)}, mas o valor total do contrato é ${formatarReais(totalCentavos)}. Ajuste a forma de pagamento (ou o valor) e gere o texto de novo.`,
+    );
+  }
+  itens.forEach((it, i) => {
+    if (!it.determinavel) problemas.push(`Parcela ${letraParcela(i)} (${it.vencimento}): falta dizer quando vence.`);
+    if (it.valorParcela <= 0 || it.valorUltima <= 0) problemas.push(`Parcela ${letraParcela(i)}: o valor ficou em ${formatarReais(0)}.`);
+  });
+
+  return { itens, soma, sinal, problemas, pendencias: [...interp.pendencias] };
+}
+
+/**
+ * Os dados que o navegador mandou, com a interpretacao do pagamento que o
+ * SERVIDOR tem. Quem grava a interpretacao e so a redacao, no servidor: o
+ * navegador pode estar com uma copia velha (ou com qualquer coisa), e o que
+ * vale e a que saiu da IA para aquele texto. Texto mudado = sem interpretacao.
+ */
+export function manterInterpretacao(recebidos: DadosContrato, salvos: DadosContrato | null | undefined): DadosContrato {
+  const pag = recebidos.pagamento;
+  const doServidor = salvos?.pagamento?.interpretacao ?? null;
+  const vale =
+    pag.modo === "personalizado" &&
+    doServidor !== null &&
+    doServidor.textoFonte.trim() === pag.textoLivre.trim();
+  return { ...recebidos, pagamento: { ...pag, interpretacao: vale ? doServidor : null } };
 }

@@ -10,22 +10,28 @@ import {
   GRAVIDADES_REVISAO,
   PROMPT_CONDICOES_ESPECIAIS,
   PROMPT_EXTRACAO,
+  PROMPT_PAGAMENTO,
   PROMPT_REVISAO,
   SCHEMA_CONDICOES_ESPECIAIS,
   SCHEMA_EXTRACAO,
+  SCHEMA_PAGAMENTO,
   SCHEMA_REVISAO,
   mensagemCondicoesEspeciais,
   mensagemExtracao,
+  mensagemPagamento,
   mensagemRevisao,
   type EntradaContratoIa,
+  type EntradaPagamentoIa,
   type EsquemaJson,
 } from "@/lib/contrato/prompts";
 import { limparCnpj } from "@/lib/contrato/documento";
 import {
   IDS_CLAUSULA,
   contratanteSchema,
+  grupoPagamentoSchema,
   type Aviso,
   type Contratante,
+  type GrupoPagamento,
 } from "@/lib/contrato/tipos";
 
 // A IA do contrato (SPEC secao 8, decisao travada 2). Ela faz TRES coisas e
@@ -138,9 +144,18 @@ export type ResultadoCondicoesEspeciais = {
   naoIncorporado: string[];
 };
 
+export type ResultadoPagamento = {
+  /** Grupos de parcelas iguais, como a IA leu o texto. A conta em R$ e de `calcularPersonalizado`. */
+  grupos: GrupoPagamento[];
+  /** Perguntas para a Mel sobre o que ficou indefinido. */
+  pendencias: string[];
+};
+
 export interface RedatorContrato {
   extrairContratante(texto: string): Promise<ResultadoExtracao>;
   redigirCondicoesEspeciais(e: EntradaRedacao): Promise<ResultadoCondicoesEspeciais>;
+  /** Pagamento "Personalizado": o texto livre da Mel em grupos de parcelas. */
+  interpretarPagamento(e: EntradaPagamentoIa): Promise<ResultadoPagamento>;
   revisar(e: EntradaRevisao): Promise<Aviso[]>;
 }
 
@@ -205,6 +220,9 @@ class RedatorIndisponivel implements RedatorContrato {
   async redigirCondicoesEspeciais(): Promise<ResultadoCondicoesEspeciais> {
     throw new IaIndisponivelError();
   }
+  async interpretarPagamento(): Promise<ResultadoPagamento> {
+    throw new IaIndisponivelError();
+  }
   async revisar(): Promise<Aviso[]> {
     throw new IaIndisponivelError();
   }
@@ -212,7 +230,7 @@ class RedatorIndisponivel implements RedatorContrato {
 
 // ------------------------------------------------------------- operacoes --
 
-export type Operacao = "extrair" | "redigir" | "revisar";
+export type Operacao = "extrair" | "redigir" | "pagamento" | "revisar";
 
 type ConfigOperacao = {
   sistema: string;
@@ -250,6 +268,17 @@ const OPERACOES: Record<Operacao, ConfigOperacao> = {
     prazoMs: PRAZO_LONGO_MS,
     retentativas: 1,
     seDemorar: "Tente de novo; se persistir, encurte as observações.",
+  },
+  // Transcrever um combinado de pagamento e texto curto, mas e DINHEIRO: vai
+  // em "high". O prazo e o da extracao -- a Mel espera por ele antes do texto.
+  pagamento: {
+    sistema: PROMPT_PAGAMENTO,
+    schema: SCHEMA_PAGAMENTO,
+    effort: "high",
+    recusa: "A IA recusou interpretar a forma de pagamento; reescreva o texto do pagamento e tente de novo.",
+    prazoMs: PRAZO_EXTRACAO_MS,
+    retentativas: 2,
+    seDemorar: "Tente de novo; se persistir, escreva a forma de pagamento em frases mais curtas.",
   },
   revisar: {
     sistema: PROMPT_REVISAO,
@@ -341,6 +370,20 @@ const saidaCondicoes = z.object({
   naoIncorporado: z.array(z.string()),
 });
 
+const saidaPagamento = z.object({
+  grupos: z.array(
+    z.object({
+      quantidade: z.number(),
+      valorCentavos: z.number().nullable(),
+      percentual: z.number().nullable(),
+      vencimento: z.string(),
+      sinal: z.boolean(),
+      determinavel: z.boolean(),
+    }),
+  ),
+  pendencias: z.array(z.string()),
+});
+
 const saidaRevisao = z.object({
   avisos: z.array(
     z.object({
@@ -382,6 +425,31 @@ export class RedatorAnthropic implements RedatorContrato {
       paragrafos,
       naoIncorporado: limparLista(saida.naoIncorporado),
     };
+  }
+
+  async interpretarPagamento(e: EntradaPagamentoIa): Promise<ResultadoPagamento> {
+    if (!e.texto.trim()) {
+      throw new IaError("Escreva a forma de pagamento antes de pedir à IA.", "vazio");
+    }
+    const saida = await this.chamar("pagamento", mensagemPagamento(e), saidaPagamento);
+    // Cada grupo passa pelo schema de dominio. Grupo fora da forma (valor e
+    // percentual juntos, nenhum dos dois, quantidade zero) nao e descartado em
+    // silencio: vira grupo de valor zero, que a conferencia acusa como
+    // problema da clausula -- a Mel ve que algo nao foi entendido.
+    const grupos = saida.grupos.map((g): GrupoPagamento => {
+      const umaForma = (g.valorCentavos === null) !== (g.percentual === null);
+      const candidato = {
+        quantidade: Math.max(1, Math.round(g.quantidade)),
+        valorCentavos: umaForma && g.valorCentavos !== null ? Math.round(g.valorCentavos) : umaForma ? null : 0,
+        percentual: umaForma ? g.percentual : null,
+        vencimento: g.vencimento.trim() || "sem vencimento informado",
+        sinal: g.sinal,
+        determinavel: g.determinavel && g.vencimento.trim() !== "",
+      };
+      const valido = grupoPagamentoSchema.safeParse(candidato);
+      return valido.success ? valido.data : { ...candidato, valorCentavos: 0, percentual: null, quantidade: 1 };
+    });
+    return { grupos, pendencias: limparLista(saida.pendencias) };
   }
 
   async revisar(e: EntradaRevisao): Promise<Aviso[]> {

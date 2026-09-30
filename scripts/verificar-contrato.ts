@@ -313,6 +313,76 @@ function cenarios(): Cenario[] {
   );
 
   lista.push(
+    cenario("casamento · metade-metade", "casamento", "Pacote Principal", (d) => {
+      d.pagamento = pagamentoDoPreset("50/50");
+    }, {
+      deveConter: [
+        "A. 50% (cinquenta por cento) do valor total",
+        "a título de sinal para garantir a reserva da data, a ser pago na assinatura deste contrato;",
+        "B. 50% (cinquenta por cento) do valor total",
+      ],
+    }),
+  );
+
+  // Pagamento "Personalizado": a interpretacao e a que a IA devolveria para o
+  // texto (sem chamar a IA -- este script e offline). O que se prova aqui e a
+  // parte do codigo: valores e extenso calculados, resto de centavos na
+  // ultima parcela, sinal so onde a Mel disse, desistencia sem sinal.
+  lista.push(
+    cenario("casamento · personalizado: entrada + 3 vezes", "casamento", "Pacote Principal", (d) => {
+      const texto = "30% de entrada na assinatura e o restante em 3 vezes, todo dia 10, de janeiro a março de 2027";
+      d.pagamento = {
+        ...pagamentoDoPreset("personalizado"),
+        textoLivre: texto,
+        interpretacao: {
+          textoFonte: texto,
+          pendencias: [],
+          grupos: [
+            { quantidade: 1, valorCentavos: null, percentual: 30, vencimento: "na assinatura deste contrato", sinal: true, determinavel: true },
+            { quantidade: 3, valorCentavos: null, percentual: 23.3333, vencimento: "mensalmente, todo dia 10, de janeiro a março de 2027", sinal: false, determinavel: true },
+          ],
+        },
+      };
+    }, {
+      deveConter: [
+        "A. R$ 447,00 (quatrocentos e quarenta e sete reais), a título de sinal para garantir a reserva da data, na assinatura deste contrato;",
+        "B. 3 (três) parcelas, sendo 2 (duas) de R$ 347,67",
+        "e a última de R$ 347,66",
+        "mensalmente, todo dia 10, de janeiro a março de 2027.",
+        "o sinal previsto na Cláusula",
+      ],
+    }),
+  );
+
+  lista.push(
+    cenario("aniversário · personalizado sem sinal (na entrega)", "aniversario_adulto", "Pacote Premium", (d) => {
+      const texto = "vai pagar tudo depois que eu entregar";
+      d.pagamento = {
+        ...pagamentoDoPreset("personalizado"),
+        textoLivre: texto,
+        interpretacao: {
+          textoFonte: texto,
+          pendencias: [],
+          grupos: [
+            {
+              quantidade: 1,
+              valorCentavos: totalContrato(d.servico),
+              percentual: null,
+              vencimento: "na entrega do material do evento",
+              sinal: false,
+              determinavel: true,
+            },
+          ],
+        },
+      };
+    }, {
+      deveConter: ["na entrega do material do evento.", "Adiado o evento a pedido da CONTRATANTE"],
+      naoDeveConter: ["o sinal previsto", "além do sinal", "equivalente ao sinal", "reserva da data somente"],
+      avisos: ["Nenhuma parcela é sinal"],
+    }),
+  );
+
+  lista.push(
     // Na debutante o storymaker adicional so existe para a cobertura em tempo
     // real (e o que a arte diz), entao o cenario liga o tempo real junto: sem
     // ele o contrato diria "para a cobertura em tempo real" ao lado de uma

@@ -1,5 +1,11 @@
 import "server-only";
-import type { Aviso, DocumentoContrato, PosicaoAssinatura, RegistroContrato } from "@/lib/contrato/tipos";
+import type {
+  Aviso,
+  DadosContrato,
+  DocumentoContrato,
+  PosicaoAssinatura,
+  RegistroContrato,
+} from "@/lib/contrato/tipos";
 import {
   caminhoRascunho,
   guardarPdf,
@@ -129,13 +135,16 @@ export async function gravarPdfGerado(
 export async function gravarTextoRedigido(
   id: string,
   base: RegistroContrato,
-  novo: { documento: DocumentoContrato; avisos: Aviso[] },
+  novo: { documento: DocumentoContrato; avisos: Aviso[]; dados?: DadosContrato },
   io: IoContrato = IO_BANCO,
 ): Promise<RegistroContrato> {
   const agora = await releituraCompativel(id, { dados: base.dados, documento: base.documento }, io);
   const registro = await io.salvar(
     id,
     {
+      // Os dados so voltam aqui quando a redacao os completou (a interpretacao
+      // do pagamento personalizado): gravados junto do texto que sai deles.
+      ...(novo.dados ? { dados: novo.dados } : {}),
       documento: novo.documento,
       avisos: novo.avisos,
       status: "redigido",

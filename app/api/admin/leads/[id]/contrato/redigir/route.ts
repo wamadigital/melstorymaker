@@ -1,9 +1,12 @@
 import { z } from "zod";
 import { anonimizar, anonimizarTexto, dadosPessoaisNoTexto, desanonimizar, resumoParaIa } from "@/lib/contrato/anonimizar";
+import { formatarReais } from "@/lib/contrato/extenso";
 import { criarRedator, iaDisponivel, IaError, IaIndisponivelError } from "@/lib/contrato/ia";
-import { faltantes, montarContrato, type ContextoMontagem } from "@/lib/contrato/montar";
+import { interpretacaoVigente, manterInterpretacao } from "@/lib/contrato/pagamento";
+import { faltantes, montarContrato, totalContrato, type ContextoMontagem } from "@/lib/contrato/montar";
 import { dadosContratoSchema, type Aviso, type DadosContrato, type DocumentoContrato } from "@/lib/contrato/tipos";
 import { lerRegistro, salvarRegistro } from "@/lib/supabase/contratos";
+import { dataExtenso } from "@/lib/pdf/formatadores";
 import {
   MUDOU_NO_MEIO,
   Recusa,
@@ -42,11 +45,14 @@ const corpo = z.object({ dados: dadosContratoSchema });
  * por que, para ela gerar de novo ou escrever a clausula no editor.
  */
 export const POST = rotaDoContrato("redigir", async (req, id) => {
-  const { dados } = await lerCorpo(req, corpo);
+  const { dados: recebidos } = await lerCorpo(req, corpo);
   const lead = await carregarLead(id);
 
   const atual = await lerRegistro(id);
   recusarSeTravado(atual?.status);
+  // A interpretacao do pagamento personalizado so vale a do servidor, e so
+  // para o mesmo texto (ver `manterInterpretacao`).
+  const dados = manterInterpretacao(recebidos, atual?.dados);
 
   const salvo = atual
     ? await salvarRegistro(id, { dados }, { status: STATUS_EDITAVEIS })
@@ -59,17 +65,24 @@ export const POST = rotaDoContrato("redigir", async (req, id) => {
     throw new Recusa(422, "Faltam dados para montar o contrato.", { campos });
   }
 
-  const base = montarContrato(dados, ctx);
-  const especiais = await condicoesEspeciais(id, dados, ctx, base.documento);
+  // Pagamento "Personalizado": a IA le o texto livre da Mel ANTES da montagem,
+  // porque a clausula de pagamento e a de desistencia (que depende do sinal)
+  // saem dessa leitura. Com a interpretacao ainda valida, nem chama de novo.
+  const pagamento = await interpretarPagamento(id, dados);
+  const dadosFinais = pagamento.dados;
+
+  const base = montarContrato(dadosFinais, ctx);
+  const especiais = await condicoesEspeciais(id, dadosFinais, ctx, base.documento);
   // Montar de novo (e nao enxertar a clausula): e montarContrato que confere o
   // texto da IA contra o resto do contrato e preenche os `problemas`.
-  const final = especiais.paragrafos ? montarContrato(dados, ctx, especiais.paragrafos) : base;
+  const final = especiais.paragrafos ? montarContrato(dadosFinais, ctx, especiais.paragrafos) : base;
 
   // A IA pode ter levado minutos: se outra aba mudou os dados ou o texto
   // nesse meio tempo, este texto e de uma versao que nao existe mais (409).
   const registro = await gravarTextoRedigido(id, salvo, {
     documento: final.documento,
-    avisos: [...final.avisos, ...especiais.avisos],
+    avisos: [...final.avisos, ...pagamento.avisos, ...especiais.avisos],
+    ...(dadosFinais !== dados ? { dados: dadosFinais } : {}),
   });
 
   const n = final.documento.clausulas.length;
@@ -167,5 +180,76 @@ async function condicoesEspeciais(
     }
     console.error(`[contrato] ${id} redigir: falha inesperada na IA`, e);
     return { paragrafos: null, avisos: [avisoFalhaIa("A IA falhou por um motivo inesperado.")] };
+  }
+}
+
+// ------------------------------------------------------------- pagamento --
+
+type PagamentoInterpretado = { dados: DadosContrato; avisos: Aviso[] };
+
+function avisoPagamento(texto: string): Aviso {
+  return { origem: "sistema", gravidade: "atencao", clausula: "pagamento", texto };
+}
+
+/**
+ * A forma de pagamento personalizada, lida pela IA. Devolve os dados com a
+ * `interpretacao` preenchida (mesmo objeto de antes quando nao houve leitura).
+ *
+ * Sem IA, com falha dela ou com dado pessoal que sobraria no texto, a
+ * interpretacao fica vazia: a clausula de pagamento sai com o texto da Mel e
+ * BLOQUEADA (clausulas.ts), e o aviso diz o que fazer. Nunca sai para
+ * assinatura um pagamento que ninguem conferiu.
+ */
+async function interpretarPagamento(id: string, dados: DadosContrato): Promise<PagamentoInterpretado> {
+  const pag = dados.pagamento;
+  if (pag.modo !== "personalizado" || !pag.textoLivre.trim()) return { dados, avisos: [] };
+  if (interpretacaoVigente(pag)) return { dados, avisos: [] };
+  if (!iaDisponivel()) {
+    return {
+      dados,
+      avisos: [avisoPagamento("A IA não está configurada: a forma de pagamento personalizada não foi conferida. Edite a cláusula de pagamento no editor.")],
+    };
+  }
+
+  // Normalmente o texto do pagamento nao tem dado pessoal, mas pode ter vindo
+  // colado de uma conversa: passa pela mesma troca e pela mesma rede.
+  const texto = anonimizarTexto(pag.textoLivre, dados);
+  const vazou = dadosPessoaisNoTexto(texto, dados);
+  if (vazou.length > 0) {
+    console.warn(`[contrato] ${id} pagamento: IA não chamada, dado pessoal após anonimizar (${vazou.join(", ")})`);
+    return {
+      dados,
+      avisos: [
+        avisoPagamento(
+          `A forma de pagamento não foi enviada à IA porque um dado pessoal (${vazou.join(", ")}) continuaria visível para ela. Tire o dado do texto do pagamento ou edite a cláusula no editor.`,
+        ),
+      ],
+    };
+  }
+
+  try {
+    const r = await criarRedator().interpretarPagamento({
+      texto,
+      totalFormatado: formatarReais(totalContrato(dados.servico)),
+      dataEvento: dataExtenso(dados.evento.data),
+    });
+    const interpretacao = {
+      textoFonte: pag.textoLivre,
+      grupos: r.grupos.map((g) => ({ ...g, vencimento: desanonimizar(g.vencimento, dados) })),
+      pendencias: r.pendencias.map((t) => desanonimizar(t, dados)),
+    };
+    console.log(`[contrato] ${id} pagamento interpretado (${interpretacao.grupos.length} grupos)`);
+    return { dados: { ...dados, pagamento: { ...pag, interpretacao } }, avisos: [] };
+  } catch (e) {
+    if (e instanceof IaIndisponivelError) {
+      return { dados, avisos: [avisoPagamento("A IA não está configurada: a forma de pagamento personalizada não foi conferida. Edite a cláusula de pagamento no editor.")] };
+    }
+    const motivo = e instanceof IaError ? e.message : "A IA falhou por um motivo inesperado.";
+    if (e instanceof IaError) console.warn(`[contrato] ${id} pagamento: IA falhou (${e.codigo})`);
+    else console.error(`[contrato] ${id} pagamento: falha inesperada na IA`, e);
+    return {
+      dados,
+      avisos: [avisoPagamento(`${comPonto(motivo)} A forma de pagamento não foi conferida: gere o texto de novo ou edite a cláusula de pagamento.`)],
+    };
   }
 }

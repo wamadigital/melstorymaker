@@ -443,6 +443,35 @@ async function main() {
     }
   }
 
+  // -------------------------------------------- pagamento "Personalizado"
+  // O texto livre da Mel: com IA, ela interpreta e a clausula sai do codigo; a
+  // interpretacao fica gravada NOS DADOS, e uma copia forjada vinda do
+  // navegador e ignorada. Sem IA, a clausula sai bloqueada, com o texto dela.
+  {
+    const texto = "30% de entrada na assinatura para reservar a data e o restante até 10 dias antes do evento";
+    const forjada = {
+      textoFonte: texto,
+      pendencias: [],
+      grupos: [{ quantidade: 1, valorCentavos: 1, percentual: null, vencimento: "forjado", sinal: true, determinavel: true }],
+    };
+    const pag = { ...dadosCompletos(), pagamento: { ...pagamentoDoPreset("personalizado"), textoLivre: texto, interpretacao: forjada } };
+    const r = await chamar("POST", "/redigir", { dados: pag });
+    const j = await lerJson(r);
+    checar(r.status === 200, `personalizado: gerar texto → 200 (veio ${r.status}${j.erro ? `: ${j.erro}` : ""})`);
+    const interp = (j.registro as { dados?: DadosContrato } | undefined)?.dados?.pagamento?.interpretacao;
+    const clausula = (j.registro?.documento?.clausulas ?? []).find((c: { id: string }) => c.id === "pagamento");
+    checar(clausula?.origem === "ia", "personalizado: a cláusula de pagamento nasce como texto da IA (conferível)");
+    checar(!JSON.stringify(j.registro?.documento ?? {}).includes("forjado"), "personalizado: a interpretação forjada no navegador foi ignorada");
+    if (COM_IA) {
+      checar(!!interp && interp.textoFonte === texto && interp.grupos.length >= 2, "com IA: interpretação gravada nos dados, com o texto de que saiu");
+      checar((clausula?.problemas ?? []).length === 0, `com IA: parcelas somam o total (problemas: ${JSON.stringify(clausula?.problemas ?? [])})`);
+      checar((clausula?.paragrafos ?? []).some((p: string) => p.includes("a título de sinal")), "com IA: a entrada virou sinal");
+    } else {
+      checar(!interp, "sem IA: nenhuma interpretação gravada");
+      checar((clausula?.problemas ?? []).length > 0, "sem IA: a cláusula sai bloqueada até a Mel conferir");
+    }
+  }
+
   // -------------------------------------------------- excluir o lead limpa tudo
   const excluiu = await fetch(`${BASE}/api/admin/leads/${id}`, { method: "DELETE", headers: { Cookie: cookie } });
   checar(excluiu.status === 200, `excluir o lead → 200 (veio ${excluiu.status})`);

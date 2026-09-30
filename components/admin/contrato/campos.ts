@@ -106,6 +106,7 @@ export const ID = {
   pgDias: (i: number) => `${P}-pg-${i}-dias`,
   pgQuitadoEm: `${P}-pg-quitado`,
   pgSinalQuitado: `${P}-pg-sinal-quitado`,
+  pgTexto: `${P}-pg-texto`,
 
   observacoes: `${P}-observacoes`,
 } as const;
@@ -266,6 +267,7 @@ export function campoDoFaltante(texto: string, dados: DadosContrato): string | n
     if (r.includes("data") || r.includes("vencimento")) return ID.pgData(i);
     return ID.pgPercentual(i);
   }
+  if (t.startsWith("Descreva a forma de pagamento")) return ID.pgTexto;
   if (t.includes("quitado") || t.includes("quitação")) return ID.pgQuitadoEm;
   if (t.includes("valor pago corresponde ao sinal") || t.includes("percentual do sinal"))
     return ID.pgSinalQuitado;

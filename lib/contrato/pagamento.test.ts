@@ -10,6 +10,10 @@ import {
   diaDoCalendario,
   letraParcela,
   pagamentoDoPreset,
+  presetDoPagamento,
+  calcularPersonalizado,
+  interpretacaoVigente,
+  manterInterpretacao,
   percentuaisFecham,
   somarDiasISO,
   validarPagamento,
@@ -24,7 +28,7 @@ function parcela(percentual: number, sinal: boolean, vencimento: Parcela["vencim
 }
 
 function parcelas(...lista: Parcela[]): Pagamento {
-  return { modo: "parcelas", parcelas: lista, quitadoEm: "", percentualSinalQuitado: 30 };
+  return { modo: "parcelas", parcelas: lista, quitadoEm: "", percentualSinalQuitado: 30, textoLivre: "", interpretacao: null };
 }
 
 const valores = (total: number, lista: Parcela[]) => calcularParcelas(total, lista).map((p) => p.valor);
@@ -63,7 +67,7 @@ test("arredondamento half-up, e o residuo cai na ultima parcela", () => {
 });
 
 test("as parcelas SEMPRE somam o total, em qualquer valor, e nunca ficam negativas", () => {
-  const presets = PRESETS_PAGAMENTO_IDS.filter((id) => id !== "quitado").map((id) => pagamentoDoPreset(id).parcelas);
+  const presets = (["30/70", "50/50", "15/15/70", "integral"] as const).map((id) => pagamentoDoPreset(id).parcelas);
   presets.push([parcela(33.33, true, { tipo: "assinatura" }), parcela(33.33, false, { tipo: "assinatura" }), parcela(33.34, false, { tipo: "assinatura" })]);
   presets.push([parcela(12.5, true, { tipo: "assinatura" }), parcela(87.5, false, { tipo: "assinatura" })]);
   for (let total = 0; total <= 300_000; total += 1_237) {
@@ -102,14 +106,37 @@ test("presets validos pelo schema, com os rotulos dos botoes do painel", () => {
     assert.deepEqual(pagamentoSchema.parse(p), p, id);
     assert.deepEqual(PRESETS_PAGAMENTO[id].pagamento, p, id);
   }
+  // Os botoes do painel, nesta ordem (pedido do owner em 30/09/2026).
+  assert.deepEqual([...PRESETS_PAGAMENTO_IDS], ["30/70", "50/50", "quitado", "personalizado"]);
   assert.equal(PRESETS_PAGAMENTO["30/70"].rotulo, "30% + 70%");
+  assert.equal(PRESETS_PAGAMENTO["50/50"].rotulo, "Metade-metade");
+  assert.equal(PRESETS_PAGAMENTO.quitado.rotulo, "Já pago");
+  assert.equal(PRESETS_PAGAMENTO.personalizado.rotulo, "Personalizado");
+  // Estruturas antigas continuam sendo dados validos (contratos ja salvos).
   assert.equal(PRESETS_PAGAMENTO["15/15/70"].rotulo, "15% + 15% + 70%");
   assert.equal(PRESETS_PAGAMENTO.integral.rotulo, "Tudo na assinatura");
-  assert.equal(PRESETS_PAGAMENTO.quitado.rotulo, "Já pago");
+});
+
+test("metade-metade: 50% de sinal na assinatura e 50% ate 10 dias antes do evento", () => {
+  const p = pagamentoDoPreset("50/50");
+  assert.deepEqual(p.parcelas, [
+    { percentual: 50, sinal: true, vencimento: { tipo: "assinatura" } },
+    { percentual: 50, sinal: false, vencimento: { tipo: "dias_antes", dias: 10 } },
+  ]);
+  assert.deepEqual(valores(247000, p.parcelas), [123500, 123500]);
+  assert.equal(valorSinal(247000, p), 123500);
+});
+
+test("o painel reconhece o modelo do pagamento salvo; parcelas fora dos modelos nao casam com nenhum", () => {
+  assert.equal(presetDoPagamento(pagamentoDoPreset("30/70")), "30/70");
+  assert.equal(presetDoPagamento(pagamentoDoPreset("50/50")), "50/50");
+  assert.equal(presetDoPagamento(pagamentoDoPreset("quitado")), "quitado");
+  assert.equal(presetDoPagamento(pagamentoDoPreset("personalizado")), "personalizado");
+  assert.equal(presetDoPagamento(pagamentoDoPreset("15/15/70")), null);
 });
 
 test("todo preset em parcelas tem sinal e fecha 100%", () => {
-  for (const id of ["30/70", "15/15/70", "integral"] as const) {
+  for (const id of ["30/70", "50/50", "15/15/70", "integral"] as const) {
     const p = pagamentoDoPreset(id);
     assert.ok(percentuaisFecham(p.parcelas), id);
     assert.ok(p.parcelas.some((x) => x.sinal), id);
@@ -291,4 +318,83 @@ test("sem data do evento valida, as checagens que dependem dela sao puladas (a m
 test("parcela que arredonda para R$ 0,00 e acusada", () => {
   const p = parcelas(parcela(1, true, { tipo: "assinatura" }), parcela(99, false, { tipo: "assinatura" }));
   assert.deepEqual(validarPagamento(p, 40, EVENTO, HOJE), ["Parcela A: o valor calculado fica em R$ 0,00."]);
+});
+
+// ---------------------------------------------------------- personalizado --
+
+const grupo = (quantidade: number, valorCentavos: number | null, percentual: number | null, extra: Partial<{ sinal: boolean; determinavel: boolean; vencimento: string }> = {}) => ({
+  quantidade,
+  valorCentavos,
+  percentual,
+  vencimento: extra.vencimento ?? "na assinatura deste contrato",
+  sinal: extra.sinal ?? false,
+  determinavel: extra.determinavel ?? true,
+});
+
+const interp = (grupos: ReturnType<typeof grupo>[], textoFonte = "texto") => ({ textoFonte, grupos, pendencias: [] as string[] });
+
+test("personalizado: a conta e do codigo -- valores em reais e em percentual viram centavos exatos", () => {
+  const r = calcularPersonalizado(247000, interp([grupo(1, 74100, null, { sinal: true }), grupo(1, null, 70)]));
+  assert.deepEqual(r.itens.map((i) => i.valorGrupo), [74100, 172900]);
+  assert.equal(r.soma, 247000);
+  assert.equal(r.sinal, 74100);
+  assert.deepEqual(r.problemas, []);
+});
+
+test("personalizado: 'o resto em 3 vezes' fecha o total com o centavo na ultima parcela, num item so", () => {
+  const r = calcularPersonalizado(247000, interp([grupo(1, 50000, null, { sinal: true }), grupo(3, null, 26.5857)]));
+  assert.equal(r.soma, 247000);
+  assert.deepEqual(r.problemas, []);
+  const [, resto] = r.itens;
+  assert.equal(resto.quantidade, 3);
+  assert.equal(resto.valorParcela, 65667);
+  assert.equal(resto.valorUltima, 65666);
+  assert.equal(resto.valorGrupo, 197000);
+});
+
+test("personalizado: soma que nao bate com o total NAO e corrigida -- vira problema que bloqueia o PDF", () => {
+  const r = calcularPersonalizado(247000, interp([grupo(8, 10000, null)]));
+  assert.equal(r.soma, 80000);
+  assert.equal(r.problemas.length, 1);
+  assert.match(r.problemas[0], /somam R\$ 800,00, mas o valor total do contrato é R\$ 2\.470,00/);
+});
+
+test("personalizado: parcela sem vencimento determinavel e grupo vazio sao problemas", () => {
+  const r = calcularPersonalizado(80000, interp([grupo(8, 10000, null, { determinavel: false, vencimento: "em 8 vezes" })]));
+  assert.deepEqual(r.problemas, ["Parcela A (em 8 vezes): falta dizer quando vence."]);
+  assert.match(calcularPersonalizado(80000, interp([])).problemas[0], /não conseguiu identificar as parcelas/);
+});
+
+test("personalizado: o sinal e so o que a IA marcou (sem entrada, sinal zero)", () => {
+  const r = calcularPersonalizado(80000, interp([grupo(1, 80000, null, { vencimento: "na entrega do material" })]));
+  assert.equal(r.sinal, 0);
+  const p = { ...pagamentoDoPreset("personalizado"), textoLivre: "tudo na entrega", interpretacao: interp([grupo(1, 80000, null)], "tudo na entrega") };
+  assert.equal(valorSinal(80000, p), 0);
+});
+
+test("personalizado: interpretacao so vale para o texto de que saiu", () => {
+  const base = { ...pagamentoDoPreset("personalizado"), textoLivre: "8x de 100", interpretacao: interp([grupo(8, 10000, null)], "8x de 100") };
+  assert.ok(interpretacaoVigente(base));
+  assert.equal(interpretacaoVigente({ ...base, textoLivre: "10x de 80" }), null);
+  // Espacos nas pontas nao invalidam.
+  assert.ok(interpretacaoVigente({ ...base, textoLivre: "  8x de 100 " }));
+});
+
+test("personalizado: o servidor ignora a interpretacao que vem do navegador", () => {
+  const doServidor = interp([grupo(8, 10000, null)], "8x de 100");
+  const salvos = { pagamento: { ...pagamentoDoPreset("personalizado"), textoLivre: "8x de 100", interpretacao: doServidor } };
+  const forjada = interp([grupo(1, 1, null)], "8x de 100");
+  const recebidos = { pagamento: { ...pagamentoDoPreset("personalizado"), textoLivre: "8x de 100", interpretacao: forjada } };
+  // O cast evita montar DadosContrato inteiro: a funcao so olha o pagamento.
+  type D = Parameters<typeof manterInterpretacao>[0];
+  assert.deepEqual(manterInterpretacao(recebidos as unknown as D, salvos as unknown as D).pagamento.interpretacao, doServidor);
+  const mudado = { pagamento: { ...recebidos.pagamento, textoLivre: "10x de 80" } };
+  assert.equal(manterInterpretacao(mudado as unknown as D, salvos as unknown as D).pagamento.interpretacao, null);
+});
+
+test("personalizado: sem texto, a montagem pede a descricao do pagamento", () => {
+  assert.deepEqual(validarPagamento(pagamentoDoPreset("personalizado"), 129000, EVENTO, HOJE), [
+    "Descreva a forma de pagamento (ex.: “30% de entrada na assinatura e o restante em 4 vezes, todo dia 10”).",
+  ]);
+  assert.deepEqual(validarPagamento({ ...pagamentoDoPreset("personalizado"), textoLivre: "metade agora, metade no dia" }, 129000, EVENTO, HOJE), []);
 });

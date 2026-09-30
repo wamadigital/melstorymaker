@@ -39,7 +39,15 @@ import {
 } from "@/lib/contrato/catalogo";
 import { formatarReais } from "@/lib/contrato/extenso";
 import { somenteDigitos, validarCep, validarCnpj, validarCpf, validarEmail } from "@/lib/contrato/documento";
-import { calcularParcelas, dataISOValida, diaDoCalendario, validarPagamento, valorSinal } from "@/lib/contrato/pagamento";
+import {
+  calcularParcelas,
+  calcularPersonalizado,
+  dataISOValida,
+  diaDoCalendario,
+  interpretacaoVigente,
+  validarPagamento,
+  valorSinal,
+} from "@/lib/contrato/pagamento";
 import { ehEventoDeMenor, MAIORIDADE } from "@/lib/contrato/regras";
 import { normalizarComparacao } from "@/lib/contrato/texto";
 import {
@@ -260,6 +268,38 @@ export function anuenteEhHomenageado(dados: DadosContrato): boolean {
 // ------------------------------------------------------------------ fatos --
 
 /** Os fatos calculados que as clausulas leem. Exportado para os testes e para a previa. */
+/** O pagamento personalizado ja interpretado, em centavos, ou `null`. */
+function baseDePagamento(dados: DadosContrato) {
+  const interp = interpretacaoVigente(dados.pagamento);
+  return interp ? calcularPersonalizado(totalContrato(dados.servico), interp) : null;
+}
+
+/**
+ * Avisos do pagamento personalizado. Nao bloqueiam: o que bloqueia (soma,
+ * vencimento) ja esta nos `problemas` da clausula.
+ */
+function avisosDoPagamento(dados: DadosContrato): Aviso[] {
+  if (dados.pagamento.modo !== "personalizado") return [];
+  const calc = baseDePagamento(dados);
+  if (!calc) return [];
+  const avisos: Aviso[] = [];
+  if (calc.itens.length > 0 && calc.sinal <= 0) {
+    avisos.push({
+      origem: "sistema",
+      gravidade: "atencao",
+      clausula: "pagamento",
+      texto:
+        "Nenhuma parcela é sinal: se a cliente desistir, o contrato não prevê valor retido. Se a primeira parcela é a reserva da data, escreva “de entrada” ou “de sinal” na forma de pagamento e gere o texto de novo.",
+    });
+  }
+  if (calc.problemas.length === 0) {
+    for (const pergunta of calc.pendencias) {
+      avisos.push({ origem: "ia", gravidade: "atencao", clausula: "pagamento", texto: `Pagamento: ${pergunta}` });
+    }
+  }
+  return avisos;
+}
+
 export function baseDeRedacao(dados: DadosContrato, ctx: ContextoMontagem): BaseRedacao {
   const { menor, menorDe16 } = menoridade(ctx);
   const servico = dados.servico;
@@ -280,6 +320,10 @@ export function baseDeRedacao(dados: DadosContrato, ctx: ContextoMontagem): Base
     total,
     parcelas: dados.pagamento.modo === "parcelas" ? calcularParcelas(total, dados.pagamento.parcelas) : [],
     sinal: valorSinal(total, dados.pagamento),
+    personalizado: (() => {
+      const interp = interpretacaoVigente(dados.pagamento);
+      return interp ? calcularPersonalizado(total, interp) : null;
+    })(),
   };
 }
 
@@ -729,7 +773,7 @@ export function montarContrato(
     clausulaDireitos(b),
     clausulaAlimentacao(b),
     clausulaAlteracoes(),
-    clausulaDesistencia(),
+    clausulaDesistencia(b),
     clausulaEquipe(),
     // condicoes especiais entram aqui (abaixo), antes da assinatura eletronica
     clausulaAssinaturaEletronica(),
@@ -746,6 +790,19 @@ export function montarContrato(
     assinaturas: assinaturasDoContrato(b),
   };
 
+  // Pagamento personalizado: as frases de vencimento sao da IA e passam pela
+  // mesma rede da clausula especial -- conferidas contra o contrato SEM a
+  // propria clausula de pagamento (senao a frase "se provaria" sozinha) e
+  // contra o texto que a Mel escreveu, que faz o papel das observacoes.
+  const pagamento = clausulas.find((c) => c.id === "pagamento");
+  const calc = baseDePagamento(dados);
+  if (pagamento && calc) {
+    const referencia = { ...documento, clausulas: clausulas.filter((c) => c.id !== "pagamento") };
+    const frases = calc.itens.map((i) => i.vencimento);
+    const problemasFrases = validarTextoIa(frases, dados, referencia, dados.pagamento.textoLivre);
+    pagamento.problemas = [...pagamento.problemas, ...problemasFrases.map((x) => `Vencimento das parcelas: ${x}`)];
+  }
+
   const especiais = clausulaCondicoesEspeciais(condicoesEspeciais);
   if (especiais) {
     // Validada contra o contrato SEM ela: um numero que so a IA escreveu nao
@@ -761,6 +818,6 @@ export function montarContrato(
 
   return {
     documento: documentoContratoSchema.parse(documento),
-    avisos: avisosDeterministicos(dados, ctx),
+    avisos: [...avisosDeterministicos(dados, ctx), ...avisosDoPagamento(dados)],
   };
 }

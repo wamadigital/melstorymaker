@@ -252,17 +252,64 @@ export const parcelaSchema = z.object({
 });
 export type Parcela = z.infer<typeof parcelaSchema>;
 
+/**
+ * Um grupo de parcelas IGUAIS, como a IA entendeu a forma de pagamento que a
+ * Mel escreveu livre ("8 vezes de R$ 100" = um grupo de 8). O valor de cada
+ * parcela vem OU em centavos (ela falou em reais) OU em percentual do total
+ * (ela falou em "30%", "metade") -- nunca os dois. A conta em R$ e do codigo
+ * (`calcularPersonalizado`), nao do modelo.
+ */
+export const grupoPagamentoSchema = z.object({
+  quantidade: z.number().int().min(1).max(60),
+  /** Valor de CADA parcela do grupo, em centavos, ou null quando veio em percentual. */
+  valorCentavos: z.number().int().min(0).max(100_000_00).nullable(),
+  /** Percentual do total de CADA parcela do grupo, ou null quando veio em reais. */
+  percentual: z.number().min(0).max(100).nullable(),
+  /**
+   * Quando vence, no fim do item: "na assinatura deste contrato", "até 10
+   * (dez) dias antes da data do evento", "mensalmente, todo dia 10, de janeiro
+   * a abril de 2027", "na entrega do material". Escrito pela IA e validado.
+   */
+  vencimento: z.string().trim().min(1).max(300),
+  /** A Mel chamou de entrada, sinal ou reserva. Nunca presumido. */
+  sinal: z.boolean(),
+  /** Da para saber quando vence? "8 vezes" sem dizer a partir de quando, nao. */
+  determinavel: z.boolean(),
+});
+export type GrupoPagamento = z.infer<typeof grupoPagamentoSchema>;
+
+/**
+ * A forma de pagamento livre, interpretada. Guarda o TEXTO de que saiu: se a
+ * Mel muda o texto depois, a interpretacao deixa de valer (a clausula pede
+ * para gerar o texto de novo) em vez de descrever um combinado que ja mudou.
+ */
+export const interpretacaoPagamentoSchema = z.object({
+  textoFonte: z.string().max(3000),
+  grupos: z.array(grupoPagamentoSchema).max(24),
+  /** O que a IA nao conseguiu decidir, como pergunta para a Mel. */
+  pendencias: z.array(z.string().max(500)).max(10),
+});
+export type InterpretacaoPagamento = z.infer<typeof interpretacaoPagamentoSchema>;
+
 export const pagamentoSchema = z.object({
   /**
-   * "parcelas": a estrutura de sempre (30% sinal + 70% ate 10 dias antes, ou
-   * 15/15/70...). "quitado": o valor total ja foi pago antes do contrato.
+   * "parcelas": os modelos prontos (30% sinal + 70% ate 10 dias antes, ou
+   * metade-metade). "quitado": o valor total ja foi pago antes do contrato.
+   * "personalizado": a Mel descreve em texto livre e a IA interpreta.
    */
-  modo: z.enum(["parcelas", "quitado"]).default("parcelas"),
+  modo: z.enum(["parcelas", "quitado", "personalizado"]).default("parcelas"),
   parcelas: z.array(parcelaSchema).max(12).default([]),
   /** Modo quitado: quando foi pago (ISO). */
   quitadoEm: texto,
   /** Modo quitado: que parte do valor pago e o sinal de reserva. */
   percentualSinalQuitado: z.number().min(0).max(100).default(30),
+  /** Modo personalizado: a forma de pagamento como a Mel escreveu. */
+  textoLivre: z.string().max(3000).default(""),
+  /**
+   * Modo personalizado: o que a IA entendeu do texto. Quem grava e o
+   * SERVIDOR, na redacao; o que o navegador manda aqui e ignorado.
+   */
+  interpretacao: interpretacaoPagamentoSchema.nullable().default(null),
 });
 export type Pagamento = z.infer<typeof pagamentoSchema>;
 
@@ -277,8 +324,9 @@ export const dadosContratoSchema = z.object({
   servico: servicoSchema,
   pagamento: pagamentoSchema.prefault({}),
   /**
-   * Adendos em texto livre: forma de pagamento diferente, pedido especial do
-   * cliente, local diferente. E daqui que a IA redige "Das condições especiais".
+   * Adendos em texto livre: pedido especial do cliente, local diferente. E
+   * daqui que a IA redige "Das condições especiais". (Forma de pagamento fora
+   * dos modelos tem campo proprio: `pagamento.textoLivre`, no "Personalizado".)
    */
   observacoes: z.string().max(6000).default(""),
 });

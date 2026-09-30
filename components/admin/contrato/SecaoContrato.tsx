@@ -914,7 +914,7 @@ function SecaoCarregada({
             id={ID.observacoes}
             value={dados.observacoes}
             onChange={(e) => set("observacoes", e.target.value.slice(0, MAXIMO_OBSERVACOES))}
-            placeholder="Condições especiais, pedidos do cliente, forma de pagamento diferente, local diferente…"
+            placeholder="Condições especiais, pedidos do cliente, local diferente…"
             aria-describedby={`${ID.observacoes}-dica`}
             className="min-h-36"
           />

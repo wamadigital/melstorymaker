@@ -690,12 +690,19 @@ test("sem ensaio no escopo, os campos do ensaio nao entram no contrato", () => {
 // -------------------------------------------------------------- desistencia --
 
 test("desistencia: restitui o que foi pago alem do sinal, aproveita os valores no adiamento livre, e a reciprocidade fica por ultimo", () => {
-  assert.deepEqual(clausulaDesistencia().paragrafos, [
+  assert.deepEqual(clausulaDesistencia({ sinal: 38700 }).paragrafos, [
     "{{n}}.1. **Em caso de desistência ou cancelamento do evento pela CONTRATANTE, o sinal previsto na Cláusula {{ref:pagamento}} não será reembolsado.**",
     "{{n}}.2. **Se o evento for adiado e a nova data coincidir com outro compromisso da CONTRATADA, o serviço não será prestado e o sinal não será reembolsado.**",
     "{{n}}.3. Nas hipóteses dos itens {{n}}.1 e {{n}}.2, os valores pagos além do sinal serão restituídos à CONTRATANTE em até 10 (dez) dias.",
     "{{n}}.4. Adiado o evento a pedido da CONTRATANTE para data em que a CONTRATADA esteja disponível, os valores já pagos serão aproveitados para a nova data.",
     "{{n}}.5. Caso a CONTRATADA deixe de prestar os serviços por motivo a ela imputável, fora das hipóteses da Cláusula {{ref:equipe}}, restituirá à CONTRATANTE, em até 10 (dez) dias, a integralidade dos valores pagos, acrescida de quantia equivalente ao sinal, sem prejuízo dos demais direitos assegurados à CONTRATANTE pela legislação.",
+  ]);
+});
+
+test("desistencia sem sinal (pagamento personalizado sem entrada): sem retencao, com adiamento e reciprocidade", () => {
+  assert.deepEqual(clausulaDesistencia({ sinal: 0 }).paragrafos, [
+    "{{n}}.1. Adiado o evento a pedido da CONTRATANTE para data em que a CONTRATADA esteja disponível, os valores já pagos serão aproveitados para a nova data.",
+    "{{n}}.2. Caso a CONTRATADA deixe de prestar os serviços por motivo a ela imputável, fora das hipóteses da Cláusula {{ref:equipe}}, restituirá à CONTRATANTE, em até 10 (dez) dias, a integralidade dos valores pagos, sem prejuízo dos demais direitos assegurados à CONTRATANTE pela legislação.",
   ]);
 });
 

@@ -382,25 +382,51 @@ async function registrarTestes() {
     assert.match(markup, /Há alterações não salvas nos dados\./);
   });
 
-  // ------------------------------------------------------------- UI-07 --
+  // ------------------------------------------------------------ pagamento --
 
-  test("no celular percentual e vencimento empilham: o select tem a largura toda", () => {
-    const markup = html(
-      h(FormPagamento, {
-        pagamento: pagamentoDoPreset("15/15/70"),
-        onPagamento: nada,
-        total: 247000,
-        dataEvento: "2027-08-14",
-        hojeISO: HOJE,
-      }),
-    );
-    const grades = [...markup.matchAll(/class="(grid[^"]*sm:grid-cols-\[7rem_13rem[^"]*)"/g)].map((m) => m[1]);
-    assert.equal(grades.length, 3, "uma grade por parcela");
-    for (const g of grades) {
-      const base = g.split(/\s+/).filter((c) => c.startsWith("grid-cols-"));
-      assert.deepEqual(base, [], `grade com colunas no celular: ${g}`);
+  const renderPagamento = (pagamento: ReturnType<typeof pagamentoDoPreset>, total = 247000) =>
+    html(h(FormPagamento, { pagamento, onPagamento: nada, total, dataEvento: "2027-08-14", hojeISO: HOJE }));
+
+  test("pagamento: quatro opcoes e nenhum editor de parcela nos modelos prontos", () => {
+    const markup = renderPagamento(pagamentoDoPreset("30/70"));
+    for (const rotulo of ["30% + 70%", "Metade-metade", "Já pago", "Personalizado"]) {
+      assert.ok(markup.includes(rotulo), rotulo);
     }
-    assert.ok(!/\bcol-span-2\b/.test(markup), "sem col-span-2 (criaria coluna implicita numa grade de uma)");
+    assert.ok(!markup.includes("15% + 15% + 70%") && !markup.includes("Tudo na assinatura"), "opcoes antigas fora do painel");
+    // Resumo so de leitura: sem select de vencimento, sem campo de percentual.
+    assert.ok(!/<select/.test(markup), "sem select");
+    assert.ok(!/Adicionar parcela/.test(markup), "sem adicionar parcela");
+    assert.ok(markup.includes("R$ 741,00") && markup.includes("R$ 1.729,00"), "valores calculados no resumo");
+    assert.match(markup, /aria-pressed="true"[^>]*>30% \+ 70%/);
+  });
+
+  test("pagamento personalizado: um campo de texto e, com leitura da IA, as parcelas e a soma", () => {
+    const vazio = renderPagamento(pagamentoDoPreset("personalizado"));
+    assert.match(vazio, /<textarea[^>]*id="[^"]*-pg-texto"/);
+    assert.ok(!vazio.includes("Como a IA entendeu"));
+
+    const texto = "30% de entrada e o resto em 2 vezes";
+    const lido = renderPagamento({
+      ...pagamentoDoPreset("personalizado"),
+      textoLivre: texto,
+      interpretacao: {
+        textoFonte: texto,
+        pendencias: [],
+        grupos: [
+          { quantidade: 1, valorCentavos: null, percentual: 30, vencimento: "na assinatura deste contrato", sinal: true, determinavel: true },
+          { quantidade: 2, valorCentavos: null, percentual: 35, vencimento: "em 10 de janeiro e 10 de fevereiro de 2027", sinal: false, determinavel: true },
+        ],
+      },
+    });
+    assert.ok(lido.includes("Como a IA entendeu"));
+    assert.ok(lido.includes("Soma das parcelas: R$ 2.470,00 de R$ 2.470,00"));
+
+    const mudado = renderPagamento({
+      ...pagamentoDoPreset("personalizado"),
+      textoLivre: `${texto}!`,
+      interpretacao: { textoFonte: texto, pendencias: [], grupos: [] },
+    });
+    assert.ok(mudado.includes("O texto mudou depois da última leitura da IA"));
   });
 
   // ------------------------------------------------------ UI-08 e ensaio --

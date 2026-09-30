@@ -43,7 +43,7 @@ import {
   valorComExtenso,
 } from "@/lib/contrato/extenso";
 import { PACOTE_PERSONALIZADO } from "@/lib/contrato/catalogo";
-import { dataISOValida, type ParcelaCalculada } from "@/lib/contrato/pagamento";
+import { dataISOValida, type ParcelaCalculada, type PersonalizadoCalculado } from "@/lib/contrato/pagamento";
 import {
   enderecoPorExtenso,
   flexao,
@@ -183,6 +183,11 @@ export type BaseRedacao = {
   parcelas: ParcelaCalculada[];
   /** Centavos. */
   sinal: number;
+  /**
+   * Pagamento personalizado JA interpretado pela IA e ainda valido para o
+   * texto atual da Mel; `null` fora desse modo ou com a interpretacao velha.
+   */
+  personalizado: PersonalizadoCalculado | null;
 };
 
 // ---------------------------------------------------------- utilidades --
@@ -803,12 +808,73 @@ export function textoVencimento(v: Vencimento): string {
   }
 }
 
+/**
+ * 7. DO PAGAMENTO no modo personalizado: a forma que a Mel escreveu livre,
+ * como a IA a interpretou.
+ *
+ * Mesmo aqui o texto de dinheiro e do codigo: cada item sai com o valor e o
+ * extenso calculados de `calcularPersonalizado`, e a IA so contribui com a
+ * frase de QUANDO vence ("mensalmente, todo dia 10, de janeiro a abril de
+ * 2027"), que a montagem valida. A clausula nasce `origem: "ia"` com os
+ * problemas da conferencia (soma diferente do total, parcela sem vencimento):
+ * com problema, o PDF fica travado ate a Mel corrigir o texto do pagamento e
+ * gerar de novo, ou editar a clausula e assumir o texto.
+ *
+ * Sem interpretacao valida (IA fora do ar, ou texto mudado depois da redacao),
+ * a clausula leva o texto da Mel como ela escreveu, BLOQUEADA: nada sai para
+ * assinatura sem alguem conferir.
+ */
+function clausulaPagamentoPersonalizado(b: BaseRedacao, incluidos: string): Clausula {
+  const abertura = `O valor total dos serviços prestados será de ${valorComExtenso(b.total)}${incluidos}. O pagamento será realizado da seguinte forma:`;
+  const pix = `Todos os pagamentos deverão ser realizados via PIX, utilizando a chave PIX (CNPJ): ${CONTRATADA.chavePix}.`;
+  const calc = b.personalizado;
+
+  if (!calc) {
+    return {
+      ...clausula("pagamento", [abertura, limpo(b.dados.pagamento.textoLivre), pix]),
+      origem: "ia",
+      problemas: [
+        "A forma de pagamento ainda não foi conferida pela IA. Gere o texto do contrato de novo, ou revise esta cláusula e edite-a para liberar o PDF.",
+      ],
+    };
+  }
+
+  const paragrafos = [abertura];
+  const sinais = calc.itens.filter((i) => i.sinal);
+  const sinalPartido = sinais.length >= 2 || sinais.some((i) => i.quantidade > 1);
+
+  calc.itens.forEach((it, i) => {
+    const sinal = !it.sinal ? "" : sinalPartido ? ", como parte do sinal" : ", a título de sinal para garantir a reserva da data";
+    const fim = i === calc.itens.length - 1 ? "." : ";";
+    const valor =
+      it.quantidade === 1
+        ? valorComExtenso(it.valorGrupo)
+        : it.valorUltima === it.valorParcela
+          ? `${quantidadeComExtenso(it.quantidade, "feminino")} parcelas de ${valorComExtenso(it.valorParcela)} cada, no total de ${valorComExtenso(it.valorGrupo)}`
+          : `${quantidadeComExtenso(it.quantidade, "feminino")} parcelas, sendo ${quantidadeComExtenso(it.quantidade - 1, "feminino")} de ${valorComExtenso(it.valorParcela)} e a última de ${valorComExtenso(it.valorUltima)}, no total de ${valorComExtenso(it.valorGrupo)}`;
+    paragrafos.push(`${letra(i)}. ${valor}${sinal}, ${limpo(it.vencimento)}${fim}`);
+  });
+
+  if (sinalPartido) {
+    paragrafos.push(
+      `O sinal destinado a garantir a reserva da data corresponde à soma das parcelas acima identificadas como parte do sinal, no total de ${valorComExtenso(calc.sinal)}, e **a reserva da data somente será garantida após a confirmação do pagamento integral do sinal.**`,
+    );
+  } else if (sinais.length === 1) {
+    paragrafos.push("**A reserva da data somente será garantida mediante a confirmação do pagamento do sinal.**");
+  }
+
+  paragrafos.push(pix);
+  return { ...clausula("pagamento", paragrafos), origem: "ia", problemas: [...calc.problemas] };
+}
+
 /** 7. DO PAGAMENTO -- parcelas (com o sinal identificado) ou pagamento ja quitado. */
 export function clausulaPagamento(b: BaseRedacao): Clausula {
   const pag = b.dados.pagamento;
   const nAdicionais = b.adicionais.length;
   const incluidos =
     nAdicionais === 0 ? "" : nAdicionais === 1 ? ", já incluído o serviço adicional" : ", já incluídos os serviços adicionais";
+
+  if (pag.modo === "personalizado") return clausulaPagamentoPersonalizado(b, incluidos);
 
   if (pag.modo === "quitado") {
     return clausula("pagamento", [
@@ -992,7 +1058,17 @@ export function clausulaAlteracoes(): Clausula {
  * NAO esta aqui de proposito: ressalva de caso fortuito ou forca maior na
  * retencao do sinal -- e decisao comercial do owner, ainda nao tomada.
  */
-export function clausulaDesistencia(): Clausula {
+export function clausulaDesistencia(b: Pick<BaseRedacao, "sinal">): Clausula {
+  // Sem sinal (pagamento personalizado sem entrada, como "tudo depois da
+  // entrega"): nao ha o que reter nem o que devolver "alem do sinal". Os itens
+  // de retencao saem e fica a lei; a Mel e avisada na montagem. O adiamento e
+  // a reciprocidade continuam valendo.
+  if (b.sinal <= 0) {
+    return clausula("desistencia", [
+      "{{n}}.1. Adiado o evento a pedido da CONTRATANTE para data em que a CONTRATADA esteja disponível, os valores já pagos serão aproveitados para a nova data.",
+      "{{n}}.2. Caso a CONTRATADA deixe de prestar os serviços por motivo a ela imputável, fora das hipóteses da Cláusula {{ref:equipe}}, restituirá à CONTRATANTE, em até 10 (dez) dias, a integralidade dos valores pagos, sem prejuízo dos demais direitos assegurados à CONTRATANTE pela legislação.",
+    ]);
+  }
   return clausula("desistencia", [
     "{{n}}.1. **Em caso de desistência ou cancelamento do evento pela CONTRATANTE, o sinal previsto na Cláusula {{ref:pagamento}} não será reembolsado.**",
     "{{n}}.2. **Se o evento for adiado e a nova data coincidir com outro compromisso da CONTRATADA, o serviço não será prestado e o sinal não será reembolsado.**",

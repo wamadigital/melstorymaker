@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { manterInterpretacao } from "@/lib/contrato/pagamento";
 import { assinaturaEmDryRun } from "@/lib/assinatura/adapter";
 import { dadosContratoSchema } from "@/lib/contrato/tipos";
 import { lerRegistro, salvarRegistro } from "@/lib/supabase/contratos";
@@ -43,11 +44,14 @@ const corpo = z.object({ dados: dadosContratoSchema });
  * texto nao mudam enquanto o cliente esta assinando.
  */
 export const PUT = rotaDoContrato("salvar", async (req, id) => {
-  const { dados } = await lerCorpo(req, corpo);
+  const { dados: recebidos } = await lerCorpo(req, corpo);
   await carregarLead(id);
 
   const atual = await lerRegistro(id);
   recusarSeTravado(atual?.status);
+  // A interpretacao do pagamento personalizado e do servidor (ver
+  // `manterInterpretacao`); a copia que veio do navegador e descartada.
+  const dados = manterInterpretacao(recebidos, atual?.dados);
 
   // Escrita guardada pelo status lido: se o envio para assinatura travou o
   // texto no meio do caminho, isto vira 409 em vez de mexer num contrato que
