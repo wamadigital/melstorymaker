@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { origemDaRequisicao, rastreioDaRequisicao, rastreioGuardado } from "./rastreio";
+import { origemDaRequisicao, paraGuardar, rastreioDaRequisicao, rastreioGuardado } from "./rastreio";
 import { EVENTO_DO_STATUS, idEvento } from "./eventos";
 import { STATUS } from "@/lib/form/types";
 
@@ -50,8 +50,25 @@ test("origem: ip desconhecido não é mandado como ip", () => {
 
 test("rastreio guardado: lead antigo (null) e jsonb torto viram objeto vazio", () => {
   assert.deepEqual(rastreioGuardado(null), {});
-  assert.deepEqual(rastreioGuardado({ fbp: 42, fbc: "lixo" }), {});
+  assert.deepEqual(rastreioGuardado({ fbp: 42, fbc: "lixo", ua: "", ip: "não é ip" }), {});
   assert.deepEqual(rastreioGuardado({ fbc: "fb.1.1700000000000.abc" }), { fbc: "fb.1.1700000000000.abc" });
+});
+
+test("rastreio guardado: navegador volta com o nome de Pessoa (userAgent)", () => {
+  assert.deepEqual(rastreioGuardado({ ua: "Mozilla/5.0 (iPhone)", ip: "2804:14c::1" }), {
+    userAgent: "Mozilla/5.0 (iPhone)",
+    ip: "2804:14c::1",
+  });
+});
+
+test("paraGuardar: cookies + navegador + ip do lead, sem o que não presta", () => {
+  assert.deepEqual(
+    paraGuardar({ fbc: "fb.1.1700000000000.abc" }, { userAgent: "Mozilla/5.0", ip: "200.1.2.3", url: "x" }),
+    { fbc: "fb.1.1700000000000.abc", ua: "Mozilla/5.0", ip: "200.1.2.3" },
+  );
+  // A URL nao vai para o banco; navegador gigante ou com quebra de linha tambem nao.
+  assert.deepEqual(paraGuardar({}, { userAgent: "a".repeat(501) }), {});
+  assert.deepEqual(paraGuardar({}, { userAgent: "linha\nquebrada" }), {});
 });
 
 test("nenhum evento de quadro para status que nasce de ação do lead", () => {

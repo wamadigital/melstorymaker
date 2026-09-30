@@ -40,9 +40,15 @@ export type EventoConversao = {
   nome: string;
   id: string;
   /**
-   * `website` para o que o lead fez na pagina; `system_generated` para o que a
-   * Mel fez no quadro. A Meta exige `event_source_url` e navegador no primeiro
-   * e nao aceita fingir que um clique da Mel no painel foi visita ao site.
+   * `website` para tudo que nasce da visita do lead: os eventos do formulario E
+   * os do quadro, que levam o navegador, o ip, o `fbp` e o `fbc` DO LEAD
+   * guardados na criacao -- nunca os do request da Mel. O quadro vai como site
+   * porque a conversao personalizada da Meta so aceita as fontes "Site" e "Loja
+   * fisica" (ver `montarEventoDeStatus`, em `lib/meta/lead.ts`, e CLAUDE.md 8b).
+   *
+   * `system_generated` so como recurso para lead sem navegador guardado: a Meta
+   * recusa evento de site sem `client_user_agent`, e tambem exige
+   * `event_source_url` nele.
    */
   origem: "website" | "system_generated";
   url?: string;
@@ -123,8 +129,11 @@ export async function enviarConversao(e: EventoConversao): Promise<void> {
       return;
     }
 
-    // `event_source_url` e obrigatorio em evento de site. O Referer quase
-    // sempre existe; quando falta, a pagina so pode ter sido o formulario.
+    // `event_source_url` e obrigatorio em evento de site. Nos eventos do
+    // formulario o Referer quase sempre existe; nos do quadro nunca (o request
+    // e o da Mel). Em ambos a URL certa e a do formulario: e por onde o lead
+    // entrou, e sem URL a regra das conversoes personalizadas ("URL contem
+    // melstorymaker.com.br") nao casa.
     const evento: EventoConversao =
       e.origem === "website" && !e.url
         ? { ...e, url: `${env.APP_URL.replace(/\/+$/, "")}/formulario` }

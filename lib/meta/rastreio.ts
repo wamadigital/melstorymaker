@@ -18,6 +18,17 @@ export type Rastreio = { fbp?: string; fbc?: string };
 /** Origem do request do LEAD. Nunca usar nas rotas do painel: ali ip e navegador sao os da Mel. */
 export type Origem = { ip?: string; userAgent?: string; url?: string };
 
+/**
+ * O que vai para a coluna `rastreio`: os cookies MAIS o navegador e o ip do
+ * lead no momento da criacao.
+ *
+ * Navegador e ip entram porque os eventos do quadro saem como evento de SITE
+ * (ver `montarEventoDeStatus`), e a Meta recusa evento de site sem navegador.
+ * Na hora do arraste o request e o da Mel -- o unico navegador do lead que
+ * existe e o que ficou guardado aqui.
+ */
+export type RastreioGuardado = Rastreio & { ua?: string; ip?: string };
+
 // Formato documentado pela Meta: fb.<subdominio>.<timestamp>.<valor>. Cookie e
 // dado do cliente e vai para o banco; o que nao bate com o formato fica de fora.
 const RE_FBP = /^fb\.\d\.\d{10,}\.\d+$/;
@@ -82,12 +93,30 @@ export function origemDaRequisicao(req: Request): Origem {
   };
 }
 
-/** Le o `rastreio` guardado no lead, tolerando lead antigo (null) e jsonb torto. */
-export function rastreioGuardado(valor: unknown): Rastreio {
+// IPv4 ou IPv6, sem porta. So o formato: quem manda no valor e o proxy da Vercel.
+const RE_IP = /^[0-9a-fA-F:.]{3,45}$/;
+// Navegador e texto livre do cliente; so corta lixo e tamanho.
+const RE_UA = /^[\x20-\x7E]{1,500}$/;
+
+/** Monta o objeto da coluna `rastreio` a partir do request de criacao do lead. */
+export function paraGuardar(rastreio: Rastreio, origem: Origem): RastreioGuardado {
+  const ua = valido(origem.userAgent, RE_UA);
+  const ip = valido(origem.ip, RE_IP);
+  return { ...rastreio, ...(ua && { ua }), ...(ip && { ip }) };
+}
+
+/**
+ * Le o `rastreio` guardado no lead, tolerando lead antigo (null, ou so com
+ * fbp/fbc) e jsonb torto. Devolve ja com os nomes de `Pessoa` (`userAgent`),
+ * para espalhar direto no evento.
+ */
+export function rastreioGuardado(valor: unknown): Rastreio & Pick<Origem, "ip" | "userAgent"> {
   if (!valor || typeof valor !== "object") return {};
-  const { fbp, fbc } = valor as Record<string, unknown>;
+  const { fbp, fbc, ua, ip } = valor as Record<string, unknown>;
   return {
     ...(typeof fbp === "string" && valido(fbp, RE_FBP) && { fbp }),
     ...(typeof fbc === "string" && valido(fbc, RE_FBC) && { fbc }),
+    ...(typeof ua === "string" && valido(ua, RE_UA) && { userAgent: ua }),
+    ...(typeof ip === "string" && valido(ip, RE_IP) && { ip }),
   };
 }

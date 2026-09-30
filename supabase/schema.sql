@@ -57,11 +57,11 @@ create table if not exists leads (
   -- por WhatsApp. Nasce so quando o PDF e gerado; lead sem proposta nao tem.
   -- O unique vem do indice logo abaixo, que tambem cobre banco ja existente.
   slug text,
-  -- Identificadores da Meta lidos dos cookies do Pixel na criacao do lead:
-  -- {"fbp": "fb.1...", "fbc": "fb.1..."}. Os eventos do quadro saem quando a
-  -- Mel move o cartao, e so com isto a conversao volta ao anuncio que trouxe o
-  -- lead. jsonb pelo mesmo motivo de `respostas`: outro identificador de
-  -- atribuicao no futuro nao vira migration.
+  -- Dados de atribuicao da Meta gravados na criacao do lead: cookies do Pixel
+  -- mais navegador e ip do lead, {"fbp", "fbc", "ua", "ip"}. Os eventos do
+  -- quadro saem quando a Mel move o cartao, como evento de site, e so com isto
+  -- a conversao volta ao anuncio que trouxe o lead. jsonb pelo mesmo motivo de
+  -- `respostas`: outro identificador no futuro nao vira migration.
   rastreio jsonb
 );
 

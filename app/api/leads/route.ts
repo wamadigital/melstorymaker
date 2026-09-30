@@ -8,7 +8,7 @@ import { excedeuLimite, ipDaRequisicao, LIMITES } from "@/lib/rate-limit";
 import { EVENTO, idEvento } from "@/lib/meta/eventos";
 import { enviarConversao } from "@/lib/meta/conversoes";
 import { guardarRastreio } from "@/lib/meta/lead";
-import { origemDaRequisicao, rastreioDaRequisicao } from "@/lib/meta/rastreio";
+import { origemDaRequisicao, paraGuardar, rastreioDaRequisicao } from "@/lib/meta/rastreio";
 
 // `respostas` e opcional no schema mas nao na pratica: o formulario so chama
 // esta rota no PRIMEIRO avanco, ja com o WhatsApp respondido. Opcional aqui
@@ -88,7 +88,7 @@ export async function POST(req: Request) {
   const rastreio = rastreioDaRequisicao(req);
   const origem = origemDaRequisicao(req);
   after(async () => {
-    await guardarRastreio(data.id, rastreio);
+    await guardarRastreio(data.id, paraGuardar(rastreio, origem));
     await enviarConversao({
       nome: EVENTO.lead,
       id: idEvento("lead", data.id),
