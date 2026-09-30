@@ -47,12 +47,22 @@ const PORTA =
 
 type Tela = "boas_vindas" | "categoria" | "pergunta" | "confirmacao";
 
-export function FormularioClient({ whatsappMel }: { whatsappMel: string }) {
-  // Comeca em boas_vindas de proposito: e o estado que o servidor renderiza, e
-  // o titulo precisa estar no HTML inicial para o LCP ficar abaixo de 2,5s em
-  // 4G. Uma tela de "carregando" aqui empurraria o LCP para depois da
-  // hidratacao + da ida ao banco. A retomada acontece logo depois, por cima.
-  const [tela, setTela] = useState<Tela>("boas_vindas");
+/** `/formulario` abre nas duas portas; `/orcamento`, direto na categoria. */
+export type TelaInicial = Extract<Tela, "boas_vindas" | "categoria">;
+
+export function FormularioClient({
+  whatsappMel,
+  inicio,
+}: {
+  whatsappMel: string;
+  inicio: TelaInicial;
+}) {
+  // A tela inicial vem do servidor por prop, e nunca de uma leitura da URL no
+  // navegador: e o estado que o servidor renderiza, e o conteudo precisa estar
+  // no HTML inicial para o LCP ficar abaixo de 2,5s em 4G. Uma tela de
+  // "carregando" aqui empurraria o LCP para depois da hidratacao + da ida ao
+  // banco. A retomada acontece logo depois, por cima.
+  const [tela, setTela] = useState<Tela>(inicio);
   const [leadId, setLeadId] = useState<string | null>(null);
   const [categoria, setCategoria] = useState<Categoria | null>(null);
   const [respostas, setRespostas] = useState<Respostas>({});
@@ -195,7 +205,7 @@ export function FormularioClient({ whatsappMel }: { whatsappMel: string }) {
    * inalcancavel.
    */
   function escolherCategoria(valor: string) {
-    if (!isCategoria(valor) || ocupado) return;
+    if (!isCategoria(valor) || ocupado || retomando) return;
     setErro(null);
 
     // Trocar de categoria preserva o contato ja digitado: quem voltou para
@@ -466,7 +476,10 @@ export function FormularioClient({ whatsappMel }: { whatsappMel: string }) {
                         key={opcao.valor}
                         letra={String.fromCharCode(65 + i)}
                         rotulo={opcao.rotulo}
-                        disabled={ocupado}
+                        // Em /orcamento esta e a PRIMEIRA tela, e a retomada
+                        // pode estar em voo: a mesma trava da porta "Quero um
+                        // orcamento", pelo mesmo motivo.
+                        disabled={ocupado || retomando}
                         onClick={() => escolherCategoria(opcao.valor)}
                       />
                     ))}
