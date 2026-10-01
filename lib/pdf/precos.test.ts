@@ -55,18 +55,12 @@ test("virada do ano: 1º de janeiro de 2027 ja e tabela 2027", () => {
 });
 
 /**
- * A tabela 2028 existe no codigo e NAO esta em vigencia -- de proposito, ate as
- * cinco artes dela serem publicadas.
- *
- * Este teste existe para quem ler `resolverTabelaPreco("2028-06-10") === "2027"`
- * e achar que e bug. Nao e: ligar a vigencia sem a arte nao produz preco velho,
- * produz 409 em toda geracao de proposta do ano (gotcha 6e do CLAUDE.md), e a
- * Mel fica sem conseguir atender evento nenhum de 2028.
+ * Mesma fronteira da 2027, um ano adiante. Fuso horario e o unico jeito de
+ * errar aqui, e ele erra exatamente no dia em que a tabela vira.
  */
-test("tabela aprovada mas sem arte fica FORA de vigência, e isso é deliberado", () => {
-  assert.ok(TABELAS_PRECO.includes("2028"), "os valores de 2028 já estão aprovados");
-  assert.ok(!TABELAS_EM_VIGENCIA.includes("2028"), "mas a vigência só entra com a arte");
-  assert.equal(resolverTabelaPreco("2028-06-10"), "2027");
+test("virada do ano: 1º de janeiro de 2028 já é tabela 2028", () => {
+  assert.equal(resolverTabelaPreco("2028-01-01"), "2028");
+  assert.equal(resolverTabelaPreco("2027-12-31"), "2027");
 });
 
 test("evento depois da última tabela em vigência continua na mais nova delas", () => {

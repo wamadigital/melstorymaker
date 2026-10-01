@@ -40,7 +40,7 @@ const VIGENCIAS: { desdeAno: number; tabela: TabelaPreco }[] = [
   // passada, mas um lead antigo reaberto no painel nao pode ficar sem tabela.
   { desdeAno: 0, tabela: "2026" },
   { desdeAno: 2027, tabela: "2027" },
-  // A 2028 NAO entra aqui ainda, de proposito -- ver o comentario de PACOTES.
+  { desdeAno: 2028, tabela: "2028" },
 ];
 
 /**
@@ -114,18 +114,11 @@ export function resolverTabelaPreco(dataISO: string): TabelaPreco | null {
  * ver `lib/contrato/catalogo.ts`); locomocao, reserva de 30% e validade de 3
  * meses seguem iguais nas tres tabelas.
  *
- * A 2028 esta FORA de `VIGENCIAS` ate as cinco artes dela existirem. Ligar a
- * vigencia sem a arte nao daria preco velho -- daria erro: arte faltando aborta
- * a geracao (gotcha 6e do CLAUDE.md), e a Mel ficaria sem conseguir gerar
- * proposta nenhuma para evento de 2028. Enquanto isso, evento de 2028 segue na
- * tabela 2027, que e o comportamento de hoje.
- *
- * `npm run pdf:verificar` fica vermelho enquanto isso durar, e e ele que lembra
- * de ligar a vigencia junto com a arte. A saida diz "tabela 2028 ainda nao tem
- * vigencia" e lista as cinco combinacoes arte x tabela sem cenario
- * (`debutante.2028` etc.). Nao lista caminho de arquivo: como nenhuma data cai
- * em 2028, `gerarProposta` nunca tenta abrir a arte e o `ArteFaltandoError`
- * nao chega a disparar -- isso so acontece depois que a vigencia for ligada.
+ * A vigencia de 2028 entrou junto com as cinco artes dela, em 01/10/2026 --
+ * nunca antes. Tabela em vigencia sem arte nao serve preco velho: aborta a
+ * geracao com 409 (gotcha 6e) e deixa a Mel sem atender o ano inteiro. O teste
+ * "toda tabela em vigencia tem as 5 artes publicadas", em `precos.test.ts`,
+ * existe para que isso nao dependa de alguem lembrar.
  */
 export const PACOTES: Record<TabelaPreco, Record<TemplateId, { nome: string; valor: number }[]>> = {
   "2026": {

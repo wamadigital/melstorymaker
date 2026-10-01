@@ -63,3 +63,4 @@ next-env.d.ts
 
 # saida do npm run contrato:verificar (contratos de exemplo, dados ficticios)
 /.contrato-verificacao
+/.arte-2028
