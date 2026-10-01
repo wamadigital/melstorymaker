@@ -42,10 +42,19 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+  /* Tons da identidade completa. `escuro` e `terracota` existem em todo o app;
+     `medio`, `areia` e `creme` so resolvem dentro de `.lp-casamento` (abaixo):
+     fora dela a variavel nao existe e o utilitario nao pinta nada. */
+  --color-marca-escuro: var(--marca-escuro);
+  --color-marca-medio: var(--marca-medio);
+  --color-marca-terracota: var(--marca-terracota);
+  --color-marca-areia: var(--marca-areia);
+  --color-marca-creme: var(--marca-creme);
   /* Um raio so, 6px, em toda a escala. O shadcn deriva sm..4xl de --radius com
      multiplicadores; aqui todos apontam para o mesmo valor de proposito, para
      que `rounded-lg` e `rounded-2xl` no meio do codigo nao criem cantos
      diferentes. Trocar o raio do app inteiro = mudar --radius. */
+  --radius-xs: var(--radius);
   --radius-sm: var(--radius);
   --radius-md: var(--radius);
   --radius-lg: var(--radius);
@@ -76,6 +85,11 @@
  *
  * A terracota entra em UM lugar so, o anel de foco: e o acento da marca onde
  * ele aparece em toda tela sem repintar nada.
+ *
+ * EXCECAO: a landing page de venda `/casamento` usa a identidade COMPLETA
+ * (decisao do owner em 01/10/2026). Os tons extras vivem em `.lp-casamento`,
+ * abaixo, e nao no :root -- assim `bg-marca-creme` no formulario nao pinta
+ * nada, e o `estilo:verificar` continua estrito nas outras telas.
  */
 :root {
   --marca-escuro: #20130a;
@@ -83,6 +97,7 @@
      o hex. `rgb(var(--marca-escuro-rgb) / 12%)` e a mesma tinta a 12%. */
   --marca-escuro-rgb: 32 19 10;
   --marca-terracota: #823b25;
+  --marca-terracota-rgb: 130 59 37;
   --marca-claro: #f1f1f1;
 
   --background: var(--marca-claro);
@@ -161,6 +176,52 @@
   --sidebar-accent-foreground: var(--marca-claro);
   --sidebar-border: rgb(255 255 255 / 15%);
   --sidebar-ring: var(--marca-claro);
+}
+
+/*
+ * A identidade completa, so na LP `/casamento` (ver o comentario da paleta).
+ * `#482720`, que aparece numa faixa do board da marca, nao entra: e uma sobra
+ * do Figma sem amostra rotulada, e o marrom oficial e #4D2B22.
+ */
+.lp-casamento {
+  --marca-medio: #4d2b22;
+  --marca-medio-rgb: 77 43 34;
+  --marca-areia: #cbad95;
+  --marca-areia-rgb: 203 173 149;
+  --marca-creme: #f0e0c7;
+  --marca-creme-rgb: 240 224 199;
+}
+
+/* Sobre o escuro, o anel de foco terracota fica a 2,2:1 do fundo: invisivel
+   para quem navega por teclado. Nas faixas escuras da LP ele vira creme. */
+.lp-casamento .lp-escuro {
+  --ring: var(--marca-creme);
+}
+
+/* A onda topografica da marca como mascara: o desenho vem do PNG da arte, a
+   cor vem de quem usa (`bg-*`), entao a mesma onda serve no escuro e no creme. */
+.lp-onda {
+  -webkit-mask-image: var(--lp-onda);
+  mask-image: var(--lp-onda);
+  -webkit-mask-size: 1240px auto;
+  mask-size: 1240px auto;
+  -webkit-mask-repeat: repeat;
+  mask-repeat: repeat;
+}
+
+/* Com o visualizador de Reels aberto, a pagina por baixo nao rola: sem isto o
+   swipe no fim da lista de Reels "vazava" para a LP. */
+html.lp-travado {
+  overflow: hidden;
+}
+
+/* Carrossel de Reels sem barra de rolagem visivel (o proximo card aparecendo
+   pela borda ja diz que da para deslizar). */
+.lp-sem-barra {
+  scrollbar-width: none;
+}
+.lp-sem-barra::-webkit-scrollbar {
+  display: none;
 }
 
 @layer base {

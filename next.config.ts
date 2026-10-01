@@ -12,6 +12,19 @@ const nextConfig: NextConfig = {
     // Helvetica (fallback) e o painel avisa -- funciona, mas nao e a marca.
     "/api/admin/leads/[id]/contrato/pdf": ["./assets/fonts/**/*"],
   },
+  // A midia da LP (`npm run lp:reels`) tem o hash do conteudo no nome: arquivo
+  // novo = nome novo, entao pode ficar em cache para sempre. O prefixo e
+  // `/midia/` e NAO `/casamento/` de proposito: `/casamento/:path*` casaria com
+  // a propria pagina, e o navegador do Instagram guardaria o HTML por um ano --
+  // depois de um deploy ele apontaria para chunks que nao existem mais.
+  async headers() {
+    return [
+      {
+        source: "/midia/:path*",
+        headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }],
+      },
+    ];
+  },
 };
 
 export default nextConfig;

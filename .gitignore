@@ -64,3 +64,7 @@ next-env.d.ts
 # saida do npm run contrato:verificar (contratos de exemplo, dados ficticios)
 /.contrato-verificacao
 /.arte-2028
+
+# Reels brutos baixados do Instagram para o npm run lp:reels (o que vai versionado
+# e a saida transcodificada em public/midia/)
+/.lp-bruto

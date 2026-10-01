@@ -49,6 +49,7 @@ Estas decisões já foram tomadas e não devem ser reabertas durante o desenvolv
 6. Envio por e-mail com PDF anexo + link
 7. Botão de envio via WhatsApp (`wa.me` com mensagem pronta e link do PDF)
 8. Edição das respostas do lead pelo painel antes de gerar/regerar o PDF
+9. Landing page de venda de casamento em `/casamento` (pedido do owner em 01/10/2026), destino dos anúncios do Instagram: os Reels de casamento da Mel como prova, pacotes sem preço, FAQ e CTA para o formulário em modo casamento (`/formulario?evento=casamento`). Regras em "LP de venda" no CLAUDE.md
 
 ### Fora do MVP (v2)
 
@@ -63,6 +64,8 @@ Estas decisões já foram tomadas e não devem ser reabertas durante o desenvolv
 9. Fluxos de consentimento/LGPD (decisão de escopo do owner: não implementar banners nem telas de consentimento)
 
 ## 5. Fluxo end-to-end
+
+Quem chega pelo anúncio de casamento passa antes pela LP `/casamento` e entra no formulário por `/formulario?evento=casamento`: as mesmas duas portas, mas "Quero um orçamento" pula a escolha de categoria (vai direto à pergunta do WhatsApp) e "Falar com a Mel" abre o WhatsApp com a mensagem de casamento. O resto do fluxo é o mesmo.
 
 ```
 [Mel no WhatsApp] envia link melstorymaker.com.br/formulario

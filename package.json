@@ -23,9 +23,11 @@
     "arte:preparar": "node --conditions=react-server --import tsx scripts/preparar-arte.ts",
     "arte:derivar": "node --conditions=react-server --import tsx scripts/derivar-tabela.ts",
     "vercel:env": "bash scripts/vercel-env.sh",
-    "estilo:verificar": "node scripts/verificar-estilo.mjs http://localhost:3000/formulario http://localhost:3000/orcamento http://localhost:3000/admin/login",
+    "estilo:verificar": "node scripts/verificar-estilo.mjs http://localhost:3000/formulario http://localhost:3000/orcamento http://localhost:3000/admin/login http://localhost:3000/casamento",
     "screenshot": "node scripts/screenshot.mjs",
-    "notifica:testar": "node --env-file=.env.local --import tsx scripts/testar-notificacao.ts"
+    "notifica:testar": "node --env-file=.env.local --import tsx scripts/testar-notificacao.ts",
+    "lp:reels": "node --import tsx scripts/lp-reels.ts",
+    "lp:og": "node --import tsx scripts/lp-og.tsx"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.129.0",

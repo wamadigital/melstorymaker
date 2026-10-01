@@ -1,10 +1,11 @@
 // Os tracados do logo "Mel Storymaker", numa fonte so.
 //
-// Vieram do SVG da identidade no Figma (frame 7120:556) e sao usados em dois
-// lugares: o cabecalho do painel (`components/marca/LogoMel.tsx`, SVG inline) e
+// Vieram do SVG da identidade no Figma (frame 7120:556) e sao usados em tres
+// lugares: o `LogoMel.tsx` (SVG inline: cabecalho do painel e LP `/casamento`),
 // o topo da primeira pagina do contrato (`lib/contrato/pdf.ts`, desenhado pelo
-// pdf-lib, vetorial). Copia-los para o PDF seria convidar os dois a divergirem
-// na primeira vez que o logo mudar.
+// pdf-lib, vetorial) e a imagem de compartilhamento da LP (`scripts/lp-og.tsx`).
+// Copia-los para qualquer um deles seria convidar as copias a divergirem na
+// primeira vez que o logo mudar.
 //
 // Sem "server-only" e sem JSX: o painel e o servidor importam o mesmo modulo.
 
