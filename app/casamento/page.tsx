@@ -105,7 +105,7 @@ export default function Page() {
             Vocês vivem o casamento. Eu conto tudo nos stories.
           </h1>
           <p className="text-lg leading-relaxed text-pretty text-marca-creme/90">
-            Gravo, edito com trilha e legenda e publico no Instagram de vocês. Se quiserem, ainda durante a festa.
+            Gravo, edito com trilha e legenda e publico no Instagram de vocês. No Real Time, os stories saem durante a festa.
           </p>
           <div className="flex items-center gap-3">
             <Image
@@ -165,28 +165,29 @@ export default function Page() {
       <section className="bg-marca-creme px-5 py-16 text-marca-escuro">
         <div className="mx-auto flex max-w-xl flex-col gap-5">
           <Rotulo claro>O que eu faço no casamento</Rotulo>
-          <p className="text-xl leading-snug font-normal text-marca-medio">Passa voando. E as fotos chegam semanas depois.</p>
-          <h2 className="text-3xl leading-tight font-bold text-balance">O fotógrafo cuida do álbum. Eu cuido dos stories.</h2>
+          <p className="text-xl leading-snug font-normal text-marca-medio">O casamento passa voando, e as fotos costumam chegar semanas depois.</p>
+          <h2 className="text-3xl leading-tight font-bold text-balance">Enquanto o fotógrafo cuida do álbum, eu cuido dos stories.</h2>
           <p className="text-lg leading-relaxed text-pretty">
-            Enquanto vocês vivem o dia, eu registro os detalhes, a cerimônia, a festa e a reação de quem vocês amam. Edito,
-            coloco trilha e legenda e publico no Instagram de vocês, sem ninguém da família precisar largar a pista para gravar.
+            No dia, eu registro os detalhes, a cerimônia, a festa e a reação de quem vocês amam. Depois edito, coloco trilha e
+            legenda e publico, e ninguém da família precisa largar a pista para gravar.
           </p>
           <ul className="mt-2 grid gap-3 sm:grid-cols-2">
             <Pilar icone={<Sparkles />} titulo="Stories ilimitados">
-              Tudo o que importa no dia, registrado e publicado sem limite de quantidade.
+              Registro e publico tudo o que importa no dia, sem limite de quantidade.
             </Pilar>
             <Pilar icone={<Clapperboard />} titulo="Editados e espontâneos">
               Alguns ganham montagem. Outros saem do jeito que aconteceram, sem edição.
             </Pilar>
             <Pilar icone={<Palette />} titulo="No estilo de vocês">
-              Trilha e legendas escolhidas pensando na personalidade do casal.
+              Escolho a trilha e as legendas pensando na personalidade de vocês.
             </Pilar>
             <Pilar icone={<EyeOff />} titulo="Discrição">
-              Trabalho sem interferir no andamento do casamento, para vocês aproveitarem cada minuto.
+              Trabalho sem interferir no andamento do casamento, e vocês ficam livres para aproveitar.
             </Pilar>
           </ul>
           <p className="mt-2 rounded-md bg-marca-escuro px-5 py-4 text-lg leading-snug text-marca-creme">
-            Quem não pôde ir também quer ver o seu sim. <strong className="font-bold">No Real Time, vê na hora.</strong>
+            Quem não pôde ir também quer ver o sim de vocês.{" "}
+            <strong className="font-bold">No Real Time, dá para acompanhar na hora.</strong>
           </p>
         </div>
       </section>
@@ -199,8 +200,8 @@ export default function Page() {
             A diferença é quando vocês querem ver.
           </h2>
           <p className="text-lg leading-relaxed text-pretty">
-            Nos dois, a cobertura é de {prazos.horasCobertura} horas, entre cerimônia e recepção. O que muda é a hora em que os
-            stories vão para o ar.
+            Nos dois, a cobertura é de {prazos.horasCobertura} horas, entre cerimônia e recepção. O que muda é quando os stories vão
+            para o ar.
           </p>
           <div className="mt-2 grid gap-4 sm:grid-cols-2">
             {pacotes.map((p) => (
@@ -259,8 +260,8 @@ export default function Page() {
           <Rotulo>Quem vai estar lá</Rotulo>
           <h2 className="text-3xl leading-tight font-bold text-marca-creme">Prazer, eu sou a Mel.</h2>
           <p className="text-lg leading-relaxed text-pretty text-marca-creme/90">
-            Trabalho com marketing digital há 7 anos e hoje uso esse olhar para contar casamentos pelo celular. No dia, fico por
-            perto sem atrapalhar ninguém, e vocês só se preocupam em aproveitar.
+            Há 7 anos trabalho com marketing digital, ajudando pessoas e marcas a contar as próprias histórias. Hoje faço isso nos
+            casamentos, pelo celular, contando o dia de vocês do jeito que ele foi.
           </p>
           <Image
             src={MIDIA.marca.mel}
@@ -325,9 +326,9 @@ export default function Page() {
               Reels com o resumo do dia e todo o material, editado e original.
             </Pergunta>
             <Pergunta titulo="Já tenho fotógrafo e videomaker. Preciso de storymaker?">
-              Eu não substituo nenhum dos dois, eu somo. Foto e filme são o registro para a vida toda e costumam chegar semanas
-              depois. Os stories mostram o casamento enquanto ele acontece, ou poucos dias depois. E trabalho de forma discreta,
-              sem atrapalhar o andamento do casamento.
+              Eu trabalho junto com eles. Foto e filme são o registro para a vida toda e costumam chegar semanas depois; os stories
+              mostram o casamento enquanto ele acontece, ou poucos dias depois. E trabalho de forma discreta, sem atrapalhar o
+              andamento do casamento.
             </Pergunta>
             <Pergunta titulo="Quando os stories vão para o ar?">
               Depende do pacote. No Real Time, eles vão saindo durante a festa; se a internet do local falhar, publico em até{" "}
