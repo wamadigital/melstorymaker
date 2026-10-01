@@ -2,6 +2,13 @@
  * Screenshot de uma tela do app em viewport mobile de verdade.
  *
  *   node scripts/screenshot.mjs http://localhost:3000/formulario saida.png [largura]
+ *     [--cookie "nome=valor; nome2=valor2"] [--inteira]
+ *
+ * Sem flag, o print corta em 2000px de altura. `--inteira` fotografa a pagina
+ * toda (a landing page do /casamento passa disso): antes do tiro ela e rolada
+ * ate o fim e de volta ao topo, porque secao que so monta ao entrar na tela
+ * (IntersectionObserver) nao existe para quem nao rolou e sairia em branco.
+ * Elemento fixo (barra de CTA) aparece onde fica com a pagina no topo.
  *
  * Existe porque `chrome --headless --window-size=360,780` NAO da um viewport de
  * 360px: o Chrome tem largura minima de janela no macOS, entao a pagina e
@@ -20,18 +27,25 @@ import fs from "node:fs/promises";
 import net from "node:net";
 
 const CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
-const [url, saida, larguraArg] = process.argv.slice(2);
-const largura = Number(larguraArg) || 360;
+const args = process.argv.slice(2);
 
 // Cookie de sessao, para fotografar tela autenticada: sem ele o middleware
 // manda /admin para /admin/login e o print sai da tela errada. Aceita o formato
 // "nome=valor; nome2=valor2", que e o mesmo que o e2e-admin.ts ja monta.
-const iCookie = process.argv.indexOf("--cookie");
-const cookieBruto = iCookie > -1 ? process.argv[iCookie + 1] : null;
+const iCookie = args.indexOf("--cookie");
+const cookieBruto = iCookie > -1 ? args[iCookie + 1] : null;
+const inteira = args.includes("--inteira");
+
+// Os posicionais sao o que sobra tirando as flags (e o valor do --cookie):
+// assim a ordem entre flag e largura nao importa.
+const [url, saida, larguraArg] = args.filter(
+  (a, i) => !a.startsWith("--") && !(iCookie > -1 && i === iCookie + 1),
+);
+const largura = Number(larguraArg) || 360;
 
 if (!url || !saida) {
   console.error(
-    "\nUso: node scripts/screenshot.mjs <url> <saida.png> [largura] [--cookie \"n=v; n2=v2\"]\n",
+    "\nUso: node scripts/screenshot.mjs <url> <saida.png> [largura] [--cookie \"n=v; n2=v2\"] [--inteira]\n",
   );
   process.exit(1);
 }
@@ -128,6 +142,28 @@ try {
   await cdp("Page.navigate", { url });
   await new Promise((r) => setTimeout(r, 3500)); // fontes + animacao de entrada
 
+  if (inteira) {
+    // Mesma rolagem do verificar-estilo.mjs: uma tela por vez, altura relida a
+    // cada passo (a secao que monta aumenta a pagina), `instant` para vencer
+    // um scroll-behavior: smooth, e volta ao topo antes do tiro.
+    await cdp("Runtime.evaluate", {
+      awaitPromise: true,
+      expression: `(async () => {
+        const espera = (ms) => new Promise((r) => setTimeout(r, ms));
+        const passo = window.innerHeight;
+        for (let i = 0; i < 80; i++) {
+          const antes = window.scrollY;
+          if (antes + passo >= document.documentElement.scrollHeight - 1) break;
+          window.scrollTo({ top: antes + passo, behavior: 'instant' });
+          await espera(350);
+          if (window.scrollY === antes) break;
+        }
+        window.scrollTo({ top: 0, behavior: 'instant' });
+        await espera(500);
+      })()`,
+    });
+  }
+
   const metricas = await cdp("Runtime.evaluate", {
     expression: `JSON.stringify({
       scrollWidth: document.documentElement.scrollWidth,
@@ -143,13 +179,13 @@ try {
   const tiro = await cdp("Page.captureScreenshot", {
     format: "png",
     captureBeyondViewport: true,
-    clip: { x: 0, y: 0, width: largura, height: Math.min(m.altura, 2000), scale: 1 },
+    clip: { x: 0, y: 0, width: largura, height: inteira ? m.altura : Math.min(m.altura, 2000), scale: 1 },
   });
   await fs.writeFile(saida, Buffer.from(tiro.data, "base64"));
 
   const estoura = m.scrollWidth > m.clientWidth;
   console.log(
-    `  ${saida}  ${largura}px\n` +
+    `  ${saida}  ${largura}px${inteira ? ` x ${m.altura}px (página inteira)` : ""}\n` +
       `  fonte:  ${m.fonte}\n` +
       `  raio:   ${m.raio}\n` +
       `  ${estoura ? "\x1b[31m✗ ESTOURA na horizontal" : "\x1b[32m✓ sem scroll horizontal"}` +
