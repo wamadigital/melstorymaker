@@ -388,7 +388,10 @@ export function GaleriaReels({ reels }: { reels: readonly ReelLp[] }) {
                 aria-label={mudo ? "Ligar o som" : "Desligar o som"}
                 className="absolute inset-0 h-full w-full select-none [-webkit-touch-callout:none] [-webkit-user-drag:none]"
               >
-                {Math.abs(i - atual) <= 1 && (
+                {/* Só depois do `load` (o visualizador fica montado desde o
+                    início, e pôster eager aqui entraria no HTML disputando banda
+                    com o LCP) e só o slide atual e os vizinhos. */}
+                {posteres && Math.abs(i - atual) <= 1 && (
                   <Image
                     src={r.poster}
                     alt=""

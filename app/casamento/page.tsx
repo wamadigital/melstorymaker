@@ -52,7 +52,7 @@ export const metadata: Metadata = {
   },
 };
 
-const SCRIPT_QUERY_NOS_CTAS = `(function(){try{if(!location.search)return;document.querySelectorAll("a[data-cta]").forEach(function(a){var u=new URL(a.getAttribute("href"),location.origin);var p=new URLSearchParams(location.search);u.searchParams.forEach(function(v,k){p.set(k,v)});a.setAttribute("href",u.pathname+"?"+p.toString())})}catch(e){}})();`;
+const SCRIPT_QUERY_NOS_CTAS = `addEventListener("load",function(){document.documentElement.classList.add("lp-carregado")});(function(){try{if(!location.search)return;document.querySelectorAll("a[data-cta]").forEach(function(a){var u=new URL(a.getAttribute("href"),location.origin);var p=new URLSearchParams(location.search);u.searchParams.forEach(function(v,k){p.set(k,v)});a.setAttribute("href",u.pathname+"?"+p.toString())})}catch(e){}})();`;
 
 const ID_CTA_HERO = "cta-hero";
 const ID_CTA_FINAL = "cta-final";
@@ -426,7 +426,8 @@ export default function Page() {
           `<a>` do HTML estático não tem a query: o lead nasceria sem nada que o
           ligasse ao anúncio. Mesma regra do `repassarQuery` (os parâmetros do
           próprio link ganham dos que vieram). O `CtaFormulario` repete isso
-          depois da hidratação. */}
+          depois da hidratação. O mesmo script marca `lp-carregado` no `load`,
+          que é quando a onda decorativa entra (globals.css). */}
       <script dangerouslySetInnerHTML={{ __html: SCRIPT_QUERY_NOS_CTAS }} />
     </main>
   );

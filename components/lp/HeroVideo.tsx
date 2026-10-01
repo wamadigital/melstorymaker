@@ -10,7 +10,8 @@ import { ouvirVisualizador, podeAutoplay, silenciar, visualizadorAberto } from "
  *
  * O HTML do servidor traz o `<video>` SEM `src`: com `autoplay` no HTML o
  * download do MP4 começaria no parse e disputaria banda com o pôster e as
- * fontes no 4G. O `src` só entra depois do `load`, e o vídeo só aparece quando
+ * fontes no 4G. O `src` só entra depois do `load` (e de um respiro do
+ * navegador), e o vídeo só aparece quando
  * está de fato tocando -- até lá (ou para sempre, se o autoplay for recusado)
  * fica o pôster, que é o 1º quadro do teaser e não pula na troca.
  */
@@ -36,12 +37,24 @@ export function HeroVideo({ teaser, poster, alt }: { teaser: string; poster: str
       v.src = teaser;
       retomar();
     };
-    if (document.readyState === "complete") {
-      iniciar();
-      return;
-    }
-    window.addEventListener("load", iniciar, { once: true });
-    return () => window.removeEventListener("load", iniciar);
+    // Depois do `load` E de um respiro do navegador: os ~600 KB do teaser não
+    // disputam banda com os pôsteres da galeria, que entram no `load`. Até lá
+    // fica o pôster, que é o 1º quadro do teaser.
+    let ocioso: number | undefined;
+    const agendar = () => {
+      ocioso =
+        "requestIdleCallback" in window
+          ? window.requestIdleCallback(iniciar, { timeout: 2000 })
+          : (globalThis.setTimeout(iniciar, 1000) as unknown as number);
+    };
+    if (document.readyState === "complete") agendar();
+    else window.addEventListener("load", agendar, { once: true });
+    return () => {
+      window.removeEventListener("load", agendar);
+      if (ocioso === undefined) return;
+      if ("cancelIdleCallback" in window) window.cancelIdleCallback(ocioso);
+      else globalThis.clearTimeout(ocioso);
+    };
   }, [teaser]);
 
   // Fora da tela, ou com o visualizador aberto, o hero pausa. O navegador não

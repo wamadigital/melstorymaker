@@ -199,8 +199,14 @@
 }
 
 /* A onda topografica da marca como mascara: o desenho vem do PNG da arte, a
-   cor vem de quem usa (`bg-*`), entao a mesma onda serve no escuro e no creme. */
+   cor vem de quem usa (`bg-*`), entao a mesma onda serve no escuro e no creme.
+   So entra depois do `load` (`lp-carregado`, posto pelo script inline da LP):
+   e decoracao abaixo da dobra, e a mascara baixava junto com o LCP. */
 .lp-onda {
+  display: none;
+}
+html.lp-carregado .lp-onda {
+  display: block;
   -webkit-mask-image: var(--lp-onda);
   mask-image: var(--lp-onda);
   -webkit-mask-size: 1240px auto;
