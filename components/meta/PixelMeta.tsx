@@ -1,4 +1,5 @@
 import Script from "next/script";
+import { preconnect } from "react-dom";
 import { snippetPixel, type EventoInicial } from "@/lib/meta/snippet";
 
 /** Id do Pixel e so digitos. Validar aqui impede que um valor torto na Vercel vire script quebrado -- ou injetado. */
@@ -41,6 +42,9 @@ export function PixelMeta({
 }) {
   const id = pixelId?.trim();
   if (!id || !RE_PIXEL.test(id)) return null;
+  // A conexao com a Meta abre cedo, no <head>, enquanto o script em si so
+  // entra depois da hidratacao: o fbevents.js chega sem esperar DNS e TLS.
+  preconnect("https://connect.facebook.net");
 
   return (
     <Script id="meta-pixel" strategy="afterInteractive">

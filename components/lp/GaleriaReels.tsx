@@ -74,20 +74,21 @@ export function GaleriaReels({ reels }: { reels: readonly ReelLp[] }) {
     setAutoplay(podeAutoplay());
   }, [reels]);
 
-  // Pôsteres da galeria aquecidos no cache depois do `load`: o lazy-load do
-  // WebKit (até 2025) só carregava imagem de carrossel quando ela já estava
-  // visível, e o card entrava como um bloco marrom vazio. Depois do `load` para
-  // não disputar banda com o LCP.
+  // Os pôsteres da galeria só entram depois do `load`, e então todos de uma
+  // vez (eager). Antes, para não disputar banda com o LCP do hero: a galeria
+  // fica abaixo da dobra, e ~450 KB de pôsteres baixando junto com o pôster do
+  // hero eram o que mais pesava no LCP medido pelo Lighthouse. Eager, e não
+  // lazy, porque o lazy-load do WebKit (até 2025) só carregava imagem de
+  // carrossel quando ela já estava visível: o card entrava vazio no swipe.
+  const [posteres, setPosteres] = useState(false);
   useEffect(() => {
-    const aquecer = () => {
-      for (const r of reels) new window.Image().src = r.poster;
-    };
-    if (document.readyState === "complete") aquecer();
+    const liberar = () => setPosteres(true);
+    if (document.readyState === "complete") liberar();
     else {
-      window.addEventListener("load", aquecer, { once: true });
-      return () => window.removeEventListener("load", aquecer);
+      window.addEventListener("load", liberar, { once: true });
+      return () => window.removeEventListener("load", liberar);
     }
-  }, [reels]);
+  }, []);
 
   // Preview: o card mais visível dentro do trilho, só com a galeria na tela.
   useEffect(() => {
@@ -322,24 +323,27 @@ export function GaleriaReels({ reels }: { reels: readonly ReelLp[] }) {
             type="button"
             data-indice={i}
             onClick={(e) => abrir(i, e.currentTarget)}
-            aria-label={`Assistir o Reel: casamento em ${r.espaco}, ${r.quando}`}
             className="relative aspect-[9/16] w-[64%] max-w-64 shrink-0 snap-start overflow-hidden rounded-md bg-marca-medio text-left transition-transform duration-200 select-none active:scale-[0.98] [-webkit-touch-callout:none]"
           >
-            {/* `fetchPriority="low"`: os dois primeiros saem eager, mas não
-                podem disputar banda com o pôster do hero, que é o LCP. */}
-            <Image
-              src={r.poster}
-              alt=""
-              width={432}
-              height={768}
-              unoptimized
-              draggable={false}
-              loading={i < 2 ? "eager" : "lazy"}
-              fetchPriority="low"
-              className="pointer-events-none absolute inset-0 h-full w-full object-cover"
-            />
+            {posteres && (
+              <Image
+                src={r.poster}
+                alt=""
+                width={432}
+                height={768}
+                unoptimized
+                draggable={false}
+                loading="eager"
+                fetchPriority="low"
+                className="pointer-events-none absolute inset-0 h-full w-full object-cover"
+              />
+            )}
             {tocaPreview && ativo === i && <Preview src={r.preview} />}
+            {/* O nome acessível é o texto visível com um prefixo só para leitor
+                de tela: um aria-label próprio esconderia o que está escrito no
+                card (quem usa comando de voz fala o que vê). */}
             <span className="absolute inset-x-0 bottom-0 flex flex-col gap-0.5 bg-gradient-to-t from-marca-escuro/90 via-marca-escuro/50 to-transparent px-3 pb-3 pt-12">
+              <span className="sr-only">Assistir o Reel do casamento: </span>
               <span className="text-base font-bold text-marca-creme">{r.espaco}</span>
               <span className="text-sm text-marca-areia">{r.quando}</span>
             </span>
