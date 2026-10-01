@@ -9,6 +9,11 @@
     "cta_formulario": {
       "rotulo": "Quero um orçamento",
       "detalhe": "Proposta agilizada"
+    },
+    "por_categoria": {
+      "casamento": {
+        "subtitulo": "Me conta do seu casamento! Escolhe por onde você prefere começar."
+      }
     }
   },
   "categoria": {

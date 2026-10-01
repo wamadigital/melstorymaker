@@ -53,9 +53,16 @@ export type TelaInicial = Extract<Tela, "boas_vindas" | "categoria">;
 export function FormularioClient({
   whatsappMel,
   inicio,
+  categoriaInicial,
 }: {
   whatsappMel: string;
   inicio: TelaInicial;
+  /**
+   * Evento ja escolhido na URL (`/formulario?evento=casamento`, da LP), lido
+   * no servidor. Muda o subtitulo e a mensagem da abertura, e a porta "Quero
+   * um orcamento" pula a escolha da categoria.
+   */
+  categoriaInicial?: Categoria;
 }) {
   // A tela inicial vem do servidor por prop, e nunca de uma leitura da URL no
   // navegador: e o estado que o servidor renderiza, e o conteudo precisa estar
@@ -73,6 +80,10 @@ export function FormularioClient({
   const [retomando, setRetomando] = useState(false);
   const [offline, setOffline] = useState(false);
   const [direcao, setDirecao] = useState<1 | -1>(1);
+  // A pessoa entrou no fluxo pela porta, com a categoria vinda da URL, e nunca
+  // viu a tela de categoria: o "voltar" da primeira pergunta leva de novo as
+  // portas. So `escolherCategoria` escreve isto, e so depois das travas dela.
+  const [pulouCategoria, setPulouCategoria] = useState(false);
 
   const semMovimento = useReducedMotion();
   const temWhatsapp = whatsappMel.trim() !== "";
@@ -117,6 +128,10 @@ export function FormularioClient({
 
         setLeadId(lead.id);
         setCategoria(lead.categoria);
+        // Lead retomado volta para a tela de categoria, nunca para as portas:
+        // de la, "Quero um orcamento" com `?evento=` trocaria a categoria dele
+        // em silencio -- e a troca apaga as respostas do fluxo e grava no banco.
+        setPulouCategoria(false);
         setRespostas(rec);
         ultimoEnvio.current = rec;
         setPassoId(alvo?.id ?? null);
@@ -203,10 +218,14 @@ export function FormularioClient({
    * categoria e fecha a aba nao vira linha no painel: sem telefone a Mel nao
    * tem o que fazer com o lead, e a coluna "Novo" so acumularia gente
    * inalcancavel.
+   *
+   * `pelaPorta`: chamada pela porta "Quero um orcamento" com a categoria da
+   * URL, sem passar pela tela de categoria. Escolher na tela zera a marca.
    */
-  function escolherCategoria(valor: string) {
+  function escolherCategoria(valor: string, pelaPorta = false) {
     if (!isCategoria(valor) || ocupado || retomando) return;
     setErro(null);
+    setPulouCategoria(pelaPorta);
 
     // Trocar de categoria preserva o contato ja digitado: quem voltou para
     // trocar nao deve redigitar o proprio telefone.
@@ -313,7 +332,9 @@ export function FormularioClient({
 
     const anterior = passoAnterior(categoria, respostas, passo.id);
     if (!anterior) {
-      setTela("categoria");
+      // Quem pulou a categoria volta para as portas: a tela de categoria seria
+      // uma pergunta que a pessoa nunca viu, no caminho de volta.
+      setTela(pulouCategoria ? "boas_vindas" : "categoria");
       return;
     }
     setPassoId(anterior.id);
@@ -394,7 +415,9 @@ export function FormularioClient({
                       {arvore.boas_vindas.titulo}
                     </h1>
                     <p className="text-lg text-pretty text-muted-foreground">
-                      {arvore.boas_vindas.texto}
+                      {(categoriaInicial &&
+                        arvore.boas_vindas.por_categoria?.[categoriaInicial]?.subtitulo) ??
+                        arvore.boas_vindas.texto}
                     </p>
                   </div>
 
@@ -405,13 +428,19 @@ export function FormularioClient({
                   <div className="grid w-full max-w-md grid-cols-2 gap-3 self-center">
                     {temWhatsapp && (
                       <a
-                        href={linkPrimeiroContato(whatsappMel)}
+                        href={linkPrimeiroContato(whatsappMel, categoriaInicial)}
                         target="_blank"
                         rel="noopener noreferrer"
                         // Quem sai por esta porta nao vira lead no banco: o
                         // `Contact` da Meta e o unico registro de que o anuncio
-                        // trouxe uma conversa.
-                        onClick={() => rastrear(EVENTO.contato)}
+                        // trouxe uma conversa. Com o evento da URL, ele vai
+                        // junto, como no `Lead`.
+                        onClick={() =>
+                          rastrear(
+                            EVENTO.contato,
+                            categoriaInicial ? { content_category: categoriaInicial } : undefined,
+                          )
+                        }
                         className={cn(
                           PORTA,
                           "border border-foreground/25 bg-card hover:border-foreground",
@@ -435,6 +464,16 @@ export function FormularioClient({
                       // lead novo por cima de um que ja existe.
                       disabled={retomando}
                       onClick={() => {
+                        // Com o evento da URL, direto para o fluxo dele (cai na
+                        // pergunta do WhatsApp; o lead continua nascendo so no
+                        // primeiro avanco). A segunda condicao e cinto de
+                        // seguranca: um lead de OUTRA categoria ja em memoria
+                        // nunca e trocado por esta porta -- vai para a tela de
+                        // categoria, onde a troca e escolha explicita.
+                        if (categoriaInicial && (!categoria || categoria === categoriaInicial)) {
+                          escolherCategoria(categoriaInicial, true);
+                          return;
+                        }
                         setDirecao(1);
                         setTela("categoria");
                       }}

@@ -64,6 +64,32 @@ test("a porta 'Falar com a Mel' abre a conversa com a mensagem ja escrita", () =
   assert.ok(mensagemPrimeiroContato().length > 0);
 });
 
+test("sem categoria, a primeira mensagem e a frase generica de sempre", () => {
+  assert.equal(
+    mensagemPrimeiroContato(),
+    "Oi, Mel! Vim pelo site e queria falar sobre o meu evento ✨",
+  );
+});
+
+test("quem vem da LP do casamento ja chega dizendo que e casamento", () => {
+  assert.equal(
+    mensagemPrimeiroContato("casamento"),
+    "Oi, Mel! Vim pelo site e queria falar sobre o meu casamento ✨",
+  );
+  assert.equal(
+    linkPrimeiroContato("(19) 99999-8888", "casamento"),
+    `https://wa.me/5519999998888?text=${encodeURIComponent(mensagemPrimeiroContato("casamento"))}`,
+  );
+});
+
+test("categoria sem texto proprio cai na frase generica", () => {
+  // A excecao e so do casamento: as outras categorias nao tem pagina que mande
+  // para o formulario ja com o evento escolhido.
+  for (const categoria of ["debutante", "aniversario", "corporativo"] as const) {
+    assert.equal(mensagemPrimeiroContato(categoria), mensagemPrimeiroContato());
+  }
+});
+
 test("chamar um lead abre a conversa SEM texto pré-escrito", () => {
   // As outras portas de WhatsApp daqui levam mensagem pronta; esta não, de
   // propósito: cada pessoa parou num ponto diferente por um motivo diferente,

@@ -12,6 +12,9 @@ export const dynamic = "force-dynamic";
  *
  * Pagina propria, e nao redirect para `/formulario?...`: o redirect custaria
  * uma ida e volta a mais no 4G antes da primeira pintura.
+ *
+ * Ignora `?evento=` de proposito: quem recebe este link ja conversa com a Mel,
+ * e ele abre na escolha do evento, sem as portas que o `?evento` adapta.
  */
 export default function Page() {
   return <PaginaFormulario inicio="categoria" />;

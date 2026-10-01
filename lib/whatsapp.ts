@@ -1,6 +1,8 @@
 // Links wa.me. Nenhuma API de WhatsApp entra neste projeto: o botao do painel
 // so abre a conversa no aparelho da Mel, com a mensagem pronta.
 
+import type { Categoria } from "@/lib/form/types";
+
 /**
  * Normaliza o numero para o formato do wa.me (DDI + DDD + numero, so digitos).
  * O banco guarda o que o lead digitou, sem DDI; numero com 55 na frente nao
@@ -124,6 +126,15 @@ export function linkWhatsAppMel(numeroMel: string): string {
 }
 
 /**
+ * Primeira mensagem por categoria, quando a abertura ja sabe qual e o evento.
+ * So entra aqui categoria que tem pagina propria apontando para o formulario:
+ * as outras continuam no texto generico.
+ */
+const PRIMEIRO_CONTATO_POR_CATEGORIA: Partial<Record<Categoria, string>> = {
+  casamento: "Oi, Mel! Vim pelo site e queria falar sobre o meu casamento ✨",
+};
+
+/**
  * Primeira mensagem do lead que escolhe "Falar com a Mel" na abertura do
  * formulario, em vez de responder as perguntas.
  *
@@ -133,15 +144,25 @@ export function linkWhatsAppMel(numeroMel: string): string {
  *
  * Curta e na voz do lead -- e ele quem "diz" isto. Nada de dado pessoal aqui:
  * o texto fica visivel na URL, que o navegador do WhatsApp guarda no historico.
+ * A categoria nao e dado pessoal: e o que a propria URL de entrada ja diz.
+ *
+ * Excecao por categoria, aprovada pelo owner em 01/10/2026: a landing page do
+ * casamento (`/casamento`) manda para `/formulario?evento=casamento`, e quem
+ * chega por ali ja disse que o evento e um casamento -- "o meu evento" seria a
+ * Mel recebendo menos do que a pessoa ja contou. Sem categoria, ou com uma que
+ * nao tem texto proprio, sai a frase generica de sempre.
  */
-export function mensagemPrimeiroContato(): string {
-  return "Oi, Mel! Vim pelo site e queria falar sobre o meu evento ✨";
+export function mensagemPrimeiroContato(categoria?: Categoria): string {
+  return (
+    (categoria && PRIMEIRO_CONTATO_POR_CATEGORIA[categoria]) ??
+    "Oi, Mel! Vim pelo site e queria falar sobre o meu evento ✨"
+  );
 }
 
 /**
  * Link da porta "Falar com a Mel" (tela de abertura do formulario). Abre a
  * conversa com a Mel ja com a primeira mensagem escrita.
  */
-export function linkPrimeiroContato(numeroMel: string): string {
-  return `${linkWhatsAppMel(numeroMel)}?text=${encodeURIComponent(mensagemPrimeiroContato())}`;
+export function linkPrimeiroContato(numeroMel: string, categoria?: Categoria): string {
+  return `${linkWhatsAppMel(numeroMel)}?text=${encodeURIComponent(mensagemPrimeiroContato(categoria))}`;
 }

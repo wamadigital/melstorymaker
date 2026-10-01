@@ -82,6 +82,12 @@ export type BoasVindas = {
   texto: string;
   cta_whatsapp: Porta;
   cta_formulario: Porta;
+  /**
+   * Subtitulo no lugar de `texto` quando a abertura ja chega com a categoria
+   * (`/formulario?evento=casamento`, para onde manda a LP `/casamento`).
+   * Categoria sem entrada aqui fica no `texto` de sempre.
+   */
+  por_categoria?: Partial<Record<Categoria, { subtitulo: string }>>;
 };
 export type Confirmacao = { titulo: string; texto: string; cta_whatsapp: string };
 

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { PixelMeta } from "@/components/meta/PixelMeta";
+import type { Categoria } from "@/lib/form/types";
 import { FormularioClient, type TelaInicial } from "./FormularioClient";
 
 /**
@@ -15,7 +16,17 @@ export const metadataFormulario: Metadata = {
     "Algumas perguntinhas rápidas para eu entender seu evento e preparar a proposta ideal.",
 };
 
-export function PaginaFormulario({ inicio }: { inicio: TelaInicial }) {
+/**
+ * `categoria` so vem de `/formulario?evento=...`, lido no servidor (ver
+ * `app/formulario/page.tsx`). `/orcamento` nao passa: abre na escolha do evento.
+ */
+export function PaginaFormulario({
+  inicio,
+  categoria,
+}: {
+  inicio: TelaInicial;
+  categoria?: Categoria;
+}) {
   // MEL_WHATSAPP e server-side (nao e NEXT_PUBLIC): chega ao client como prop,
   // so nesta pagina, em vez de virar variavel publica de build.
   const whatsappMel = process.env.MEL_WHATSAPP ?? "";
@@ -24,7 +35,7 @@ export function PaginaFormulario({ inicio }: { inicio: TelaInicial }) {
     <>
       {/* Mesmo motivo do MEL_WHATSAPP: lido em runtime, sem virar NEXT_PUBLIC. */}
       <PixelMeta pixelId={process.env.META_PIXEL_ID} />
-      <FormularioClient whatsappMel={whatsappMel} inicio={inicio} />
+      <FormularioClient whatsappMel={whatsappMel} inicio={inicio} categoriaInicial={categoria} />
     </>
   );
 }
