@@ -4,7 +4,7 @@
 import type { Status } from "@/lib/form/types";
 
 /**
- * Eventos que o LEAD dispara, no formulario. Todos PADRAO da Meta: aparecem
+ * Eventos que o LEAD dispara, no formulario e na LP. Todos PADRAO da Meta: aparecem
  * como coluna no Gerenciador de Anuncios e servem de meta de otimizacao sem
  * conversao personalizada.
  *
@@ -14,11 +14,30 @@ import type { Status } from "@/lib/form/types";
  *   terminar o formulario; o evento segue a mesma definicao.
  * - `SubmitApplication`: terminou o formulario (`incompleto` ->
  *   `aguardando_revisao`), o pedido de proposta completo.
+ * - `ViewContent`: abriu a LP `/casamento` (disparado junto com o PageView,
+ *   pelo `PixelMeta`). Padrao, serve de meta de otimizacao do anuncio.
  */
 export const EVENTO = {
   contato: "Contact",
   lead: "Lead",
   submit: "SubmitApplication",
+  conteudo: "ViewContent",
+} as const;
+
+/**
+ * Eventos PERSONALIZADOS da LP `/casamento` (`rastrearPersonalizado`, so no
+ * navegador). Existem para publico de remarketing e diagnostico do anuncio.
+ *
+ * - `CliqueCTA` `{pagina, posicao}`: tocou num botao que leva ao formulario.
+ *   Sai por imagem logo antes da navegacao e pode se perder; a conversao do
+ *   clique, no Gerenciador, se monta no PageView do formulario com
+ *   `evento=casamento` na URL, que sempre chega.
+ * - `AssistiuReel` `{reel, marco}`: abriu um Reel em tela cheia (`abriu`) e
+ *   passou da metade (`metade`).
+ */
+export const EVENTO_LP = {
+  cliqueCta: "CliqueCTA",
+  assistiuReel: "AssistiuReel",
 } as const;
 
 /**

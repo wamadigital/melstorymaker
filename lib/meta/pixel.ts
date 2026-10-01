@@ -1,5 +1,5 @@
 // Disparo do Meta Pixel no navegador. O script base e carregado por
-// `components/meta/PixelMeta.tsx`, so nas telas do lead.
+// `components/meta/PixelMeta.tsx`, so nas telas do lead (formulario e LP).
 
 declare global {
   interface Window {
@@ -23,5 +23,21 @@ export function rastrear(evento: string, dados?: Record<string, string>, eventId
     window.fbq("track", evento, dados ?? {}, eventId ? { eventID: eventId } : undefined);
   } catch {
     // Silencioso de proposito: o lead nao tem o que fazer com erro de rastreio.
+  }
+}
+
+/**
+ * Evento PERSONALIZADO (`trackCustom`), com o mesmo no-op seguro do `rastrear`.
+ *
+ * Usado so pela LP (`EVENTO_LP`): clique no CTA e Reel assistido, que servem a
+ * publico de remarketing e a diagnostico do anuncio -- nao a painel de funil
+ * (regra 8). Sem `eventId`: nenhum deles tem copia no servidor para deduplicar.
+ */
+export function rastrearPersonalizado(evento: string, dados?: Record<string, string>): void {
+  try {
+    if (typeof window === "undefined" || typeof window.fbq !== "function") return;
+    window.fbq("trackCustom", evento, dados ?? {});
+  } catch {
+    // Mesmo motivo do `rastrear`.
   }
 }
