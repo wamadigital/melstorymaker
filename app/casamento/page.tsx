@@ -185,7 +185,7 @@ export default function Page() {
             <Pilar icone={<Download />} titulo="Vídeos para guardar">
               Arquivos originais e editados disponíveis para vocês baixarem e reverem.
             </Pilar>
-            <Pilar icone={<EyeOff />} titulo="Discrição durante o casamento">
+            <Pilar icone={<EyeOff />} titulo="Durante o casamento">
               Acompanho os acontecimentos respeitando o ritmo da cerimônia e da festa.
             </Pilar>
           </ul>
