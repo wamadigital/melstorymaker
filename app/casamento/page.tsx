@@ -207,7 +207,7 @@ export default function Page() {
             Escolham como querem registrar e compartilhar.
           </h2>
           <p className="text-lg leading-relaxed">
-            Vocês podem receber os vídeos para guardar ou também contar com a publicação nos stories durante a festa. Conheçam as
+            Conheçam as
             opções de cobertura e o que cada uma inclui.
           </p>
           <div className="mt-2 grid gap-4 sm:grid-cols-2">
