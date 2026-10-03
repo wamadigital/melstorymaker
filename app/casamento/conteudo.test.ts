@@ -9,7 +9,7 @@ import { adicionaisDaLp, condicoesDaLp, maisDe, pacotesDaLp, prazosDoFaq, telefo
 test("os dois pacotes de casamento, na ordem, com o selo só no Principal", () => {
   const p = pacotesDaLp();
   assert.deepEqual(p.map((x) => x.nome), ["Pacote Principal", "Pacote Real Time"]);
-  assert.equal(p[0].selo, "O mais contratado pelos noivos");
+  assert.equal(p[0].selo, "O mais contratado");
   assert.equal(p[1].selo, null);
 });
 
@@ -82,6 +82,11 @@ test("a página não escreve preço nem prazo à mão", () => {
   // Os números da LP passam por conteudo.ts; o JSX só os interpola.
   const pagina = fs.readFileSync(path.join(process.cwd(), "app/casamento/page.tsx"), "utf8");
   assert.doesNotMatch(pagina, /R\$/);
-  const literais = pagina.match(/\b\d+\s*(?:%|dias?\b|horas?\b|meses\b|minutos?\b)/g);
+  const literais = pagina.match(/\b\d+\s*(?:%|dias?\b|horas?\b|meses\b|minutos?\b|semanas?\b)/g);
   assert.equal(literais, null, `número escrito à mão em page.tsx: ${literais?.join(", ")}`);
+  // Por extenso também: "em até sete dias úteis" escapava da regra acima.
+  const extenso = pagina.match(
+    /\b(?:uma?|dois|duas|três|quatro|cinco|seis|sete|oito|nove|dez|onze|doze|quinze|vinte|trinta|quarenta|cinquenta|sessenta|cem)(?:\s+e\s+\p{L}+)?\s+(?:dias?|horas?|meses|minutos?|semanas?|por\s+cento)\b/giu,
+  );
+  assert.equal(extenso, null, `número por extenso escrito à mão em page.tsx: ${extenso?.join(", ")}`);
 });

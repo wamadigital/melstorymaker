@@ -1,4 +1,4 @@
-import { CalendarCheck, Camera, Check, Clapperboard, EyeOff, Heart, MessageCircle, Mail, Palette, ShieldCheck, Sparkles, Wrench } from "lucide-react";
+import { CalendarCheck, Camera, Check, Clapperboard, Download, EyeOff, Heart, MessageCircle, Mail, ShieldCheck, Sparkles, Wrench } from "lucide-react";
 import type { Metadata } from "next";
 import Image from "next/image";
 import type { CSSProperties, ReactNode } from "react";
@@ -13,7 +13,16 @@ import { PixelMeta } from "@/components/meta/PixelMeta";
 import { CONTRATADA } from "@/lib/contrato/contratada";
 import { EVENTO } from "@/lib/meta/eventos";
 import { cn } from "@/lib/utils";
-import { adicionaisDaLp, condicoesDaLp, maisDe, pacotesDaLp, prazosDoFaq, telefoneLegivel } from "./conteudo";
+import {
+  adicionaisDaLp,
+  CELEBRACOES_MAIS_DE,
+  condicoesDaLp,
+  maisDe,
+  pacotesDaLp,
+  prazosDoFaq,
+  telefoneLegivel,
+  TITULO_LP,
+} from "./conteudo";
 import { MIDIA } from "./midia.gerado";
 import { CASAMENTOS_PUBLICADOS, REELS } from "./reels";
 
@@ -24,6 +33,8 @@ import { CASAMENTOS_PUBLICADOS, REELS } from "./reels";
  * - identidade COMPLETA da marca só aqui (tokens em `.lp-casamento`);
  * - os Reels são a prova: sem nome de casal, sem depoimento, sem preço;
  * - todo CTA vai ao formulário de sempre, em modo casamento.
+ * E de 03/10/2026: o serviço é o REGISTRO para guardar e rever; publicar nos
+ * stories é opção do casal, nunca a promessa principal.
  *
  * Página ESTÁTICA (HTML no CDN): o TTFB conta no 4G do navegador do
  * Instagram. Por isso nada aqui lê a URL no servidor -- a query do anúncio
@@ -40,11 +51,11 @@ export const metadata: Metadata = {
   metadataBase: new URL(URL_SITE),
   title: "Storymaker de casamento em Campinas | Mel Simão Storymaker",
   description:
-    "Vocês vivem o casamento e eu conto tudo nos stories: gravo, edito com trilha e legenda e publico no Instagram de vocês. Campinas e região.",
+    "Registro a cerimônia, a festa e os momentos espontâneos pelo celular, em vídeos para vocês guardarem. Se quiserem, também publico nos stories. Campinas e região.",
   alternates: { canonical: "/casamento" },
   openGraph: {
-    title: "Vocês vivem o casamento. Eu conto tudo nos stories.",
-    description: "Stories e Reels do casamento de vocês, gravados, editados e publicados pela Mel. Campinas e região.",
+    title: TITULO_LP,
+    description: "Os vídeos do casamento de vocês, registrados pela Mel pelo celular, para guardar e compartilhar. Campinas e região.",
     url: "/casamento",
     siteName: "Mel Simão | Storymaker",
     locale: "pt_BR",
@@ -102,10 +113,11 @@ export default function Page() {
         <div className="relative mx-auto flex w-full max-w-xl flex-col gap-4 px-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-20">
           <p className="text-xs font-bold uppercase tracking-[0.2em] text-marca-areia">Storymaker de casamentos · Campinas e região</p>
           <h1 className="text-4xl leading-[1.08] font-bold text-balance text-marca-creme sm:text-5xl">
-            Vocês vivem o casamento. Eu conto tudo nos stories.
+            {TITULO_LP}
           </h1>
           <p className="text-lg leading-relaxed text-pretty text-marca-creme/90">
-            Gravo, edito com trilha e legenda e publico no Instagram de vocês. No Real Time, os stories saem durante a festa.
+            Registro a cerimônia, a festa e os momentos espontâneos pelo celular. Vocês recebem os vídeos para guardar e
+            compartilhar como quiserem. Se desejarem, também cuido da publicação nos stories.
           </p>
           <div className="flex items-center gap-3">
             <Image
@@ -122,9 +134,9 @@ export default function Page() {
           </div>
           <div className="flex flex-col gap-2">
             <CtaFormulario id={ID_CTA_HERO} posicao="hero" variante="claro">
-              Consultar minha data
+              Consultar nossa data
             </CtaFormulario>
-            <p className="text-sm text-marca-areia">Você escolhe: falar comigo no WhatsApp ou pedir um orçamento.</p>
+            <p className="text-sm text-marca-areia">Escolham entre conversar comigo no WhatsApp ou preencher o pedido de orçamento.</p>
           </div>
         </div>
       </section>
@@ -142,10 +154,11 @@ export default function Page() {
         <div className="mx-auto mb-8 flex max-w-xl flex-col gap-3 px-5">
           <Rotulo>Portfólio</Rotulo>
           <h2 id="titulo-galeria" className="text-3xl leading-tight font-bold text-balance text-marca-creme">
-            Casamentos que eu contei
+            Veja como eu registro um casamento.
           </h2>
           <p className="text-lg leading-relaxed text-pretty text-marca-creme/85">
-            Todo casamento ganha um Reels de resumo assim, além dos stories. Toque para assistir com som.
+            Estes são alguns vídeos de resumo que preparei para os casais. Dê o play com som e conheça meu jeito de registrar os
+            encontros, as reações e a festa.
           </p>
         </div>
         <div className="mx-auto max-w-6xl">
@@ -156,52 +169,56 @@ export default function Page() {
         </p>
         <div className="mx-auto mt-10 flex max-w-xl justify-center px-5">
           <CtaFormulario posicao="galeria" variante="claro">
-            Quero o meu assim
+            Quero uma proposta para o nosso casamento
           </CtaFormulario>
         </div>
       </section>
 
-      {/* 3. O que eu faço (problema curto + solução) */}
-      <section className="bg-marca-creme px-5 py-16 text-marca-escuro">
+      {/* 3. O que eu registro + benefícios + a escolha de publicar (transição para os pacotes) */}
+      <section className="bg-marca-creme px-5 py-16 text-marca-escuro" aria-labelledby="titulo-registro">
         <div className="mx-auto flex max-w-xl flex-col gap-5">
-          <Rotulo claro>O que eu faço no casamento</Rotulo>
-          <p className="text-xl leading-snug font-normal text-marca-medio">O casamento passa voando, e as fotos costumam chegar semanas depois.</p>
-          <h2 className="text-3xl leading-tight font-bold text-balance">Enquanto o fotógrafo cuida do álbum, eu cuido dos stories.</h2>
+          <Rotulo claro>A cobertura</Rotulo>
+          <h2 id="titulo-registro" className="text-3xl leading-tight font-bold text-balance">
+            O que eu registro no casamento?
+          </h2>
           <p className="text-lg leading-relaxed text-pretty">
-            No dia, eu registro os detalhes, a cerimônia, a festa e a reação de quem vocês amam. Depois edito, coloco trilha e
-            legenda e publico, e ninguém da família precisa largar a pista para gravar.
+            Com o celular, acompanho a cerimônia e a festa para registrar detalhes, reações e momentos espontâneos. Depois, vocês
+            recebem os arquivos originais, os vídeos editados e um resumo do casamento para baixar e guardar.
           </p>
           <ul className="mt-2 grid gap-3 sm:grid-cols-2">
-            <Pilar icone={<Sparkles />} titulo="Stories ilimitados">
-              Registro e publico tudo o que importa no dia, sem limite de quantidade.
+            <Pilar icone={<Sparkles />} titulo="Momentos espontâneos">
+              Atenção aos abraços, às reações e ao que acontece durante a cobertura.
             </Pilar>
-            <Pilar icone={<Clapperboard />} titulo="Editados e espontâneos">
-              Alguns ganham montagem. Outros saem do jeito que aconteceram, sem edição.
+            <Pilar icone={<Clapperboard />} titulo="Edição no estilo de vocês">
+              Montagem, trilha e legendas pensadas para combinar com o casal.
             </Pilar>
-            <Pilar icone={<Palette />} titulo="No estilo de vocês">
-              Escolho a trilha e as legendas pensando na personalidade de vocês.
+            <Pilar icone={<Download />} titulo="Vídeos para guardar">
+              Arquivos originais e editados disponíveis para vocês baixarem e reverem.
             </Pilar>
-            <Pilar icone={<EyeOff />} titulo="Discrição">
-              Trabalho sem interferir no andamento do casamento, e vocês ficam livres para aproveitar.
+            <Pilar icone={<EyeOff />} titulo="Discrição durante o casamento">
+              Acompanho os acontecimentos respeitando o ritmo da cerimônia e da festa.
             </Pilar>
           </ul>
-          <p className="mt-2 rounded-md bg-marca-escuro px-5 py-4 text-lg leading-snug text-marca-creme">
-            Quem não pôde ir também quer ver o sim de vocês.{" "}
-            <strong className="font-bold">No Real Time, dá para acompanhar na hora.</strong>
-          </p>
+          <div className="mt-2 flex flex-col gap-2 rounded-md bg-marca-escuro px-5 py-5 text-marca-creme">
+            <h3 className="text-xl leading-snug font-bold text-balance">Para guardar. Para compartilhar. Vocês escolhem.</h3>
+            <p className="text-lg leading-snug text-pretty text-marca-creme/90">
+              A cobertura pode ser contratada só para receber os registros. Se vocês também quiserem publicar no Instagram, os
+              stories saem depois do casamento ou em tempo real, conforme a opção escolhida.
+            </p>
+          </div>
         </div>
       </section>
 
-      {/* 4. Pacotes como escolha de tempo */}
+      {/* 4. Pacotes */}
       <section className="bg-marca-creme px-5 pb-16 text-marca-escuro" aria-labelledby="titulo-pacotes">
         <div className="mx-auto flex max-w-xl flex-col gap-5 border-t border-marca-escuro/15 pt-16">
           <Rotulo claro>Pacotes</Rotulo>
           <h2 id="titulo-pacotes" className="text-3xl leading-tight font-bold text-balance">
-            A diferença é quando vocês querem ver.
+            Escolham como querem registrar e compartilhar.
           </h2>
           <p className="text-lg leading-relaxed text-pretty">
-            Nos dois, a cobertura é de {prazos.horasCobertura} horas, entre cerimônia e recepção. O que muda é quando os stories vão
-            para o ar.
+            Vocês podem receber os vídeos para guardar ou também contar com a publicação nos stories durante a festa. Conheçam as
+            opções de cobertura e o que cada uma inclui.
           </p>
           <div className="mt-2 grid gap-4 sm:grid-cols-2">
             {pacotes.map((p) => (
@@ -246,7 +263,7 @@ export default function Page() {
           </p>
           <div className="mt-2 flex flex-col items-center gap-2 text-center">
             <CtaFormulario posicao="pacotes" variante="terracota">
-              Quero receber a proposta
+              Consultar nossa data
             </CtaFormulario>
             <p className="text-sm text-marca-medio">O valor sai na proposta, de acordo com a data e o que vocês escolherem.</p>
           </div>
@@ -258,10 +275,13 @@ export default function Page() {
         <div aria-hidden className="lp-onda pointer-events-none absolute inset-0 bg-marca-areia/15" />
         <div className="relative mx-auto flex max-w-xl flex-col gap-5">
           <Rotulo>Quem vai estar lá</Rotulo>
-          <h2 className="text-3xl leading-tight font-bold text-marca-creme">Prazer, eu sou a Mel.</h2>
+          <h2 className="text-3xl leading-tight font-bold text-balance text-marca-creme">
+            Mais de {CELEBRACOES_MAIS_DE} celebrações registradas.
+          </h2>
           <p className="text-lg leading-relaxed text-pretty text-marca-creme/90">
-            Há 7 anos trabalho com marketing digital, ajudando pessoas e marcas a contar as próprias histórias. Hoje faço isso nos
-            casamentos, pelo celular, contando o dia de vocês do jeito que ele foi.
+            Sou a Mel, storymaker de casamentos. Pelo celular, acompanho os encontros, as reações e os momentos espontâneos com
+            atenção e discrição. Essa experiência faz parte do olhar que levo para o casamento de vocês, em vídeos para guardar e
+            rever.
           </p>
           <Image
             src={MIDIA.marca.mel}
@@ -279,17 +299,17 @@ export default function Page() {
         <div className="mx-auto flex max-w-xl flex-col gap-6">
           <Rotulo claro>Como funciona</Rotulo>
           <h2 id="titulo-como" className="text-3xl leading-tight font-bold text-balance">
-            Do primeiro oi ao dia do casamento
+            Da primeira conversa à cobertura.
           </h2>
           <ol className="flex flex-col gap-5">
-            <Passo n={1} titulo="Me conta a data">
-              Pelo WhatsApp ou por um formulário rapidinho.
+            <Passo n={1} titulo="Contem o que estão planejando">
+              Quero saber quando, onde e como será a celebração.
             </Passo>
-            <Passo n={2} titulo="Recebe a proposta">
-              Monto a proposta do casamento de vocês e mando no WhatsApp e no e-mail.
+            <Passo n={2} titulo="Escolham a cobertura">
+              Conversamos sobre os registros, a publicação e o que faz sentido para vocês.
             </Passo>
-            <Passo n={3} titulo="Reserva e aproveita">
-              A data fica garantida com {c.reservaPct}% do valor. No dia, vocês só aproveitam.
+            <Passo n={3} titulo="Reservem a data">
+              Com a proposta aprovada e o sinal pago, seguimos com os preparativos da cobertura.
             </Passo>
           </ol>
 
@@ -320,28 +340,22 @@ export default function Page() {
             O que os noivos mais me perguntam
           </h2>
           <div className="flex flex-col gap-2">
-            <Pergunta titulo="O que faz uma storymaker?">
-              Eu gravo, edito e publico o casamento de vocês em stories, pelo celular e com equipamento próprio: os detalhes,
-              a cerimônia, a festa e a reação dos convidados, com trilha e legenda no estilo do casal. Depois vocês recebem também um
-              Reels com o resumo do dia e todo o material, editado e original.
+            <Pergunta titulo="Como funciona o trabalho de uma storymaker no casamento?">
+              Eu registro os momentos da cobertura em vídeo pelo celular e preparo os materiais para vocês receberem e guardarem. A
+              publicação nos stories também pode fazer parte do serviço, se vocês quiserem.
             </Pergunta>
-            <Pergunta titulo="Já tenho fotógrafo e videomaker. Preciso de storymaker?">
-              Eu trabalho junto com eles. Foto e filme são o registro para a vida toda e costumam chegar semanas depois; os stories
-              mostram o casamento enquanto ele acontece, ou poucos dias depois. E trabalho de forma discreta, sem atrapalhar o
-              andamento do casamento.
+            <Pergunta titulo="A cobertura combina com o trabalho do fotógrafo e do videomaker?">
+              Sim. Minha atuação acrescenta registros pelo celular, com atenção aos momentos espontâneos da cobertura. Posso trabalhar
+              junto das outras equipes, respeitando o espaço e o andamento do casamento. Vocês recebem esses vídeos para guardar e
+              rever.
             </Pergunta>
-            <Pergunta titulo="Quando os stories vão para o ar?">
-              Depende do pacote. No Real Time, eles vão saindo durante a festa; se a internet do local falhar, publico em até{" "}
-              {c.horasSemInternet} horas. No Principal, publico tudo em até {prazos.storiesPrincipal}. Nos dois, o Reels e todo o material chegam no
-              Drive em até {prazos.reels}.
+            <Pergunta titulo="Podemos contratar só os registros, sem postar no Instagram?">
+              Sim. Vocês podem contratar a cobertura para receber os vídeos e guardar os registros, sem publicação e sem disponibilizar
+              acesso ao Instagram. Se quiserem que eu publique, combinamos a forma de acesso e as publicações na contratação.
             </Pergunta>
-            <Pergunta titulo="Sai no nosso Instagram? Preciso passar a senha?">
-              Sai no Instagram de vocês. O ideal é me liberar o acesso compartilhado do próprio Instagram, e aí vocês não precisam
-              passar a senha. Uso só para publicar o casamento: não leio direct nem mexo nas configurações. Quando termino, paro de
-              usar, e vocês tiram o meu acesso nas configurações (ou trocam a senha, se tiverem passado).
-            </Pergunta>
-            <Pergunta titulo="E se a gente não quiser postar nada?">
-              Tudo bem. Sem acesso ao Instagram, eu entrego toda a cobertura por um link para vocês baixarem.
+            <Pergunta titulo="Quando vamos receber os vídeos?">
+              O vídeo de resumo e os arquivos originais e editados ficam disponíveis no Drive em até {prazos.entregaDrive}. Se vocês
+              escolherem publicação nos stories, ela segue o prazo da cobertura contratada e as condições apresentadas no pacote.
             </Pergunta>
             <Pergunta titulo="Você fica até o fim da festa?">
               A cobertura é de {prazos.horasCobertura} horas, entre cerimônia e recepção. Se a festa for mais longa, dá para somar
@@ -368,16 +382,16 @@ export default function Page() {
         <div className="relative mx-auto flex max-w-xl flex-col items-center gap-5 text-center">
           <MonogramaMel className="h-14 w-auto text-marca-areia" />
           <h2 className="text-3xl leading-tight font-bold text-balance text-marca-creme">
-            Me conta a data que eu te mando a proposta.
+            Que momentos vocês querem ter para rever?
           </h2>
           <p className="text-lg leading-relaxed text-pretty text-marca-creme/85">
-            A data só fica reservada com o sinal de {c.reservaPct}%. Até lá, ela continua livre para outro casal.
+            Vamos conversar sobre o casamento e sobre como vocês gostariam de guardar esses registros.
           </p>
           <div className="flex w-full flex-col items-center gap-2">
             <CtaFormulario id={ID_CTA_FINAL} posicao="final" variante="claro">
-              Consultar minha data
+              Conversar sobre nosso casamento
             </CtaFormulario>
-            <p className="text-sm text-marca-areia">Você escolhe: falar comigo no WhatsApp ou pedir um orçamento.</p>
+            <p className="text-sm text-marca-areia">Consultem a disponibilidade e conheçam as opções de cobertura.</p>
           </div>
         </div>
       </section>

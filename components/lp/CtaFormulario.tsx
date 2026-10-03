@@ -70,7 +70,8 @@ export function CtaFormulario({
         rastrearPersonalizado(EVENTO_LP.cliqueCta, { pagina: "casamento", posicao });
       }}
       className={cn(
-        "inline-flex h-14 w-full max-w-sm items-center justify-center gap-2 rounded-md px-6 text-lg font-bold transition-[background-color,transform] duration-200 active:scale-[0.98]",
+        // `min-h` e não `h`: o CTA da galeria quebra em duas linhas a 360px.
+        "inline-flex min-h-14 w-full max-w-sm items-center justify-center gap-2 rounded-md px-6 py-3 text-center text-lg leading-tight font-bold transition-[background-color,transform] duration-200 active:scale-[0.98]",
         CLASSE_CTA[variante],
         className,
       )}

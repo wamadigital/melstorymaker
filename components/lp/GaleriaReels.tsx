@@ -483,7 +483,7 @@ export function GaleriaReels({ reels }: { reels: readonly ReelLp[] }) {
                 CLASSE_CTA.claro,
               )}
             >
-              Quero o meu assim
+              Consultar nossa data
             </button>
             <div className="h-1 w-full overflow-hidden bg-marca-creme/25" aria-hidden>
               <div className="h-full bg-marca-creme" style={{ width: `${Math.round(progresso * 1000) / 10}%` }} />

@@ -57,7 +57,7 @@ export function BarraCtaFixa({ idHero, idFinal }: { idHero: string; idFinal: str
       )}
     >
       <CtaFormulario posicao="fixo" variante="claro">
-        Consultar minha data
+        Consultar nossa data
       </CtaFormulario>
     </div>
   );

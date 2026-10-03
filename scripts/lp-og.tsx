@@ -11,8 +11,8 @@
  * -- o WhatsApp costuma descartar a prévia acima de ~300 KB. O JPEG fica em
  * ~100 KB.
  *
- * Rode de novo quando mudar o título da página ou o teaser do hero
- * (`npm run lp:reels` troca o pôster que entra aqui).
+ * Rode de novo quando mudar o título da página (`TITULO_LP`, o mesmo H1) ou o
+ * teaser do hero (`npm run lp:reels` troca o pôster que entra aqui).
  */
 import { execFile } from "node:child_process";
 import { readFile, rm, writeFile } from "node:fs/promises";
@@ -22,6 +22,7 @@ import { promisify } from "node:util";
 import { ImageResponse } from "next/og";
 // O tsx compila JSX no modo clássico (o tsconfig é "preserve", para o Next).
 import React from "react";
+import { TITULO_LP } from "@/app/casamento/conteudo";
 import { MIDIA } from "@/app/casamento/midia.gerado";
 import { CAIXA_LOGO_MEL, TRACADOS_LOGO_MEL } from "@/lib/marca/logo";
 
@@ -59,7 +60,7 @@ async function main() {
           <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
             <div style={{ fontSize: 22, letterSpacing: 4, color: "#cbad95" }}>STORYMAKER DE CASAMENTOS</div>
             <div style={{ fontSize: 58, lineHeight: 1.08, color: "#f0e0c7", letterSpacing: -1 }}>
-              Vocês vivem o casamento. Eu conto tudo nos stories.
+              {TITULO_LP}
             </div>
           </div>
           <div style={{ fontSize: 26, color: "#cbad95" }}>Campinas e região · @mel.storymaker</div>

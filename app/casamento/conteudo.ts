@@ -10,9 +10,23 @@ import { pacoteDoCatalogo, catalogoDaArte } from "@/lib/contrato/catalogo";
 import { pagamentoDoPreset } from "@/lib/contrato/pagamento";
 import type { Escopo } from "@/lib/contrato/tipos";
 
+/**
+ * O título da página. Mora aqui porque a imagem de compartilhamento
+ * (`scripts/lp-og.tsx`) desenha a mesma frase: escrito em dois lugares, o
+ * link no WhatsApp prometeria uma coisa e a página abriria com outra.
+ */
+export const TITULO_LP = "Seu casamento em vídeos para guardar e rever.";
+
+/**
+ * "Mais de 100 celebrações registradas", afirmado pelo owner em 03/10/2026
+ * (todas as categorias, não só casamento). É o único número da LP que não sai
+ * do contrato, do catálogo ou dos Reels: mudou, muda aqui.
+ */
+export const CELEBRACOES_MAIS_DE = 100;
+
 export type PacoteLp = {
   nome: string;
-  /** O selo que a arte do Principal traz ("o + contratado pelos noivos"). */
+  /** O selo da arte do Principal ("o + contratado pelos noivos"), encurtado a pedido do owner (03/10/2026). */
   selo: string | null;
   /** A frase que diferencia os dois: QUANDO os stories vão ao ar. */
   destaque: string;
@@ -22,7 +36,7 @@ export type PacoteLp = {
 };
 
 const PACOTES_LP = [
-  { nome: "Pacote Principal", selo: "O mais contratado pelos noivos" },
+  { nome: "Pacote Principal", selo: "O mais contratado" },
   { nome: "Pacote Real Time", selo: null },
 ] as const;
 
@@ -128,9 +142,12 @@ export function prazosDoFaq() {
   const principal = pacoteDoCatalogo("casamento", "Pacote Principal")!.escopo;
   const realTime = pacoteDoCatalogo("casamento", "Pacote Real Time")!.escopo;
   return {
-    storiesPrincipal: dias(principal.diasStories),
-    reels: dias(Math.max(principal.diasReels, realTime.diasReels)),
-    material: dias(Math.max(principal.diasMaterial, realTime.diasMaterial)),
+    /**
+     * O Reels de resumo e o material no Drive, numa frase só para os dois
+     * pacotes: o MAIOR dos prazos, porque "em até N" com o menor seria falso
+     * para quem contratou o outro.
+     */
+    entregaDrive: dias(Math.max(principal.diasReels, realTime.diasReels, principal.diasMaterial, realTime.diasMaterial)),
     horasCobertura: Math.round(principal.minutosCobertura / 60),
   };
 }
