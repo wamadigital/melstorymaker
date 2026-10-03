@@ -12,6 +12,13 @@ export const MIDIA = {
         "video": 10667945,
         "preview": 454802,
         "poster": 28862
+      },
+      "origem": {
+        "trecho": {
+          "inicio": 46,
+          "fim": 52
+        },
+        "semAudio": false
       }
     },
     "DWXY4QLDjsV": {
@@ -24,6 +31,13 @@ export const MIDIA = {
         "video": 10802216,
         "preview": 334952,
         "poster": 86556
+      },
+      "origem": {
+        "trecho": {
+          "inicio": 55,
+          "fim": 59
+        },
+        "semAudio": false
       }
     },
     "DZF5RZnxFYY": {
@@ -36,6 +50,13 @@ export const MIDIA = {
         "video": 11196749,
         "preview": 418036,
         "poster": 50486
+      },
+      "origem": {
+        "trecho": {
+          "inicio": 66,
+          "fim": 71
+        },
+        "semAudio": false
       }
     },
     "DXM41Y7DtAA": {
@@ -48,6 +69,13 @@ export const MIDIA = {
         "video": 11351034,
         "preview": 493163,
         "poster": 54906
+      },
+      "origem": {
+        "trecho": {
+          "inicio": 36,
+          "fim": 42
+        },
+        "semAudio": false
       }
     },
     "DdcXXy8O8hN": {
@@ -60,6 +88,13 @@ export const MIDIA = {
         "video": 8499024,
         "preview": 490094,
         "poster": 29846
+      },
+      "origem": {
+        "trecho": {
+          "inicio": 79,
+          "fim": 85
+        },
+        "semAudio": false
       }
     },
     "DdYyiYBxkMo": {
@@ -72,6 +107,13 @@ export const MIDIA = {
         "video": 11216474,
         "preview": 470847,
         "poster": 88362
+      },
+      "origem": {
+        "trecho": {
+          "inicio": 12,
+          "fim": 18
+        },
+        "semAudio": false
       }
     },
     "DPeG5utjo1d": {
@@ -84,6 +126,13 @@ export const MIDIA = {
         "video": 8463566,
         "preview": 355317,
         "poster": 21362
+      },
+      "origem": {
+        "trecho": {
+          "inicio": 73,
+          "fim": 78
+        },
+        "semAudio": false
       }
     },
     "DVyShjmjuOO": {
@@ -96,6 +145,13 @@ export const MIDIA = {
         "video": 10582164,
         "preview": 489460,
         "poster": 38182
+      },
+      "origem": {
+        "trecho": {
+          "inicio": 46,
+          "fim": 52
+        },
+        "semAudio": false
       }
     },
     "DLqRcGRSdzn": {
@@ -108,6 +164,13 @@ export const MIDIA = {
         "video": 9254790,
         "preview": 463578,
         "poster": 30638
+      },
+      "origem": {
+        "trecho": {
+          "inicio": 50,
+          "fim": 56
+        },
+        "semAudio": false
       }
     },
     "DR9y93sDiQO": {
@@ -120,21 +183,35 @@ export const MIDIA = {
         "video": 9028820,
         "preview": 455784,
         "poster": 62158
+      },
+      "origem": {
+        "trecho": {
+          "inicio": 45,
+          "fim": 51
+        },
+        "semAudio": false
       }
     }
   },
   "hero": {
-    "teaser": "/midia/casamento/hero-teaser.5f41877eaf.mp4",
-    "poster": "/midia/casamento/hero-poster.60f4fe2c0d.webp",
-    "posterJpg": "/midia/casamento/hero-poster.c043df42b4.jpg",
+    "teaser": "/midia/casamento/hero-teaser.1ec2aa91b5.mp4",
+    "poster": "/midia/casamento/hero-poster.25ac1cc2a4.webp",
+    "fotoOg": "/midia/casamento/og-foto.c00b95aff3.jpg",
     "bytes": {
-      "teaser": 652866,
-      "poster": 58510
+      "teaser": 652511,
+      "poster": 34766
+    },
+    "origem": {
+      "id": "DdcXXy8O8hN",
+      "trecho": {
+        "inicio": 79,
+        "fim": 85
+      },
+      "recorteY": 460
     }
   },
   "marca": {
     "mel": "/midia/casamento/mel.48d828ae85.webp",
-    "avatar": "/midia/casamento/mel-avatar.a9ec1cb612.webp",
     "onda": "/midia/casamento/onda.6c5654c9be.webp"
   }
 } as const;

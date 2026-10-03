@@ -17,14 +17,13 @@ import {
   adicionaisDaLp,
   CELEBRACOES_MAIS_DE,
   condicoesDaLp,
-  maisDe,
   pacotesDaLp,
   prazosDoFaq,
   telefoneLegivel,
   TITULO_LP,
 } from "./conteudo";
 import { MIDIA } from "./midia.gerado";
-import { CASAMENTOS_PUBLICADOS, REELS } from "./reels";
+import { ANO_PRIMEIRO_CASAMENTO, REELS } from "./reels";
 
 /*
  * LP de venda de casamento: destino dos anúncios do Instagram.
@@ -68,8 +67,6 @@ const SCRIPT_QUERY_NOS_CTAS = `addEventListener("load",function(){document.docum
 const ID_CTA_HERO = "cta-hero";
 const ID_CTA_FINAL = "cta-final";
 
-const ESPACOS_EM_DESTAQUE = ["Espaço Pieri", "Casa Venamore", "Corsage", "Portal Paraíso", "Rancho Verde", "Spazzio Felicità"];
-
 export default function Page() {
   const reels: ReelLp[] = REELS.map((r) => ({
     id: r.id,
@@ -97,55 +94,36 @@ export default function Page() {
         ]}
       />
 
-      {/* 1. Hero */}
-      <section className="lp-escuro relative flex min-h-[100svh] flex-col justify-end overflow-hidden">
-        <HeroVideo
-          teaser={MIDIA.hero.teaser}
-          poster={MIDIA.hero.poster}
-          alt="Noivos saindo da cerimônia sob uma chuva de pétalas, ao entardecer"
-        />
-        <div className="absolute inset-0 bg-gradient-to-t from-marca-escuro via-marca-escuro/55 to-marca-escuro/10" />
-        <header className="absolute inset-x-0 top-0 flex items-center gap-3 px-5 pt-[max(1.25rem,env(safe-area-inset-top))]">
-          <MonogramaMel className="h-8 w-auto text-marca-creme" />
-          <LogoMel className="h-4 w-auto text-marca-creme" />
-        </header>
-
-        <div className="relative mx-auto flex w-full max-w-xl flex-col gap-4 px-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-20">
-          <p className="text-xs font-bold uppercase tracking-[0.2em] text-marca-areia">Storymaker de casamentos · Campinas e região</p>
-          <h1 className="text-4xl leading-[1.08] font-bold text-balance text-marca-creme sm:text-5xl">
-            {TITULO_LP}
-          </h1>
+      {/* 1. Hero: texto no escuro liso e o vídeo num quadro de câmera (HeroVideo).
+          Nada por cima do vídeo além do visor: o título sobre as pétalas não
+          se lia (owner, 03/10/2026). */}
+      <section className="lp-escuro">
+        <div className="mx-auto flex w-full max-w-xl flex-col gap-5 px-5 pb-10 pt-[max(1.25rem,env(safe-area-inset-top))]">
+          <header className="flex items-center gap-3 pb-2">
+            <MonogramaMel className="h-8 w-auto text-marca-creme" />
+            <LogoMel className="h-4 w-auto text-marca-creme" />
+          </header>
+          <p className="text-xs font-bold uppercase tracking-[0.2em] text-marca-areia">Storymaker · Campinas e região</p>
+          <h1 className="text-4xl leading-[1.08] font-bold text-balance text-marca-creme sm:text-5xl">{TITULO_LP}</h1>
+          <HeroVideo
+            teaser={MIDIA.hero.teaser}
+            poster={MIDIA.hero.poster}
+            alt="Noivos saindo da cerimônia de mãos dadas sob uma chuva de pétalas, ao entardecer"
+          />
           <p className="text-lg leading-relaxed text-pretty text-marca-creme/90">
-            Registro a cerimônia, a festa e os momentos espontâneos pelo celular. Vocês recebem os vídeos para guardar e
-            compartilhar como quiserem. Se desejarem, também cuido da publicação nos stories.
+            Sou a Mel e já registrei mais de {CELEBRACOES_MAIS_DE} celebrações pelo celular. Guardo abraços, sorrisos e lágrimas de
+            alegria enquanto vocês celebram essa nova etapa ao lado de quem amam.
           </p>
-          <div className="flex items-center gap-3">
-            <Image
-              src={MIDIA.marca.avatar}
-              alt=""
-              width={48}
-              height={48}
-              unoptimized
-              className="size-12 shrink-0 rounded-md bg-marca-medio object-cover"
-            />
-            <p className="text-base text-marca-creme">
-              Oi, eu sou a Mel <span aria-hidden>✨</span>
-            </p>
-          </div>
-          <div className="flex flex-col gap-2">
-            <CtaFormulario id={ID_CTA_HERO} posicao="hero" variante="claro">
-              Consultar nossa data
-            </CtaFormulario>
-            <p className="text-sm text-marca-areia">Escolham entre conversar comigo no WhatsApp ou preencher o pedido de orçamento.</p>
-          </div>
+          <CtaFormulario id={ID_CTA_HERO} posicao="hero" variante="claro" className="max-w-none">
+            Consultar nossa data
+          </CtaFormulario>
         </div>
       </section>
 
-      {/* Faixa de prova logo abaixo da dobra */}
+      {/* Faixa logo abaixo da dobra */}
       <section className="lp-escuro border-y border-marca-creme/10 bg-marca-medio/40 px-5 py-6">
         <p className="mx-auto max-w-xl text-center text-base leading-relaxed text-marca-creme/90">
-          <strong className="font-bold text-marca-creme">{maisDe(CASAMENTOS_PUBLICADOS)} casamentos contados desde 2024</strong>, em
-          lugares como {lista(ESPACOS_EM_DESTAQUE)}.
+          Desde {ANO_PRIMEIRO_CASAMENTO}, registrando em vídeos o que a emoção nem sempre deixa colocar em palavras.
         </p>
       </section>
 
@@ -451,11 +429,6 @@ export default function Page() {
 /** Só os campos que a galeria usa: a ilha do navegador não recebe bytes nem duração. */
 function pick(m: { video: string; preview: string; poster: string; temAudio: boolean }) {
   return { video: m.video, preview: m.preview, poster: m.poster, temAudio: m.temAudio };
-}
-
-/** "a, b e c". */
-function lista(itens: readonly string[]): string {
-  return itens.length < 2 ? itens.join("") : `${itens.slice(0, -1).join(", ")} e ${itens[itens.length - 1]}`;
 }
 
 function Rotulo({ children, claro }: { children: ReactNode; claro?: boolean }) {

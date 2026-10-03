@@ -41,15 +41,22 @@ export const REELS: readonly Reel[] = [
 /**
  * Teaser do hero: a saída sob pétalas ao entardecer. Mudo, em loop, sem trilha
  * nenhuma no arquivo -- o hero nunca toca som.
+ *
+ * Desde 03/10/2026 o vídeo não fica mais ATRÁS do texto (a legibilidade do
+ * título sobre as pétalas era ruim, apontou o owner): é um quadro 4:3 recortado
+ * nos noivos, com cara de visor de câmera. `recorteY` é o topo do recorte, em
+ * pixels do Reel bruto (720x1280): a faixa de 720x540 que vai da cabeça ao
+ * joelho dos noivos ao longo dos 6 s. Mudou o trecho, confira o recorte de novo
+ * numa folha de quadros.
  */
-export const HERO = { id: "DdcXXy8O8hN", trecho: { inicio: 79, fim: 85 } } as const;
+export const HERO = { id: "DdcXXy8O8hN", trecho: { inicio: 79, fim: 85 }, recorteY: 460 } as const;
 
 /**
- * Quantos casamentos estão publicados no Instagram da Mel (contados em
- * 01/10/2026, de nov/2024 a ago/2026). É o número que a página pode afirmar;
- * a galeria mostra só uma parte deles. Atualize junto quando entrar Reel novo.
+ * Desde quando a Mel registra casamento: o primeiro publicado no Instagram
+ * dela é de nov/2024 (contado em 01/10/2026). É o "Desde 2024" da faixa de
+ * baixo do hero.
  */
-export const CASAMENTOS_PUBLICADOS = 22;
+export const ANO_PRIMEIRO_CASAMENTO = 2024;
 
 /**
  * Teto de peso por arquivo, usado pelo `lp:reels` ao gerar e conferido de novo

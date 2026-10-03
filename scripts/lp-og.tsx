@@ -12,7 +12,9 @@
  * ~100 KB.
  *
  * Rode de novo quando mudar o título da página (`TITULO_LP`, o mesmo H1) ou o
- * teaser do hero (`npm run lp:reels` troca o pôster que entra aqui).
+ * Reel ou o trecho do hero (`HERO.id`/`HERO.trecho`): a foto daqui é a
+ * `fotoOg`, o 1º quadro do trecho do hero, vertical e INTEIRA -- não o pôster
+ * 4:3 da página, e por isso mudar só o `recorteY` não muda esta imagem.
  */
 import { execFile } from "node:child_process";
 import { readFile, rm, writeFile } from "node:fs/promises";
@@ -32,8 +34,8 @@ const SAIDA = path.join(process.cwd(), "app/casamento/opengraph-image.jpg");
 async function main() {
   const [fonte, poster] = await Promise.all([
     readFile(path.join(process.cwd(), "assets/fonts/DMSans-Bold.ttf")),
-    // O satori não lê WebP: o `lp:reels` gera esta cópia em JPEG só para isto.
-    readFile(path.join(process.cwd(), "public", MIDIA.hero.posterJpg)),
+    // O satori não lê WebP: o `lp:reels` gera esta foto em JPEG só para isto.
+    readFile(path.join(process.cwd(), "public", MIDIA.hero.fotoOg)),
   ]);
   const fundo = `data:image/jpeg;base64,${poster.toString("base64")}`;
   const larguraLogo = 300;

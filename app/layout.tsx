@@ -44,7 +44,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="pt-BR" className={dmSans.variable}>
+    // `suppressHydrationWarning`: o script inline da LP `/casamento` põe
+    // `lp-carregado` no <html> no `load`, que pode chegar antes da hidratação.
+    // Só silencia ESTE elemento (não os filhos), e a classe fica, que é o certo.
+    <html lang="pt-BR" className={dmSans.variable} suppressHydrationWarning>
       <body className="antialiased">{children}</body>
     </html>
   );

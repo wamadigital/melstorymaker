@@ -44,7 +44,7 @@ test("arquivos existem, o hash do nome bate e cada um cabe no orçamento", () =>
   assert.ok(total <= ORCAMENTO.reelsTotal, `Reels somam ${total} bytes`);
   assert.ok(confereHash(MIDIA.hero.teaser) <= ORCAMENTO.teaser);
   confereHash(MIDIA.hero.poster);
-  confereHash(MIDIA.hero.posterJpg);
+  confereHash(MIDIA.hero.fotoOg);
   for (const url of Object.values(MIDIA.marca)) confereHash(url);
 });
 
@@ -54,13 +54,23 @@ test("a pasta de mídia não guarda arquivo órfão", () => {
       ...Object.values(MIDIA.reels).flatMap((m) => [m.video, m.preview, m.poster]),
       MIDIA.hero.teaser,
       MIDIA.hero.poster,
-      MIDIA.hero.posterJpg,
+      MIDIA.hero.fotoOg,
       ...Object.values(MIDIA.marca),
     ].map((u) => path.basename(u)),
   );
   for (const nome of fs.readdirSync(path.join(PUBLIC, "midia/casamento"))) {
     assert.ok(usados.has(nome), `${nome} não é usado por ninguém`);
   }
+});
+
+test("a mídia gerada saiu do manifesto de agora (mudou o trecho, rode npm run lp:reels)", () => {
+  // O `lp:reels` só recodifica o que mudou, comparando com esta `origem`; sem
+  // este teste, editar um trecho e esquecer o script passaria despercebido.
+  for (const r of REELS) {
+    const m = MIDIA.reels[r.id as keyof typeof MIDIA.reels];
+    assert.deepEqual(m.origem.trecho, r.trecho, `${r.id}: preview gerado de outro trecho`);
+  }
+  assert.deepEqual(MIDIA.hero.origem, { id: HERO.id, trecho: HERO.trecho, recorteY: HERO.recorteY });
 });
 
 test("o teaser do hero sai de um Reel baixado e o trecho cabe nele", () => {

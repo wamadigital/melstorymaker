@@ -1,8 +1,20 @@
 /**
  * Prepara a mídia da `/casamento` a partir dos Reels brutos e das fontes da marca.
  *
- *   npm run lp:reels                # com a trilha dos Reels (decisão do owner)
+ *   npm run lp:reels                # gera só o que falta ou mudou
  *   npm run lp:reels -- --sem-audio # tira a trilha de todos os Reels
+ *   npm run lp:reels -- --refazer   # recodifica tudo (veja abaixo antes)
+ *
+ * Só recodifica o que mudou. Cada arquivo gerado guarda em `midia.gerado.ts`
+ * os parâmetros de que saiu (`origem`): o Reel completo depende do áudio, o
+ * preview e o pôster do trecho, o hero do Reel, do trecho e do recorte. Bateu
+ * e o arquivo existe, fica o mesmo. Por que isso importa: recodificar NÃO sai
+ * idêntico byte a byte (o x264 com várias threads varia de uma execução para
+ * outra, medido em 03/10/2026), então refazer tudo troca o hash dos dez
+ * vídeos -- ~96 MB novos no histórico de um repositório público e o cache
+ * immutable de quem já assistiu jogado fora, por nada. Casamento novo
+ * recodifica só o casamento novo. O que é WebP e JPEG (pôsteres, marca, foto
+ * da imagem de compartilhamento) sai idêntico e é refeito sempre.
  *
  * Lê `.lp-bruto/<id>.mp4` (baixado do Instagram da Mel com yt-dlp, formato
  * progressivo 720p) e `.lp-bruto/marca/` (exports do Figma), grava em
@@ -106,12 +118,72 @@ async function webp(entrada: string, saida: string, qualidade: number, extra: st
   await exec("cwebp", ["-quiet", "-q", String(qualidade), "-m", "6", ...extra, entrada, "-o", saida]);
 }
 
+type Trecho = { inicio: number; fim: number };
+type OrigemReel = { trecho: Trecho; semAudio: boolean };
+type MidiaReel = {
+  video: string;
+  preview: string;
+  poster: string;
+  duracao: number;
+  temAudio: boolean;
+  bytes: { video: number; preview: number; poster: number };
+  origem: OrigemReel;
+};
+type OrigemHero = { id: string; trecho: Trecho; recorteY: number };
+type MidiaHero = { teaser: string; poster: string; fotoOg: string; bytes: { teaser: number; poster: number }; origem: OrigemHero };
+
+const mesmoTrecho = (a: Trecho | undefined, b: Trecho) => !!a && a.inicio === b.inicio && a.fim === b.fim;
+
+async function existe(url: string): Promise<boolean> {
+  try {
+    await fs.access(path.join(RAIZ, "public", url));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** O que a última execução gerou (vazio na primeira, sem `midia.gerado.ts`). */
+async function geradoAntes(): Promise<{ reels: Record<string, MidiaReel | undefined>; hero?: MidiaHero }> {
+  try {
+    const { MIDIA } = await import("@/app/casamento/midia.gerado");
+    return MIDIA as unknown as { reels: Record<string, MidiaReel | undefined>; hero?: MidiaHero };
+  } catch {
+    return { reels: {} };
+  }
+}
+
 async function main() {
   const semAudio = process.argv.includes("--sem-audio");
+  const refazer = process.argv.includes("--refazer");
   await garantirFerramentas();
 
+  // Plano: o que se aproveita da execução anterior e o que precisa do bruto.
+  const antes = await geradoAntes();
+  const plano = await Promise.all(
+    REELS.map(async (r) => {
+      const a = antes.reels[r.id];
+      const video = !refazer && !!a && a.origem.semAudio === semAudio && (await existe(a.video));
+      const trecho = !refazer && !!a && mesmoTrecho(a.origem.trecho, r.trecho) && (await existe(a.preview)) && (await existe(a.poster));
+      return { r, a, mantemVideo: video, mantemTrecho: trecho };
+    }),
+  );
+  const origemHero: OrigemHero = { id: HERO.id, trecho: HERO.trecho, recorteY: HERO.recorteY };
+  const h = antes.hero;
+  const mantemHero =
+    !refazer &&
+    !!h &&
+    JSON.stringify(h.origem) === JSON.stringify(origemHero) &&
+    (await existe(h.teaser)) &&
+    (await existe(h.poster)) &&
+    (await existe(h.fotoOg));
+
+  // Só pede o bruto do que vai ser codificado: com tudo aproveitado, dá para
+  // rodar sem ter baixado os ~330 MB de Reels (o `.lp-bruto/` fica fora do git).
+  const precisa = new Set(plano.filter((p) => !p.mantemVideo || !p.mantemTrecho).map((p) => p.r.id));
+  precisa.add(HERO.id); // a foto da imagem de compartilhamento sai sempre do bruto do hero
   const faltando: string[] = [];
-  for (const id of new Set([...REELS.map((r) => r.id), HERO.id])) {
+  for (const id of precisa) {
     try {
       await fs.access(path.join(BRUTO, `${id}.mp4`));
     } catch {
@@ -125,46 +197,75 @@ async function main() {
     );
     process.exit(1);
   }
+  const marcaDir = path.join(BRUTO, "marca");
+  for (const nome of ["mel-recorte.png", "onda.png"]) {
+    try {
+      await fs.access(path.join(marcaDir, nome));
+    } catch {
+      console.error(`\nFalta .lp-bruto/marca/${nome} (export do Figma, ver comentário da marca abaixo).\n`);
+      process.exit(1);
+    }
+  }
 
   await fs.mkdir(SAIDA, { recursive: true });
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "lp-reels-"));
   const tmp = (nome: string) => path.join(tmpDir, nome);
 
-  const reels: Record<string, unknown> = {};
+  const reels: Record<string, MidiaReel> = {};
   let totalReels = 0;
 
-  for (const r of REELS) {
+  for (const { r, a, mantemVideo, mantemTrecho } of plano) {
+    process.stdout.write(`${r.id}  ${r.espaco} · ${r.quando}  `);
+    if (mantemVideo && mantemTrecho && a) {
+      reels[r.id] = a;
+      totalReels += a.bytes.video;
+      console.log("mantido");
+      continue;
+    }
     const bruto = path.join(BRUTO, `${r.id}.mp4`);
     const dur = await duracao(bruto);
     if (r.trecho.fim <= r.trecho.inicio || r.trecho.fim > dur) {
       throw new Error(`${r.id}: trecho ${r.trecho.inicio}-${r.trecho.fim}s fora do Reel (${dur}s).`);
     }
-    process.stdout.write(`${r.id}  ${r.espaco} · ${r.quando}  `);
 
-    // Reel completo. A trilha original já é AAC ~60 kbps: copia sem reencodar.
-    const audio = semAudio ? ["-an"] : ["-c:a", "copy"];
-    await ffmpeg([
-      "-i", bruto, "-vf", "scale=540:960:flags=lanczos", ...X264_REEL, ...audio,
-      "-movflags", "+faststart", tmp("reel.mp4"),
-    ]);
-    const comAudio = await temTrilha(tmp("reel.mp4"));
-    const video = await publicar(tmp("reel.mp4"), r.id, "mp4");
+    let video: { url: string; bytes: number };
+    let comAudio: boolean;
+    if (mantemVideo && a) {
+      video = { url: a.video, bytes: a.bytes.video };
+      comAudio = a.temAudio;
+    } else {
+      // Reel completo. A trilha original já é AAC ~60 kbps: copia sem reencodar.
+      const audio = semAudio ? ["-an"] : ["-c:a", "copy"];
+      await ffmpeg([
+        "-i", bruto, "-vf", "scale=540:960:flags=lanczos", ...X264_REEL, ...audio,
+        "-movflags", "+faststart", tmp("reel.mp4"),
+      ]);
+      comAudio = await temTrilha(tmp("reel.mp4"));
+      video = await publicar(tmp("reel.mp4"), r.id, "mp4");
+    }
 
-    // Preview: -ss antes do -i é exato ao transcodificar (decodifica do keyframe anterior).
-    const t = String(r.trecho.inicio);
-    const len = String(r.trecho.fim - r.trecho.inicio);
-    await ffmpeg([
-      "-ss", t, "-t", len, "-i", bruto,
-      "-vf", `scale=${LARGURA_PREVIEW}:${ALTURA_PREVIEW}:flags=lanczos`, ...X264_CURTO, "-maxrate", "600k", "-bufsize", "1200k",
-      "-movflags", "+faststart", tmp("preview.mp4"),
-    ]);
-    const preview = await publicar(tmp("preview.mp4"), `${r.id}-preview`, "mp4");
+    let preview: { url: string; bytes: number };
+    let poster: { url: string; bytes: number };
+    if (mantemTrecho && a) {
+      preview = { url: a.preview, bytes: a.bytes.preview };
+      poster = { url: a.poster, bytes: a.bytes.poster };
+    } else {
+      // Preview: -ss antes do -i é exato ao transcodificar (decodifica do keyframe anterior).
+      const t = String(r.trecho.inicio);
+      const len = String(r.trecho.fim - r.trecho.inicio);
+      await ffmpeg([
+        "-ss", t, "-t", len, "-i", bruto,
+        "-vf", `scale=${LARGURA_PREVIEW}:${ALTURA_PREVIEW}:flags=lanczos`, ...X264_CURTO, "-maxrate", "600k", "-bufsize", "1200k",
+        "-movflags", "+faststart", tmp("preview.mp4"),
+      ]);
+      preview = await publicar(tmp("preview.mp4"), `${r.id}-preview`, "mp4");
 
-    // Pôster = 1º quadro do preview.
-    await ffmpeg(["-ss", t, "-i", bruto, "-frames:v", "1", "-vf", `scale=${LARGURA_PREVIEW}:${ALTURA_PREVIEW}:flags=lanczos`, tmp("poster.png")]);
-    await webp(tmp("poster.png"), tmp("poster.webp"), 72);
-    await fs.rm(tmp("poster.png"));
-    const poster = await publicar(tmp("poster.webp"), `${r.id}-poster`, "webp");
+      // Pôster = 1º quadro do preview.
+      await ffmpeg(["-ss", t, "-i", bruto, "-frames:v", "1", "-vf", `scale=${LARGURA_PREVIEW}:${ALTURA_PREVIEW}:flags=lanczos`, tmp("poster.png")]);
+      await webp(tmp("poster.png"), tmp("poster.webp"), 72);
+      await fs.rm(tmp("poster.png"));
+      poster = await publicar(tmp("poster.webp"), `${r.id}-poster`, "webp");
+    }
 
     totalReels += video.bytes;
     reels[r.id] = {
@@ -174,53 +275,56 @@ async function main() {
       duracao: dur,
       temAudio: comAudio,
       bytes: { video: video.bytes, preview: preview.bytes, poster: poster.bytes },
+      origem: { trecho: { inicio: r.trecho.inicio, fim: r.trecho.fim }, semAudio },
     };
-    console.log(`reel ${mb(video.bytes)} · preview ${kb(preview.bytes)} · pôster ${kb(poster.bytes)}${comAudio ? "" : " · sem áudio"}`);
+    const refeito = [!mantemVideo && "reel", !mantemTrecho && "preview e pôster"].filter(Boolean).join(" + ");
+    console.log(
+      `${refeito}: reel ${mb(video.bytes)} · preview ${kb(preview.bytes)} · pôster ${kb(poster.bytes)}${comAudio ? "" : " · sem áudio"}`,
+    );
   }
 
-  // Hero: 540x960 porque ocupa a tela inteira; o LCP é o pôster, não o vídeo,
-  // e o teaser só começa a baixar depois do `load`.
-  {
-    const bruto = path.join(BRUTO, `${HERO.id}.mp4`);
-    const t = String(HERO.trecho.inicio);
+  // Hero: o quadro 4:3 recortado nos noivos (`HERO.recorteY`), na resolução
+  // do bruto (720 de largura), sem escala. O LCP é o pôster, não o vídeo, e o
+  // teaser só começa a baixar depois do `load`.
+  const bruto = path.join(BRUTO, `${HERO.id}.mp4`);
+  const t = String(HERO.trecho.inicio);
+  let hero: MidiaHero;
+  if (mantemHero && h) {
+    hero = h;
+    console.log("hero  mantido");
+  } else {
     const len = String(HERO.trecho.fim - HERO.trecho.inicio);
+    const recorte = `crop=iw:iw*3/4:0:${HERO.recorteY}`;
     await ffmpeg([
-      "-ss", t, "-t", len, "-i", bruto, "-vf", "scale=540:960:flags=lanczos", ...X264_CURTO,
+      "-ss", t, "-t", len, "-i", bruto, "-vf", recorte, ...X264_CURTO,
       "-maxrate", "800k", "-bufsize", "1600k", "-movflags", "+faststart", tmp("teaser.mp4"),
     ]);
-    await ffmpeg(["-ss", t, "-i", bruto, "-frames:v", "1", "-vf", "scale=720:1280:flags=lanczos", tmp("hero.png")]);
-    await webp(tmp("hero.png"), tmp("hero.webp"), 70);
-    // JPEG só para o opengraph-image: o satori do next/og não lê WebP.
-    await ffmpeg(["-i", tmp("hero.png"), "-q:v", "4", tmp("hero.jpg")]);
+    await ffmpeg(["-ss", t, "-i", bruto, "-frames:v", "1", "-vf", recorte, tmp("hero.png")]);
+    await webp(tmp("hero.png"), tmp("hero.webp"), 72);
     await fs.rm(tmp("hero.png"));
     const teaser = await publicar(tmp("teaser.mp4"), "hero-teaser", "mp4");
     const poster = await publicar(tmp("hero.webp"), "hero-poster", "webp");
-    const posterJpg = await publicar(tmp("hero.jpg"), "hero-poster", "jpg");
-    reels.__hero = { teaser: teaser.url, poster: poster.url, posterJpg: posterJpg.url, bytes: { teaser: teaser.bytes, poster: poster.bytes } };
+    hero = { teaser: teaser.url, poster: poster.url, fotoOg: "", bytes: { teaser: teaser.bytes, poster: poster.bytes }, origem: origemHero };
     console.log(`hero  teaser ${kb(teaser.bytes)} · pôster ${kb(poster.bytes)}`);
   }
+  // A foto da imagem de compartilhamento (`lp:og`) é o MESMO quadro, mas
+  // vertical e inteiro: lá ela ocupa uma coluna em pé de 480x630. JPEG porque
+  // o satori do next/og não lê WebP. Sai idêntica a cada execução.
+  await ffmpeg(["-ss", t, "-i", bruto, "-frames:v", "1", "-vf", "scale=720:1280:flags=lanczos", "-q:v", "4", tmp("og.jpg")]);
+  hero.fotoOg = (await publicar(tmp("og.jpg"), "og-foto", "jpg")).url;
 
   // Marca: o recorte da Mel com o celular (board da identidade, Figma 7121:612)
   // e a onda topográfica 2x (7012:13). Os dois com transparência.
-  const marcaDir = path.join(BRUTO, "marca");
   await webp(path.join(marcaDir, "mel-recorte.png"), tmp("mel.webp"), 78, ["-resize", "720", "0", "-alpha_q", "90"]);
-  // Avatar: recorte quadrado do rosto, no mesmo arquivo de origem (1832x1832).
-  await ffmpeg(["-i", path.join(marcaDir, "mel-recorte.png"), "-vf", "crop=760:760:520:300,scale=160:160:flags=lanczos", tmp("avatar.png")]);
-  await webp(tmp("avatar.png"), tmp("avatar.webp"), 80, ["-alpha_q", "90"]);
-  await fs.rm(tmp("avatar.png"));
   await webp(path.join(marcaDir, "onda.png"), tmp("onda.webp"), 70, ["-resize", "1240", "0", "-alpha_q", "70"]);
   const mel = await publicar(tmp("mel.webp"), "mel", "webp");
-  const avatar = await publicar(tmp("avatar.webp"), "mel-avatar", "webp");
   const onda = await publicar(tmp("onda.webp"), "onda", "webp");
-  console.log(`marca mel ${kb(mel.bytes)} · avatar ${kb(avatar.bytes)} · onda ${kb(onda.bytes)}`);
+  console.log(`marca mel ${kb(mel.bytes)} · onda ${kb(onda.bytes)}`);
 
   // Apaga o que sobrou de execuções anteriores (hash antigo = arquivo órfão).
-  const { __hero, ...soReels } = reels as Record<string, { video: string; preview: string; poster: string }> & {
-    __hero: { teaser: string; poster: string; posterJpg: string };
-  };
   const usados = new Set<string>([
-    ...Object.values(soReels).flatMap((r) => [r.video, r.preview, r.poster]),
-    __hero.teaser, __hero.poster, __hero.posterJpg, mel.url, avatar.url, onda.url,
+    ...Object.values(reels).flatMap((r) => [r.video, r.preview, r.poster]),
+    hero.teaser, hero.poster, hero.fotoOg, mel.url, onda.url,
   ].map((u) => path.basename(u)));
   for (const nome of await fs.readdir(SAIDA)) {
     if (!usados.has(nome)) await fs.rm(path.join(SAIDA, nome));
@@ -231,9 +335,9 @@ async function main() {
 // os nomes levam o hash do conteúdo e o reels.test.ts confere cada um.
 export const MIDIA = ${JSON.stringify(
     {
-      reels: soReels,
-      hero: __hero,
-      marca: { mel: mel.url, avatar: avatar.url, onda: onda.url },
+      reels,
+      hero,
+      marca: { mel: mel.url, onda: onda.url },
     },
     null,
     2,

@@ -4,7 +4,7 @@ import path from "node:path";
 import { test } from "node:test";
 import { pacoteDoCatalogo } from "@/lib/contrato/catalogo";
 import { quantidadeComExtenso } from "@/lib/contrato/extenso";
-import { adicionaisDaLp, condicoesDaLp, maisDe, pacotesDaLp, prazosDoFaq, telefoneLegivel } from "./conteudo";
+import { adicionaisDaLp, condicoesDaLp, pacotesDaLp, prazosDoFaq, telefoneLegivel } from "./conteudo";
 
 test("os dois pacotes de casamento, na ordem, com o selo só no Principal", () => {
   const p = pacotesDaLp();
@@ -53,12 +53,6 @@ test("telefone legível a partir do MEL_WHATSAPP", () => {
   assert.equal(telefoneLegivel("5519992808396"), "(19) 99280-8396");
   assert.equal(telefoneLegivel("19992808396"), "(19) 99280-8396");
   assert.equal(telefoneLegivel("1932321234"), "(19) 3232-1234");
-});
-
-test("o número afirmado arredonda para baixo", () => {
-  assert.equal(maisDe(22), "Mais de 20");
-  assert.equal(maisDe(30), "Mais de 20");
-  assert.equal(maisDe(31), "Mais de 30");
 });
 
 test("os números das garantias são os das cláusulas do contrato", () => {

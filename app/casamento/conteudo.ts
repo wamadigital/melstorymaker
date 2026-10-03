@@ -161,11 +161,3 @@ export function telefoneLegivel(digitos: string): string {
   const m = /^(\d{2})(\d{4,5})(\d{4})$/.exec(nacional);
   return m ? `(${m[1]}) ${m[2]}-${m[3]}` : digitos;
 }
-
-/**
- * "Mais de 20" a partir de 22: o número afirmado arredonda para a dezena de
- * baixo, e estritamente abaixo -- com 30 casamentos, "mais de 30" seria falso.
- */
-export function maisDe(n: number): string {
-  return `Mais de ${Math.floor((n - 1) / 10) * 10}`;
-}
