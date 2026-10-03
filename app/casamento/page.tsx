@@ -147,8 +147,8 @@ export default function Page() {
             Conheça meu trabalho
           </h2>
           <p className="text-lg leading-relaxed text-marca-creme/85">
-            Estes são alguns vídeos de resumo que preparei para os casais. Dê o play com som e conheça meu jeito de registrar os
-            encontros, as reações e a festa.
+            Estes são alguns vídeos de resumo que preparei para os casais. Aperte o play, ligue o som e conheça meu jeito de registrar as
+            cerimônias, as reações e a festa.
           </p>
         </div>
         <div className="mx-auto max-w-6xl">
