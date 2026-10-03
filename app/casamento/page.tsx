@@ -260,7 +260,7 @@ export default function Page() {
       <section className="lp-escuro relative overflow-hidden bg-marca-escuro px-5 pt-16">
         <div aria-hidden className="lp-onda pointer-events-none absolute inset-0 bg-marca-areia/15" />
         <div className="relative mx-auto flex max-w-xl flex-col gap-5">
-          <Rotulo>Quem vai estar lá</Rotulo>
+          <Rotulo>Quem sou eu</Rotulo>
           <h2 className="text-3xl leading-tight font-bold text-balance text-marca-creme">
             Mais de {CELEBRACOES_MAIS_DE} celebrações registradas.
           </h2>
