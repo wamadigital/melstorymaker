@@ -63,13 +63,15 @@
         "id": "horario",
         "tipo": "hora",
         "pergunta": "Horário do convite",
-        "obrigatorio": true
+        "obrigatorio": true,
+        "a_definir": "Decidir isso depois"
       },
       {
         "id": "local",
         "tipo": "texto",
         "pergunta": "Local da festa",
-        "obrigatorio": true
+        "obrigatorio": true,
+        "a_definir": "Ainda não decidi"
       },
       {
         "id": "making_of",
@@ -88,7 +90,8 @@
         "obrigatorio": true,
         "exibir_se": {
           "making_of": "Sim"
-        }
+        },
+        "a_definir": "Ainda não decidi"
       },
       {
         "id": "entrega",
@@ -133,13 +136,15 @@
         "id": "horario",
         "tipo": "hora",
         "pergunta": "Horário do convite",
-        "obrigatorio": true
+        "obrigatorio": true,
+        "a_definir": "Decidir isso depois"
       },
       {
         "id": "local",
         "tipo": "texto",
         "pergunta": "Local da festa",
-        "obrigatorio": true
+        "obrigatorio": true,
+        "a_definir": "Ainda não decidi"
       },
       {
         "id": "entrega",
@@ -177,19 +182,22 @@
         "id": "horario",
         "tipo": "hora",
         "pergunta": "Horário do convite",
-        "obrigatorio": true
+        "obrigatorio": true,
+        "a_definir": "Decidir isso depois"
       },
       {
         "id": "local_cerimonia",
         "tipo": "texto",
         "pergunta": "Local da cerimônia",
-        "obrigatorio": true
+        "obrigatorio": true,
+        "a_definir": "Ainda não decidi"
       },
       {
         "id": "local_festa",
         "tipo": "texto",
         "pergunta": "Local da festa",
-        "obrigatorio": true
+        "obrigatorio": true,
+        "a_definir": "Ainda não decidi"
       },
       {
         "id": "making_of",
@@ -208,7 +216,8 @@
         "obrigatorio": true,
         "exibir_se": {
           "making_of": "Sim"
-        }
+        },
+        "a_definir": "Ainda não decidi"
       },
       {
         "id": "entrega",
@@ -251,13 +260,15 @@
         "id": "horario",
         "tipo": "hora",
         "pergunta": "Horário do evento",
-        "obrigatorio": true
+        "obrigatorio": true,
+        "a_definir": "Decidir isso depois"
       },
       {
         "id": "local",
         "tipo": "texto",
         "pergunta": "Local do evento",
-        "obrigatorio": true
+        "obrigatorio": true,
+        "a_definir": "Ainda não decidi"
       }
     ]
   },

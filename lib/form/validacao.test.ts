@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { validarTelefoneBr } from "./validacao";
+import { validarResposta, validarTelefoneBr } from "./validacao";
+import { A_DEFINIR, ehADefinir, type Passo } from "./types";
 
 // -------------------------------------------------- telefone brasileiro real
 
@@ -35,4 +36,35 @@ test("telefone: o validador é simples de propósito, não trava lead", () => {
   // entrar a barrar alguém de verdade — a Mel confere depois.
   assert.equal(validarTelefoneBr("(19) 99999-9999"), null);
   assert.equal(validarTelefoneBr("(11) 91111-1111"), null);
+});
+
+// ------------------------------------------------------- "decidir depois" --
+
+const horario = (aDefinir?: string) =>
+  ({ id: "horario", tipo: "hora", pergunta: "", obrigatorio: true, a_definir: aDefinir }) as Passo;
+
+test("'decidir depois': a marca vale como resposta onde o arvore.json oferece a caixa", () => {
+  const passo = horario("Decidir isso depois");
+  assert.equal(validarResposta(passo, A_DEFINIR), null);
+  assert.equal(validarResposta(passo, "19:30"), null);
+  // Fora da marca, a hora continua sendo conferida.
+  assert.ok(validarResposta(passo, "às sete"));
+});
+
+test("'decidir depois': sem a caixa no passo, 'A definir' continua sendo horario invalido", () => {
+  assert.ok(validarResposta(horario(), A_DEFINIR));
+});
+
+test("'decidir depois': vazio continua recusado, e a mensagem aponta a caixa", () => {
+  assert.match(validarResposta(horario("Decidir isso depois"), "") ?? "", /Decidir isso depois/);
+  assert.equal(validarResposta(horario(), ""), "Esse campo é obrigatório.");
+});
+
+test("'decidir depois': a marca e reconhecida mesmo digitada a mao", () => {
+  assert.ok(ehADefinir("A definir"));
+  assert.ok(ehADefinir("  a definir "));
+  assert.ok(ehADefinir("A DEFINIR"));
+  assert.ok(!ehADefinir(""));
+  assert.ok(!ehADefinir(null));
+  assert.ok(!ehADefinir("A definir com o buffet"));
 });

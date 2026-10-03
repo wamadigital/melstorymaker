@@ -16,6 +16,11 @@ export type CampoProps = {
   onAvancar: (valorOverride?: string) => void;
   erro?: string | null;
   autoFocus?: boolean;
+  /**
+   * A caixa "decidir depois" esta marcada: o campo fica inativo e vazio. So os
+   * tipos que aceitam `a_definir` (texto e hora) leem isto.
+   */
+  desabilitado?: boolean;
 };
 
 /**

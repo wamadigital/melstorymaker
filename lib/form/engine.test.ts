@@ -10,10 +10,10 @@ import {
   proximoPasso,
   resolverTemplateId,
 } from "./engine";
-import { mascararTelefone, validarResposta } from "./validacao";
-import { CATEGORIAS, TEMPLATES, type Passo } from "./types";
+import { mascararTelefone, validarPassos, validarResposta } from "./validacao";
+import { A_DEFINIR, CATEGORIAS, TEMPLATES, type Passo } from "./types";
 import { colunasPromovidas, nomeContato, primeiroNome, sujeitoDoEvento } from "@/lib/leads";
-import { templates } from "@/lib/pdf/templates.config";
+import { chavesDoCampo, templates } from "@/lib/pdf/templates.config";
 
 const ids = (categoria: Parameters<typeof passosVisiveis>[0], r = {}) =>
   passosVisiveis(categoria, r).map((p) => p.id);
@@ -237,4 +237,69 @@ test("escolha_unica so aceita valor que existe no arvore.json", () => {
   } as Passo;
   assert.equal(validarResposta(passo, "Em tempo real"), null);
   assert.ok(validarResposta(passo, "Amanhã"));
+});
+
+// ------------------------------------------------------- "decidir depois" --
+
+/** Todos os passos da categoria, com a ramificacao do making of aberta. */
+const todosOsPassos = (cat: (typeof CATEGORIAS)[number]) => passosVisiveis(cat, { making_of: "Sim" });
+
+test("todo horario e todo local aceitam 'decidir depois', em toda categoria", () => {
+  // Pedido do owner em 03/10/2026: os leads paravam no horario do casamento.
+  // Quem ainda nao sabe a hora ou o local precisa de uma saida que nao seja
+  // fechar a aba. Categoria ou local novo sem a caixa quebra aqui.
+  for (const cat of CATEGORIAS) {
+    const alvo = todosOsPassos(cat).filter((p) => p.id === "horario" || p.id.startsWith("local"));
+    assert.ok(alvo.some((p) => p.id === "horario"), `${cat} sem pergunta de horario`);
+    assert.ok(alvo.some((p) => p.id.startsWith("local")), `${cat} sem pergunta de local`);
+    for (const p of alvo) {
+      assert.ok(p.a_definir?.trim(), `${cat}/${p.id} sem a caixa "decidir depois"`);
+    }
+  }
+});
+
+test("'decidir depois' so em texto e hora, e nunca no que vai para a arte ou para coluna do banco", () => {
+  const naArte = new Set(Object.values(templates).flatMap((t) => t.campos.flatMap(chavesDoCampo)));
+  for (const cat of CATEGORIAS) {
+    for (const p of todosOsPassos(cat).filter((passo) => passo.a_definir)) {
+      // Em `data` a coluna promovida e `date` (o insert quebraria); em
+      // escolha_unica o caminho e uma opcao a mais, nao uma caixa.
+      assert.ok(p.tipo === "texto" || p.tipo === "hora", `${cat}/${p.id} e ${p.tipo}`);
+      assert.ok(!naArte.has(p.id), `${cat}/${p.id} vai para a arte: "A definir" sairia impresso na capa`);
+      const colunas = colunasPromovidas(cat, { [p.id]: A_DEFINIR });
+      assert.deepEqual(
+        Object.entries(colunas).filter(([, v]) => v !== null),
+        [],
+        `${cat}/${p.id} vira coluna do banco`,
+      );
+      assert.equal(resolverTemplateId(cat, { [p.id]: A_DEFINIR }), resolverTemplateId(cat, {}));
+    }
+  }
+});
+
+test("'decidir depois' vale como resposta na validacao (e no submit) do arvore.json real", () => {
+  for (const cat of CATEGORIAS) {
+    for (const p of todosOsPassos(cat).filter((passo) => passo.a_definir)) {
+      assert.equal(validarResposta(p, A_DEFINIR), null, `${cat}/${p.id} recusou "A definir"`);
+    }
+  }
+});
+
+test("submit: casamento com horario e todos os locais 'A definir' fecha sem erro", () => {
+  // O mesmo calculo da rota de submit: passos visiveis do lead salvo.
+  const respostas = {
+    contato_whatsapp: "(19) 99999-8888",
+    nome: "Pessoa Teste",
+    noivos: "Ana & João",
+    data: "2027-05-08",
+    horario: A_DEFINIR,
+    local_cerimonia: A_DEFINIR,
+    local_festa: A_DEFINIR,
+    making_of: "Sim",
+    local_making_of: A_DEFINIR,
+    entrega: "Em até 1 semana",
+    contato_email: "teste@example.com",
+  };
+  const hoje = new Date(2026, 9, 3, 12, 0);
+  assert.deepEqual(validarPassos(passosVisiveis("casamento", respostas), respostas, hoje), {});
 });

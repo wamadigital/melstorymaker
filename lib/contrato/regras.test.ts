@@ -3,6 +3,7 @@ import { test } from "node:test";
 import type { Categoria, Lead, Respostas } from "@/lib/form/types";
 import { STATUS_ASSINATURA, STATUS_CONTRATO, dadosContratoSchema } from "./tipos";
 import { pagamentoDoPreset, validarPagamento } from "./pagamento";
+import { faltantes } from "./montar";
 import {
   ROTULO_STATUS_ASSINATURA,
   ROTULO_STATUS_CONTRATO,
@@ -144,6 +145,41 @@ test("casamento: locais diferentes viram duas linhas, e 'mesmo local' vira uma",
     const um = dadosIniciais(lead("casamento", { ...base, local_cerimonia: "Chácara Fictícia", local_festa: festa }), HOJE);
     assert.deepEqual(um.evento.locais, [{ rotulo: "Local da cerimônia e recepção", endereco: "Chácara Fictícia" }], festa);
   }
+});
+
+test("'A definir' do formulario chega VAZIO: horario e local seguem faltando no contrato", () => {
+  // A caixa "decidir depois" grava "A definir". Passado adiante, viraria um
+  // endereco valido ("Local da cerimônia: A definir") e, no horario, "horário
+  // inválido". Vazio, a montagem acusa a falta e a Mel confirma com o cliente.
+  const l = lead("casamento", {
+    noivos: "Bia & Caio",
+    data: "2027-05-08",
+    horario: "A definir",
+    local_cerimonia: "A definir",
+    local_festa: "A definir",
+    making_of: "Sim",
+    local_making_of: "A definir",
+    entrega: "Em até 1 semana",
+  });
+  const dados = dadosIniciais(l, HOJE);
+  assert.equal(dados.evento.horarioInicio, "");
+  // Duas linhas vazias, e nao "mesmo lugar": dois "A definir" iguais nao
+  // dizem que cerimonia e festa sao no mesmo endereco.
+  assert.deepEqual(dados.evento.locais, [
+    { rotulo: "Local da cerimônia", endereco: "" },
+    { rotulo: "Local da recepção", endereco: "" },
+  ]);
+  assert.equal(dados.evento.makingOfLocal, "");
+
+  const falta = faltantes(dados, { ...contextoDoLead(l, HOJE), templateId: "casamento" });
+  assert.ok(falta.includes("Início da cobertura do evento"), falta.join(" | "));
+  assert.ok(falta.includes("Endereço: Local da cerimônia"), falta.join(" | "));
+  assert.ok(falta.includes("Endereço: Local da recepção"), falta.join(" | "));
+  assert.ok(!falta.some((f) => /inválido/.test(f)), falta.join(" | "));
+
+  const outro = dadosIniciais(lead("aniversario", { idade: "30", horario: "A definir", local: "A definir" }), HOJE);
+  assert.equal(outro.evento.horarioInicio, "");
+  assert.deepEqual(outro.evento.locais, [{ rotulo: "Local do evento", endereco: "" }]);
 });
 
 test("casamento com making of: making of da noiva pre-marcado e local do making of", () => {

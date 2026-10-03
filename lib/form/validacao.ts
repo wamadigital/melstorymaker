@@ -1,5 +1,5 @@
 import { dataMinima, normalizarOpcoes } from "./engine";
-import type { Passo, Respostas } from "./types";
+import { ehADefinir, type Passo, type Respostas } from "./types";
 
 // Validacao compartilhada entre o formulario (client) e os route handlers
 // (server). Mensagens sempre em pt-BR -- elas aparecem pro lead.
@@ -72,8 +72,17 @@ export function validarResposta(passo: Passo, valor: string, hoje = new Date()):
   const v = (valor ?? "").trim();
 
   if (!v) {
-    return passo.obrigatorio ? "Esse campo é obrigatório." : null;
+    if (!passo.obrigatorio) return null;
+    // Quem trava aqui costuma ser quem ainda nao sabe: a mensagem aponta a
+    // saida, em vez de so repetir que e obrigatorio.
+    return passo.a_definir
+      ? `Responde ou marca “${passo.a_definir}”.`
+      : "Esse campo é obrigatório.";
   }
+
+  // A caixa "decidir depois" so vale onde o arvore.json a oferece: num horario
+  // sem ela, "A definir" continua sendo horario invalido.
+  if (passo.a_definir && ehADefinir(v)) return null;
 
   switch (passo.tipo) {
     case "email":

@@ -17,9 +17,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { normalizarOpcoes, passosVisiveis } from "@/lib/form/engine";
-import type { Lead, Respostas, Status } from "@/lib/form/types";
+import { A_DEFINIR, ehADefinir, type Lead, type Respostas, type Status } from "@/lib/form/types";
 import { sujeitoDoEvento } from "@/lib/leads";
 import { AtalhosStatus } from "@/components/admin/AtalhosStatus";
+import { CaixaMarcacao } from "@/components/form/CaixaMarcacao";
 import { PreviaProposta } from "@/components/admin/PreviaProposta";
 import { SecaoContrato } from "@/components/admin/contrato/SecaoContrato";
 import { CLASSE_STATUS, ROTULO_STATUS, rotuloCategoria } from "@/lib/admin/rotulos";
@@ -362,6 +363,10 @@ export function DetalheLead({
             const opcoes = normalizarOpcoes(passo.opcoes);
             const valor = respostas[passo.id] ?? "";
             const atualizar = (v: string) => setRespostas((r) => ({ ...r, [passo.id]: v }));
+            // O lead marcou "decidir depois". A caixa aparece aqui tambem porque
+            // um campo de hora nao mostra "A definir": sem ela, a Mel veria o
+            // horario em branco e acharia que o lead pulou a pergunta.
+            const aDefinir = !!passo.a_definir && ehADefinir(valor);
 
             return (
               <div key={passo.id} className="space-y-1.5">
@@ -395,9 +400,20 @@ export function DetalheLead({
                             ? "email"
                             : "text"
                     }
-                    value={valor}
+                    value={aDefinir ? "" : valor}
+                    disabled={aDefinir}
                     onChange={(e) => atualizar(e.target.value)}
                     className="h-9"
+                  />
+                )}
+
+                {passo.a_definir && (
+                  <CaixaMarcacao
+                    id={`${passo.id}-a-definir`}
+                    rotulo={A_DEFINIR}
+                    marcado={aDefinir}
+                    onAlternar={(marcar) => atualizar(marcar ? A_DEFINIR : "")}
+                    className="pt-0.5 text-sm text-muted-foreground"
                   />
                 )}
               </div>

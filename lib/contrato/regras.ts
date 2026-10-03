@@ -5,7 +5,7 @@
 // Sem "server-only": o painel decide o que mostrar (campo "vínculo", aviso de
 // anuente) com as mesmas regras que a montagem aplica.
 
-import type { Categoria, Lead, Respostas, TemplateId } from "@/lib/form/types";
+import { ehADefinir, type Categoria, type Lead, type Respostas, type TemplateId } from "@/lib/form/types";
 import { resolverTemplateId } from "@/lib/form/engine";
 import { nomeContato, sujeitoDoEvento } from "@/lib/leads";
 import { resolverTabelaPreco, TABELA_BASE } from "@/lib/pdf/precos";
@@ -142,9 +142,17 @@ export const VINCULOS_MENOR = ["mãe", "pai", "responsável legal"] as const;
 
 // ------------------------------------------------------- pre-preenchimento --
 
-/** Resposta do lead como texto do contrato: aparada e dentro do limite do schema. */
+/**
+ * Resposta do lead como texto do contrato: aparada e dentro do limite do schema.
+ *
+ * "A definir" (a caixa "decidir depois" do formulario) vira VAZIO: o contrato
+ * continua acusando o horario e o local como faltando, e quem confirma com o
+ * cliente e a Mel. Passado adiante, o marcador entraria como endereco valido
+ * ("Local da cerimônia: A definir") e, no horario, viraria "horário inválido".
+ */
 function campo(v: string | null | undefined): string {
-  return (v ?? "").replace(/\s+/g, " ").trim().slice(0, 2000);
+  const texto = (v ?? "").replace(/\s+/g, " ").trim().slice(0, 2000);
+  return ehADefinir(texto) ? "" : texto;
 }
 
 /**

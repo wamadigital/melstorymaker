@@ -119,10 +119,10 @@ Fonte única de verdade em `/lib/form/arvore.json`. O engine renderiza a partir 
       { "id": "nome", "tipo": "texto", "pergunta": "Como você se chama? ✨", "obrigatorio": true },
       { "id": "debutante", "tipo": "texto", "pergunta": "Nome da debutante ✨", "obrigatorio": true },
       { "id": "data", "tipo": "data", "pergunta": "Data da festa", "obrigatorio": true, "min": "hoje" },
-      { "id": "horario", "tipo": "hora", "pergunta": "Horário do convite", "obrigatorio": true },
-      { "id": "local", "tipo": "texto", "pergunta": "Local da festa", "obrigatorio": true },
+      { "id": "horario", "tipo": "hora", "pergunta": "Horário do convite", "obrigatorio": true, "a_definir": "Decidir isso depois" },
+      { "id": "local", "tipo": "texto", "pergunta": "Local da festa", "obrigatorio": true, "a_definir": "Ainda não decidi" },
       { "id": "making_of", "tipo": "escolha_unica", "pergunta": "Quer registrar o making of?", "opcoes": ["Sim", "Não"], "obrigatorio": true },
-      { "id": "local_making_of", "tipo": "texto", "pergunta": "Local do making of", "obrigatorio": true, "exibir_se": { "making_of": "Sim" } },
+      { "id": "local_making_of", "tipo": "texto", "pergunta": "Local do making of", "obrigatorio": true, "exibir_se": { "making_of": "Sim" }, "a_definir": "Ainda não decidi" },
       { "id": "entrega", "tipo": "escolha_unica", "pergunta": "Como você prefere a entrega?", "opcoes": ["Em tempo real", "Em até 1 semana"], "obrigatorio": true }
     ],
     "aniversario": [
@@ -130,19 +130,19 @@ Fonte única de verdade em `/lib/form/arvore.json`. O engine renderiza a partir 
       { "id": "aniversariante", "tipo": "texto", "pergunta": "Nome do(a) aniversariante ✨", "obrigatorio": true },
       { "id": "idade", "tipo": "numero", "pergunta": "Quantos anos vai completar? ✨", "obrigatorio": true, "min": 1, "max": 120 },
       { "id": "data", "tipo": "data", "pergunta": "Data da festa", "obrigatorio": true, "min": "hoje" },
-      { "id": "horario", "tipo": "hora", "pergunta": "Horário do convite", "obrigatorio": true },
-      { "id": "local", "tipo": "texto", "pergunta": "Local da festa", "obrigatorio": true },
+      { "id": "horario", "tipo": "hora", "pergunta": "Horário do convite", "obrigatorio": true, "a_definir": "Decidir isso depois" },
+      { "id": "local", "tipo": "texto", "pergunta": "Local da festa", "obrigatorio": true, "a_definir": "Ainda não decidi" },
       { "id": "entrega", "tipo": "escolha_unica", "pergunta": "Como você prefere a entrega?", "opcoes": ["Em tempo real", "Em até 1 semana"], "obrigatorio": true }
     ],
     "casamento": [
       { "id": "nome", "tipo": "texto", "pergunta": "Como você se chama? ✨", "obrigatorio": true },
       { "id": "noivos", "tipo": "texto", "pergunta": "Nome dos noivos ✨", "placeholder": "Ex: Ana & João", "obrigatorio": true },
       { "id": "data", "tipo": "data", "pergunta": "Data do casamento", "obrigatorio": true, "min": "hoje" },
-      { "id": "horario", "tipo": "hora", "pergunta": "Horário do convite", "obrigatorio": true },
-      { "id": "local_cerimonia", "tipo": "texto", "pergunta": "Local da cerimônia", "obrigatorio": true },
-      { "id": "local_festa", "tipo": "texto", "pergunta": "Local da festa", "obrigatorio": true },
+      { "id": "horario", "tipo": "hora", "pergunta": "Horário do convite", "obrigatorio": true, "a_definir": "Decidir isso depois" },
+      { "id": "local_cerimonia", "tipo": "texto", "pergunta": "Local da cerimônia", "obrigatorio": true, "a_definir": "Ainda não decidi" },
+      { "id": "local_festa", "tipo": "texto", "pergunta": "Local da festa", "obrigatorio": true, "a_definir": "Ainda não decidi" },
       { "id": "making_of", "tipo": "escolha_unica", "pergunta": "Quer registrar o making of?", "opcoes": ["Sim", "Não"], "obrigatorio": true },
-      { "id": "local_making_of", "tipo": "texto", "pergunta": "Local do making of", "obrigatorio": true, "exibir_se": { "making_of": "Sim" } },
+      { "id": "local_making_of", "tipo": "texto", "pergunta": "Local do making of", "obrigatorio": true, "exibir_se": { "making_of": "Sim" }, "a_definir": "Ainda não decidi" },
       { "id": "entrega", "tipo": "escolha_unica", "pergunta": "Como você prefere a entrega?", "opcoes": ["Em tempo real", "Em até 1 semana"], "obrigatorio": true }
     ],
     "corporativo": [
@@ -150,8 +150,8 @@ Fonte única de verdade em `/lib/form/arvore.json`. O engine renderiza a partir 
       { "id": "empresa", "tipo": "texto", "pergunta": "Nome da empresa", "obrigatorio": true },
       { "id": "tipo_evento", "tipo": "texto", "pergunta": "Que tipo de evento vamos cobrir?", "obrigatorio": true },
       { "id": "data", "tipo": "data", "pergunta": "Data do evento", "obrigatorio": true, "min": "hoje" },
-      { "id": "horario", "tipo": "hora", "pergunta": "Horário do evento", "obrigatorio": true },
-      { "id": "local", "tipo": "texto", "pergunta": "Local do evento", "obrigatorio": true }
+      { "id": "horario", "tipo": "hora", "pergunta": "Horário do evento", "obrigatorio": true, "a_definir": "Decidir isso depois" },
+      { "id": "local", "tipo": "texto", "pergunta": "Local do evento", "obrigatorio": true, "a_definir": "Ainda não decidi" }
     ]
   },
   "contato": {
@@ -179,6 +179,7 @@ Regras do engine:
 4. A tela de abertura tem DUAS portas, não um "Começar": `cta_whatsapp` abre `https://wa.me/{MEL_WHATSAPP}` com a primeira mensagem já escrita, e `cta_formulario` entra na escolha de categoria. Quem já sabe o que quer fala na hora; quem quer número preenche. Sem `MEL_WHATSAPP` configurada, sobra só a segunda porta.
 5. `cta_whatsapp` da confirmação abre `https://wa.me/{MEL_WHATSAPP}` (env var), mantendo a conversa quente.
 6. **Categoria e arte não são a mesma coisa.** `aniversario` é uma categoria só no banco, mas resolve entre duas artes conforme a resposta de `idade`: **14 anos ou menos = infantil, 15 ou mais = adulto**. São 4 categorias e 5 artes. Acrescentar arte não mexe no enum do Postgres, logo não gera migration.
+7. **Horário e local aceitam "decidir depois".** `a_definir` põe embaixo do campo uma caixa com aquele rótulo ("Decidir isso depois" no horário, "Ainda não decidi" nos locais, inclusive o do making of). Marcada, a resposta grava "A definir" e vale como respondida. Existe em todo horário e todo local, e só em perguntas de texto ou hora que não vão para a arte do PDF nem para coluna do banco. Motivo: quem ainda não sabe a hora ou o local travava ali e abandonava o formulário.
 
 ## 7. Requisitos funcionais
 

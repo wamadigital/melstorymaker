@@ -68,7 +68,31 @@ export type Passo = {
   opcoes?: OpcaoBruta[];
   /** Ramificacao: o passo so aparece se as respostas baterem com este mapa. */
   exibir_se?: Record<string, string>;
+  /**
+   * Rotulo da caixa "decidir depois" embaixo do campo ("Ainda não decidi").
+   * Marcada, a resposta vira `A_DEFINIR` e vale como respondida. Ver
+   * `A_DEFINIR` para onde ela pode e onde nao pode existir.
+   */
+  a_definir?: string;
 };
+
+/**
+ * O que fica gravado quando o lead marca a caixa "decidir depois" (`a_definir`
+ * no passo). Pedido do owner em 03/10/2026: os leads estavam parando no horario
+ * do casamento -- quem ainda nao sabe a hora ou o local nao tinha como seguir, e
+ * a Mel perdia o lead no meio do caminho.
+ *
+ * Um valor so para todas as perguntas, e legivel: e o que a Mel le no painel.
+ * So existe em `texto` e `hora`, e nunca em resposta que vai para a arte do PDF
+ * ou para coluna do banco ("A definir" sairia impresso na capa; em `data`, a
+ * coluna e `date`). O `engine.test.ts` guarda as duas coisas.
+ */
+export const A_DEFINIR = "A definir";
+
+/** A resposta e a marca "decidir depois"? Tolera caixa e espacos: o lead pode ter digitado. */
+export function ehADefinir(valor: string | null | undefined): boolean {
+  return (valor ?? "").trim().toLowerCase() === A_DEFINIR.toLowerCase();
+}
 
 /**
  * As duas portas da tela de abertura. O lead que ja sabe o que quer fala com a

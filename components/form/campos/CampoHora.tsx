@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 import { Input } from "@/components/ui/input";
 import { devoFocarSozinho, type CampoProps } from "../tipos";
 
-export function CampoHora({ passo, valor, onChange, onAvancar, erro }: CampoProps) {
+export function CampoHora({ passo, valor, onChange, onAvancar, erro, desabilitado }: CampoProps) {
   const ref = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -18,6 +18,7 @@ export function CampoHora({ passo, valor, onChange, onAvancar, erro }: CampoProp
       // no PDF -- nunca no banco.
       type="time"
       value={valor}
+      disabled={desabilitado}
       aria-invalid={!!erro}
       aria-label={passo.pergunta}
       onChange={(e) => onChange(e.target.value)}
@@ -27,7 +28,7 @@ export function CampoHora({ passo, valor, onChange, onAvancar, erro }: CampoProp
           onAvancar();
         }
       }}
-      className="h-14 w-full rounded-none border-0 border-b-2 border-foreground/20 bg-transparent px-1 text-2xl shadow-none transition-colors placeholder:text-foreground/45 focus-visible:border-foreground focus-visible:ring-0 md:text-3xl"
+      className="h-14 w-full rounded-none border-0 border-b-2 border-foreground/20 bg-transparent px-1 text-2xl shadow-none disabled:bg-transparent transition-colors placeholder:text-foreground/45 focus-visible:border-foreground focus-visible:ring-0 md:text-3xl"
     />
   );
 }
