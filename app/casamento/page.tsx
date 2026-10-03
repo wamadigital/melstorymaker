@@ -144,7 +144,7 @@ export default function Page() {
         <div className="mx-auto mb-8 flex max-w-xl flex-col gap-3 px-5">
           <Rotulo>Portfólio</Rotulo>
           <h2 id="titulo-galeria" className="text-3xl leading-tight font-bold text-balance text-marca-creme">
-            Veja como eu registro um casamento.
+            Conheça meu trabalho
           </h2>
           <p className="text-lg leading-relaxed text-marca-creme/85">
             Estes são alguns vídeos de resumo que preparei para os casais. Dê o play com som e conheça meu jeito de registrar os
