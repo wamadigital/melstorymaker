@@ -192,7 +192,7 @@ export default function Page() {
           <div className="mt-2 flex flex-col gap-2 rounded-md bg-marca-escuro px-5 py-5 text-marca-creme">
             <h3 className="text-xl leading-snug font-bold text-balance">Para guardar. Para compartilhar. Vocês escolhem.</h3>
             <p className={cn("text-lg leading-snug text-marca-creme/90", LONGO)}>
-              A cobertura pode ser contratada só para receber os registros. Se vocês também quiserem publicar no Instagram, os
+              Se vocês também quiserem publicar no Instagram, os
               stories saem depois do casamento ou em tempo real, conforme a opção escolhida.
             </p>
           </div>
