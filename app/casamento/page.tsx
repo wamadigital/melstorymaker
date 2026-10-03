@@ -252,7 +252,6 @@ export default function Page() {
             <CtaFormulario posicao="pacotes" variante="terracota">
               Consultar nossa data
             </CtaFormulario>
-            <p className="text-sm text-marca-medio">O valor sai na proposta, de acordo com a data e o que vocês escolherem.</p>
           </div>
         </div>
       </section>
