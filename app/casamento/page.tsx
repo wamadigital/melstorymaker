@@ -173,7 +173,7 @@ export default function Page() {
           </h2>
           <p className={cn("text-lg leading-relaxed", LONGO)}>
             Com o celular, acompanho a cerimônia e a festa para registrar detalhes, reações e momentos espontâneos. Depois, vocês
-            recebem os arquivos originais, os vídeos editados e um resumo do casamento para baixar e guardar.
+            recebem os vídeos editados para baixar e guardar.
           </p>
           <ul className="mt-2 grid gap-3 sm:grid-cols-2">
             <Pilar icone={<Sparkles />} titulo="Momentos espontâneos">
