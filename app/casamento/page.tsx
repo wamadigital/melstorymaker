@@ -343,8 +343,8 @@ export default function Page() {
               escolherem publicação nos stories, ela segue o prazo da cobertura contratada e as condições apresentadas no pacote.
             </Pergunta>
             <Pergunta titulo="Você fica até o fim da festa?">
-              A cobertura é de {prazos.horasCobertura} horas, entre cerimônia e recepção. Se a festa for mais longa, dá para somar
-              hora adicional, conforme a minha agenda.
+              A cobertura é de {prazos.horasCobertura} horas, entre cerimônia e recepção. Se a festa for mais longa, tenho
+              disponibilidade para aumentar conforme a minha agenda.
             </Pergunta>
             <Pergunta titulo="Por quanto tempo o material fica disponível?">
               O link fica no ar por {c.mesesDrive} meses depois do casamento. Baixem e guardem onde quiserem.
