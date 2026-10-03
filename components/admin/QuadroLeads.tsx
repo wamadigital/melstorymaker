@@ -23,7 +23,7 @@ import { ColunaKanban } from "@/components/admin/ColunaKanban";
 import { FaixaDestinos } from "@/components/admin/FaixaDestinos";
 import { compararPorCobranca } from "@/lib/admin/lembretes";
 import { ROTULO_STATUS } from "@/lib/admin/rotulos";
-import { MENSAGEM_RECUSA, recusarMovimento } from "@/lib/admin/status";
+import { MENSAGEM_RECUSA, recusarMovimento, mensagemConfirmacaoDeEnvio, pedeConfirmacaoDeEnvio } from "@/lib/admin/status";
 import type { LeadCartao } from "@/lib/admin/tipos";
 import { STATUS, type Status } from "@/lib/form/types";
 
@@ -156,13 +156,9 @@ export function QuadroLeads({
       const nome = lead.nome_display || "o lead";
 
       // Marcar como enviada sem que e-mail nenhum tenha saido e uma decisao, nao
-      // um efeito colateral: pergunta. So quando nunca foi enviado de verdade --
-      // cartao voltando para a coluna nao repergunta nada.
-      if (para === "enviado" && !lead.enviado_em) {
-        const certeza = window.confirm(
-          `Marcar a proposta de ${nome} como enviada?\n\nIsso só muda a coluna. Nenhum e-mail sai daqui.`,
-        );
-        if (!certeza) return;
+      // um efeito colateral: pergunta (a mesma regra dos atalhos do detalhe).
+      if (pedeConfirmacaoDeEnvio(para, lead.enviado_em) && !window.confirm(mensagemConfirmacaoDeEnvio(nome))) {
+        return;
       }
 
       setOtimista((o) => ({ ...o, [id]: para }));

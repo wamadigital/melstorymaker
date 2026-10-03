@@ -19,9 +19,16 @@ import { Label } from "@/components/ui/label";
 import { normalizarOpcoes, passosVisiveis } from "@/lib/form/engine";
 import type { Lead, Respostas, Status } from "@/lib/form/types";
 import { sujeitoDoEvento } from "@/lib/leads";
+import { AtalhosStatus } from "@/components/admin/AtalhosStatus";
 import { PreviaProposta } from "@/components/admin/PreviaProposta";
 import { SecaoContrato } from "@/components/admin/contrato/SecaoContrato";
 import { CLASSE_STATUS, ROTULO_STATUS, rotuloCategoria } from "@/lib/admin/rotulos";
+import {
+  estadoDoAtalho,
+  mensagemConfirmacaoDeEnvio,
+  pedeConfirmacaoDeEnvio,
+  type AtalhoStatus,
+} from "@/lib/admin/status";
 import { dataHoraLocal } from "@/lib/pdf/formatadores";
 import { linkConversaLead, linkPropostaWhatsApp } from "@/lib/whatsapp";
 import { cn } from "@/lib/utils";
@@ -89,7 +96,8 @@ export function DetalheLead({
   // pode nao ser o ano corrente -- por isso vai visivel, e nao suposto.
   const [tabelaPreco, setTabelaPreco] = useState<string | null>(null);
 
-  const [acao, setAcao] = useState<null | "salvar" | "gerar" | "enviar" | "excluir">(null);
+  const [acao, setAcao] = useState<null | "salvar" | "gerar" | "enviar" | "excluir" | "mover">(null);
+  const [movendo, setMovendo] = useState<AtalhoStatus | null>(null);
   const [aviso, setAviso] = useState<Aviso | null>(null);
 
   // Estado do contrato espelhado aqui so para a exclusao: a confirmacao diz o
@@ -210,6 +218,51 @@ export function DetalheLead({
     }
   }
 
+  /**
+   * Os atalhos de coluna: o mesmo PATCH de status do arraste no quadro, com a
+   * mesma regra e a mesma pergunta antes de marcar como enviado sem e-mail. O
+   * `de` e o status que esta tela mostra -- se outra aba ja moveu o lead, o
+   * servidor responde 409 e a tela se acerta.
+   */
+  async function mover(para: AtalhoStatus) {
+    const { atual, bloqueio } = estadoDoAtalho(status, para, { temProposta: !!pdfUrl });
+    if (atual) return;
+    if (bloqueio) {
+      setAviso({ tom: "atencao", texto: bloqueio });
+      return;
+    }
+    if (pedeConfirmacaoDeEnvio(para, enviadoEm) && !window.confirm(mensagemConfirmacaoDeEnvio(sujeito || "este lead"))) {
+      return;
+    }
+
+    setAcao("mover");
+    setMovendo(para);
+    setAviso(null);
+    try {
+      const r = await fetch(`/api/admin/leads/${lead.id}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: para, de: status }),
+      });
+      const json = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        // 409 traz o status real: a tela passa a mostrar onde o lead esta.
+        if (typeof json.status === "string") setStatus(json.status as Status);
+        throw new Error(json.erro ?? "Não consegui mover o lead.");
+      }
+      setStatus((json.status as Status) ?? para);
+      if (json.enviado_em !== undefined) setEnviadoEm(json.enviado_em);
+      toast.success(`${sujeito || "Lead"} → ${ROTULO_STATUS[para]}.`);
+      router.refresh();
+    } catch (e) {
+      setAviso({ tom: "erro", texto: (e as Error).message });
+      router.refresh();
+    } finally {
+      setAcao(null);
+      setMovendo(null);
+    }
+  }
+
   async function excluir() {
     // window.confirm de proposito, igual a lista: exclusao e irreversivel e nao
     // ha lixeira nem backup no plano gratuito.
@@ -274,6 +327,15 @@ export function DetalheLead({
           {rotuloCategoria(lead.categoria)} · recebido em {dataHoraLocal(lead.created_at)}
           {contato && <> · preenchido por {contato}</>}
         </p>
+        <div className="pt-1">
+          <AtalhosStatus
+            status={status}
+            temProposta={!!pdfUrl}
+            ocupado={acao !== null || contratoOcupado}
+            movendo={movendo}
+            onMover={mover}
+          />
+        </div>
       </header>
 
       {aviso && (

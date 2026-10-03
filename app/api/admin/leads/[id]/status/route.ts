@@ -64,7 +64,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
 
   if (de && de !== atual) {
     return NextResponse.json(
-      { erro: "Esse lead mudou de coluna enquanto você arrastava. Atualizei a tela.", status: atual },
+      { erro: "Esse lead mudou de coluna em outra tela. Atualizei a página.", status: atual },
       { status: 409 },
     );
   }
@@ -102,7 +102,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
 
   if (!salvo) {
     return NextResponse.json(
-      { erro: "Esse lead mudou de coluna enquanto você arrastava. Atualizei a tela." },
+      { erro: "Esse lead mudou de coluna em outra tela. Atualizei a página." },
       { status: 409 },
     );
   }

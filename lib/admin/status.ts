@@ -53,3 +53,43 @@ export const MENSAGEM_RECUSA: Record<Exclude<MotivoRecusa, "mesmo_status">, stri
     "Esse lead já enviou o formulário e não volta para Novo. Para corrigir uma resposta, abra o lead e edite por lá.",
   sem_proposta: "Gere a proposta antes de marcar como enviada.",
 };
+
+// ---------------------------------------------------- atalhos do detalhe --
+
+/**
+ * Os atalhos de coluna do detalhe do lead, na ordem dos botoes (pedido do owner
+ * em 03/10/2026): mover sem arrastar, de dentro do lead. Sao os tres destinos
+ * que a Mel decide depois de olhar o lead -- "Novo" e travado (ver acima) e
+ * "Aguardando revisao" e consequencia do submit, nao decisao.
+ */
+export const ATALHOS_STATUS = ["enviado", "virou_cliente", "perdido"] as const satisfies readonly Status[];
+export type AtalhoStatus = (typeof ATALHOS_STATUS)[number];
+
+/**
+ * Como o botao do atalho aparece: `atual` quando o lead ja esta naquela coluna
+ * (botao marcado, sem acao), `bloqueio` com a frase da recusa quando a matriz
+ * nao deixa (ex.: "Enviado" sem proposta). A mesma `recusarMovimento` do
+ * quadro: o atalho nunca permite o que o arraste recusaria.
+ */
+export function estadoDoAtalho(
+  de: Status,
+  para: AtalhoStatus,
+  ctx: { temProposta: boolean },
+): { atual: boolean; bloqueio: string | null } {
+  const recusa = recusarMovimento(de, para, ctx);
+  if (recusa === "mesmo_status") return { atual: true, bloqueio: null };
+  return { atual: false, bloqueio: recusa ? MENSAGEM_RECUSA[recusa] : null };
+}
+
+/**
+ * Marcar como "Enviado" sem que e-mail nenhum tenha saido (`enviado_em` nulo) e
+ * uma DECISAO, nao efeito colateral: o quadro e o detalhe perguntam antes. Lead
+ * que ja foi enviado e so volta para a coluna nao repergunta nada.
+ */
+export function pedeConfirmacaoDeEnvio(para: Status, enviadoEm: string | null): boolean {
+  return para === "enviado" && !enviadoEm;
+}
+
+export function mensagemConfirmacaoDeEnvio(nome: string): string {
+  return `Marcar a proposta de ${nome} como enviada?\n\nIsso só muda a coluna. Nenhum e-mail sai daqui.`;
+}

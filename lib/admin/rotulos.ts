@@ -1,5 +1,6 @@
 import { arvore, normalizarOpcoes, passoPorId } from "@/lib/form/engine";
 import type { Categoria, Status } from "@/lib/form/types";
+import type { AtalhoStatus } from "@/lib/admin/status";
 
 // Rotulos de categoria saem do proprio arvore.json: o painel e o formulario
 // nunca podem divergir no nome de uma categoria.
@@ -109,6 +110,26 @@ export const TEMA_COLUNA: Record<
     alvo: "ring-stone-300",
     barra: "bg-stone-300",
   },
+};
+
+/** O que cada atalho do detalhe do lead diz (botao que ainda move). */
+export const ROTULO_ATALHO: Record<AtalhoStatus, string> = {
+  enviado: "Marcar como enviado",
+  virou_cliente: "Marcar como cliente",
+  perdido: "Marcar como perdido",
+};
+
+/**
+ * Botao do atalho, com a MESMA tinta da coluna do quadro: azul (sky) para
+ * enviado, verde (emerald) para cliente, cinza (stone) para perdido -- a Mel
+ * reconhece o destino pela cor antes de ler. Fundo claro + borda + texto e
+ * ponto escuros, como o cabecalho da coluna. Classes LITERAIS, pelo mesmo
+ * motivo de `TEMA_COLUNA`.
+ */
+export const CLASSE_ATALHO: Record<AtalhoStatus, string> = {
+  enviado: "border-sky-300 bg-sky-50 text-sky-800 hover:bg-sky-100",
+  virou_cliente: "border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100",
+  perdido: "border-stone-300 bg-stone-100 text-stone-700 hover:bg-stone-200",
 };
 
 /**
