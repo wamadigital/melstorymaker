@@ -186,7 +186,7 @@ export default function Page() {
               Arquivos originais e editados disponíveis para vocês baixarem e reverem.
             </Pilar>
             <Pilar icone={<EyeOff />} titulo="Durante o casamento">
-              Acompanho os acontecimentos respeitando o ritmo da cerimônia e da festa.
+              Respeitamos sempre o espaço dos demais profissionais.
             </Pilar>
           </ul>
           <div className="mt-2 flex flex-col gap-2 rounded-md bg-marca-escuro px-5 py-5 text-marca-creme">
