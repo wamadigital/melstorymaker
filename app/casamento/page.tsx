@@ -239,7 +239,7 @@ export default function Page() {
             ))}
           </div>
           <div className="flex flex-col gap-3">
-            <p className="text-base font-bold">Dá para somar:</p>
+            <p className="text-base font-bold">Opcionais:</p>
             <ul className="flex flex-wrap gap-2">
               {adicionais.map((a) => (
                 <li key={a} className="rounded-md border border-marca-escuro/20 bg-white px-3 py-1.5 text-sm">
