@@ -159,7 +159,7 @@ export default function Page() {
         </p>
         <div className="mx-auto mt-10 flex max-w-xl justify-center px-5">
           <CtaFormulario posicao="galeria" variante="claro">
-            Quero uma proposta para o nosso casamento
+            Quero uma proposta
           </CtaFormulario>
         </div>
       </section>
