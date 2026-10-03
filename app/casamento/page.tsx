@@ -285,7 +285,7 @@ export default function Page() {
         <div className="mx-auto flex max-w-xl flex-col gap-6">
           <Rotulo claro>Como funciona</Rotulo>
           <h2 id="titulo-como" className="text-3xl leading-tight font-bold text-balance">
-            Da primeira conversa à cobertura.
+            Da primeira conversa à cerimônia.
           </h2>
           <ol className="flex flex-col gap-5">
             <Passo n={1} titulo="Contem o que estão planejando">
