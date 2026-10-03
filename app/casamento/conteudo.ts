@@ -15,7 +15,7 @@ import type { Escopo } from "@/lib/contrato/tipos";
  * (`scripts/lp-og.tsx`) desenha a mesma frase: escrito em dois lugares, o
  * link no WhatsApp prometeria uma coisa e a página abriria com outra.
  */
-export const TITULO_LP = "Seu casamento em vídeos para guardar e rever.";
+export const TITULO_LP = "Seu casamento pelo meu olhar. Um registro para reviver a emoção deste dia.";
 
 /**
  * "Mais de 100 celebrações registradas", afirmado pelo owner em 03/10/2026
