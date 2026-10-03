@@ -64,6 +64,9 @@ export const metadata: Metadata = {
 
 const SCRIPT_QUERY_NOS_CTAS = `addEventListener("load",function(){document.documentElement.classList.add("lp-carregado")});(function(){try{if(!location.search)return;document.querySelectorAll("a[data-cta]").forEach(function(a){var u=new URL(a.getAttribute("href"),location.origin);var p=new URLSearchParams(location.search);u.searchParams.forEach(function(v,k){p.set(k,v)});a.setAttribute("href",u.pathname+"?"+p.toString())})}catch(e){}})();`;
 
+/** Parágrafo que passa de 6 linhas no celular: ver o comentário do `<main>`. */
+const LONGO = "text-pretty sm:text-balance";
+
 const ID_CTA_HERO = "cta-hero";
 const ID_CTA_FINAL = "cta-final";
 
@@ -82,7 +85,16 @@ export default function Page() {
   const estiloOnda = { "--lp-onda": `url(${MIDIA.marca.onda})` } as CSSProperties;
 
   return (
-    <main className="lp-casamento min-h-dvh bg-marca-escuro font-light text-marca-creme" style={estiloOnda}>
+    // `text-balance` aqui, e não bloco a bloco: `text-wrap` é herdado, então vale
+    // para todo texto da LP, inclusive o das ilhas (galeria, barra fixa) --
+    // nenhuma quebra deixa uma palavra sozinha na última linha (owner, 03/10/2026).
+    // O Chromium só balanceia bloco de até 6 linhas e, acima disso, volta à
+    // quebra comum, viúva incluída. Por isso os parágrafos que passam de 6
+    // linhas no celular levam `LONGO`: `text-pretty` (não deixa palavra
+    // sozinha em tamanho nenhum) só até 640px, e balanceados dali para cima,
+    // onde a coluna é larga e eles cabem em 4. Medido em 03/10/2026, de 320 a
+    // 1280px: nenhuma palavra sozinha.
+    <main className="lp-casamento min-h-dvh bg-marca-escuro font-light text-balance text-marca-creme" style={estiloOnda}>
       {/* O fundo do documento acompanha a página: no "puxar" do iOS aparecia o
           #F1F1F1 do body por trás. Vale só enquanto a LP está aberta -- daqui
           para o formulário a navegação é de página inteira. */}
@@ -110,7 +122,7 @@ export default function Page() {
             poster={MIDIA.hero.poster}
             alt="Noivos saindo da cerimônia de mãos dadas sob uma chuva de pétalas, ao entardecer"
           />
-          <p className="text-lg leading-relaxed text-pretty text-marca-creme/90">
+          <p className="text-lg leading-relaxed text-marca-creme/90">
             Sou a Mel e já registrei mais de {CELEBRACOES_MAIS_DE} celebrações pelo celular. Guardo abraços, sorrisos e lágrimas de
             alegria enquanto vocês celebram essa nova etapa ao lado de quem amam.
           </p>
@@ -134,7 +146,7 @@ export default function Page() {
           <h2 id="titulo-galeria" className="text-3xl leading-tight font-bold text-balance text-marca-creme">
             Veja como eu registro um casamento.
           </h2>
-          <p className="text-lg leading-relaxed text-pretty text-marca-creme/85">
+          <p className="text-lg leading-relaxed text-marca-creme/85">
             Estes são alguns vídeos de resumo que preparei para os casais. Dê o play com som e conheça meu jeito de registrar os
             encontros, as reações e a festa.
           </p>
@@ -159,7 +171,7 @@ export default function Page() {
           <h2 id="titulo-registro" className="text-3xl leading-tight font-bold text-balance">
             O que eu registro no casamento?
           </h2>
-          <p className="text-lg leading-relaxed text-pretty">
+          <p className={cn("text-lg leading-relaxed", LONGO)}>
             Com o celular, acompanho a cerimônia e a festa para registrar detalhes, reações e momentos espontâneos. Depois, vocês
             recebem os arquivos originais, os vídeos editados e um resumo do casamento para baixar e guardar.
           </p>
@@ -179,7 +191,7 @@ export default function Page() {
           </ul>
           <div className="mt-2 flex flex-col gap-2 rounded-md bg-marca-escuro px-5 py-5 text-marca-creme">
             <h3 className="text-xl leading-snug font-bold text-balance">Para guardar. Para compartilhar. Vocês escolhem.</h3>
-            <p className="text-lg leading-snug text-pretty text-marca-creme/90">
+            <p className={cn("text-lg leading-snug text-marca-creme/90", LONGO)}>
               A cobertura pode ser contratada só para receber os registros. Se vocês também quiserem publicar no Instagram, os
               stories saem depois do casamento ou em tempo real, conforme a opção escolhida.
             </p>
@@ -194,7 +206,7 @@ export default function Page() {
           <h2 id="titulo-pacotes" className="text-3xl leading-tight font-bold text-balance">
             Escolham como querem registrar e compartilhar.
           </h2>
-          <p className="text-lg leading-relaxed text-pretty">
+          <p className="text-lg leading-relaxed">
             Vocês podem receber os vídeos para guardar ou também contar com a publicação nos stories durante a festa. Conheçam as
             opções de cobertura e o que cada uma inclui.
           </p>
@@ -256,7 +268,7 @@ export default function Page() {
           <h2 className="text-3xl leading-tight font-bold text-balance text-marca-creme">
             Mais de {CELEBRACOES_MAIS_DE} celebrações registradas.
           </h2>
-          <p className="text-lg leading-relaxed text-pretty text-marca-creme/90">
+          <p className={cn("text-lg leading-relaxed text-marca-creme/90", LONGO)}>
             Sou a Mel, storymaker de casamentos. Pelo celular, acompanho os encontros, as reações e os momentos espontâneos com
             atenção e discrição. Essa experiência faz parte do olhar que levo para o casamento de vocês, em vídeos para guardar e
             rever.
@@ -318,20 +330,20 @@ export default function Page() {
             O que os noivos mais me perguntam
           </h2>
           <div className="flex flex-col gap-2">
-            <Pergunta titulo="Como funciona o trabalho de uma storymaker no casamento?">
+            <Pergunta titulo="Como funciona o trabalho de uma storymaker no casamento?" longo>
               Eu registro os momentos da cobertura em vídeo pelo celular e preparo os materiais para vocês receberem e guardarem. A
               publicação nos stories também pode fazer parte do serviço, se vocês quiserem.
             </Pergunta>
-            <Pergunta titulo="A cobertura combina com o trabalho do fotógrafo e do videomaker?">
+            <Pergunta titulo="A cobertura combina com o trabalho do fotógrafo e do videomaker?" longo>
               Sim. Minha atuação acrescenta registros pelo celular, com atenção aos momentos espontâneos da cobertura. Posso trabalhar
               junto das outras equipes, respeitando o espaço e o andamento do casamento. Vocês recebem esses vídeos para guardar e
               rever.
             </Pergunta>
-            <Pergunta titulo="Podemos contratar só os registros, sem postar no Instagram?">
+            <Pergunta titulo="Podemos contratar só os registros, sem postar no Instagram?" longo>
               Sim. Vocês podem contratar a cobertura para receber os vídeos e guardar os registros, sem publicação e sem disponibilizar
               acesso ao Instagram. Se quiserem que eu publique, combinamos a forma de acesso e as publicações na contratação.
             </Pergunta>
-            <Pergunta titulo="Quando vamos receber os vídeos?">
+            <Pergunta titulo="Quando vamos receber os vídeos?" longo>
               O vídeo de resumo e os arquivos originais e editados ficam disponíveis no Drive em até {prazos.entregaDrive}. Se vocês
               escolherem publicação nos stories, ela segue o prazo da cobertura contratada e as condições apresentadas no pacote.
             </Pergunta>
@@ -342,7 +354,7 @@ export default function Page() {
             <Pergunta titulo="Por quanto tempo o material fica disponível?">
               O link fica no ar por {c.mesesDrive} meses depois do casamento. Baixem e guardem onde quiserem.
             </Pergunta>
-            <Pergunta titulo="Quanto custa?">
+            <Pergunta titulo="Quanto custa?" longo>
               Depende do pacote, da data e do que vocês quiserem somar, como making of ou o Cantinho Polaroid. Me conta a data que
               eu mando a proposta completa. Para reservar são {c.reservaPct}% do valor, e o restante vai por PIX até{" "}
               {c.diasAntesSaldo} dias antes do casamento.
@@ -362,7 +374,7 @@ export default function Page() {
           <h2 className="text-3xl leading-tight font-bold text-balance text-marca-creme">
             Que momentos vocês querem ter para rever?
           </h2>
-          <p className="text-lg leading-relaxed text-pretty text-marca-creme/85">
+          <p className="text-lg leading-relaxed text-marca-creme/85">
             Vamos conversar sobre o casamento e sobre como vocês gostariam de guardar esses registros.
           </p>
           <div className="flex w-full flex-col items-center gap-2">
@@ -483,7 +495,7 @@ function Garantia({ icone, titulo, children }: { icone: ReactNode; titulo: strin
   );
 }
 
-function Pergunta({ titulo, children }: { titulo: string; children: ReactNode }) {
+function Pergunta({ titulo, longo, children }: { titulo: string; longo?: boolean; children: ReactNode }) {
   return (
     <details className="group rounded-md bg-white">
       <summary className="flex min-h-14 list-none items-center justify-between gap-3 px-4 py-3 text-lg font-bold [&::-webkit-details-marker]:hidden">
@@ -492,7 +504,7 @@ function Pergunta({ titulo, children }: { titulo: string; children: ReactNode })
           +
         </span>
       </summary>
-      <p className="px-4 pb-4 text-base leading-relaxed">{children}</p>
+      <p className={cn("px-4 pb-4 text-base leading-relaxed", longo && LONGO)}>{children}</p>
     </details>
   );
 }
