@@ -311,8 +311,7 @@ export default function Page() {
               Nome escrito errado, arquivo com problema ou algo faltando: corrijo sem custo em até {c.diasCorrecao} dias úteis.
             </Garantia>
             <Garantia icone={<Heart />} titulo="E se eu tiver um imprevisto?">
-              Vai alguém da minha equipe, no mesmo padrão de trabalho. Se ninguém puder ir, devolvo tudo o que vocês pagaram em até{" "}
-              {c.diasDevolucao} dias.
+              Vai alguém da minha equipe, no mesmo padrão de trabalho.
             </Garantia>
           </div>
         </div>
