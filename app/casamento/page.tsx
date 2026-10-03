@@ -179,7 +179,7 @@ export default function Page() {
             <Pilar icone={<Sparkles />} titulo="Momentos espontâneos">
               Atenção aos abraços, às reações e ao que acontece durante a cobertura.
             </Pilar>
-            <Pilar icone={<Clapperboard />} titulo="Edição no estilo de vocês">
+            <Pilar icone={<Clapperboard />} titulo="Edição">
               Montagem, trilha e legendas pensadas para combinar com o casal.
             </Pilar>
             <Pilar icone={<Download />} titulo="Vídeos para guardar">
