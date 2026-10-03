@@ -248,9 +248,6 @@ export default function Page() {
               ))}
             </ul>
           </div>
-          <p className="text-base leading-relaxed text-marca-medio">
-            Locomoção inclusa em Campinas. A data fica reservada com {c.reservaPct}% do valor.
-          </p>
           <div className="mt-2 flex flex-col items-center gap-2 text-center">
             <CtaFormulario posicao="pacotes" variante="terracota">
               Consultar nossa data
