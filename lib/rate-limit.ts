@@ -57,4 +57,10 @@ export const LIMITES = {
    * a varredura de horas para meses.
    */
   proposta: { limite: 30, janelaMs: 60_000 },
+  /**
+   * Copias dos eventos do Pixel (`/api/meta/eventos`). O navegador junta os
+   * eventos e manda um lote a cada ~2 s no maximo, e um na saida da pagina:
+   * uma visita longa fica bem abaixo de 30 lotes por minuto.
+   */
+  copiasMeta: { limite: 60, janelaMs: 60_000 },
 } as const;

@@ -3,7 +3,7 @@
 import { ArrowRight } from "lucide-react";
 import { useEffect, useRef, type ReactNode } from "react";
 import { EVENTO_LP } from "@/lib/meta/eventos";
-import { rastrearPersonalizado } from "@/lib/meta/pixel";
+import { rastrearComCopia } from "@/lib/meta/pixel";
 import { repassarQuery } from "@/lib/url";
 import { cn } from "@/lib/utils";
 
@@ -67,7 +67,8 @@ export function CtaFormulario({
       suppressHydrationWarning
       onClick={() => {
         if (ref.current) ref.current.href = hrefFormulario(posicao, window.location.search);
-        rastrearPersonalizado(EVENTO_LP.cliqueCta, { pagina: "casamento", posicao });
+        // `urgente`: a página vai sair agora, a cópia não espera o lote.
+        rastrearComCopia("trackCustom", EVENTO_LP.cliqueCta, { pagina: "casamento", posicao }, { urgente: true });
       }}
       className={cn(
         // `min-h` e não `h`: o CTA da galeria quebra em duas linhas a 360px.

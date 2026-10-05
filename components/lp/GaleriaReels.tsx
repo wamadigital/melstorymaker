@@ -4,7 +4,7 @@ import { ChevronUp, Play, Volume2, VolumeX, X } from "lucide-react";
 import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { EVENTO_LP } from "@/lib/meta/eventos";
-import { rastrearPersonalizado } from "@/lib/meta/pixel";
+import { rastrearComCopia } from "@/lib/meta/pixel";
 import { cn } from "@/lib/utils";
 import { CLASSE_CTA, hrefFormulario } from "./CtaFormulario";
 import { avisarVisualizador, podeAutoplay, silenciar } from "./sinais";
@@ -121,11 +121,11 @@ export function GaleriaReels({ reels }: { reels: readonly ReelLp[] }) {
 
   const reelAtual = lista[atual];
 
-  const rastrearMarco = useCallback((id: string, marco: "abriu" | "metade") => {
+  const rastrearMarco = useCallback((id: string, marco: "abriu" | "metade" | "fim") => {
     const chave = `${id}:${marco}`;
     if (rastreados.current.has(chave)) return;
     rastreados.current.add(chave);
-    rastrearPersonalizado(EVENTO_LP.assistiuReel, { reel: id, marco });
+    rastrearComCopia("trackCustom", EVENTO_LP.assistiuReel, { reel: id, marco });
   }, []);
 
   /** Toca o Reel `i` no vídeo do visualizador. Com som se a pessoa quer e o arquivo tem trilha. */
@@ -302,7 +302,7 @@ export function GaleriaReels({ reels }: { reels: readonly ReelLp[] }) {
   }
 
   function irParaFormulario() {
-    rastrearPersonalizado(EVENTO_LP.cliqueCta, { pagina: "casamento", posicao: "visualizador" });
+    rastrearComCopia("trackCustom", EVENTO_LP.cliqueCta, { pagina: "casamento", posicao: "visualizador" }, { urgente: true });
     // `replace`: a entrada do visualizador no histórico não sobra embaixo do
     // formulário (voltar dele cai na LP, não num visualizador fechado).
     window.location.replace(hrefFormulario("visualizador", window.location.search));
@@ -422,6 +422,9 @@ export function GaleriaReels({ reels }: { reels: readonly ReelLp[] }) {
             const f = v.currentTime / v.duration;
             setProgresso(f);
             if (f >= 0.5 && reelAtual) rastrearMarco(reelAtual.id, "metade");
+            // 95% e não o `ended`: quem desliza para o próximo nos últimos
+            // segundos (os Reels terminam no logo) assistiu o casamento inteiro.
+            if (f >= 0.95 && reelAtual) rastrearMarco(reelAtual.id, "fim");
           }}
           onEnded={() => {
             const rolagem = rolagemRef.current;

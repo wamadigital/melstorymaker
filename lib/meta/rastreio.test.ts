@@ -28,14 +28,26 @@ test("sem _fbc, monta o fbc a partir do fbclid da página (Pixel bloqueado)", ()
   assert.deepEqual(r, { fbc: "fb.1.1700000000000.IwAR123abc" });
 });
 
-test("o cookie _fbc vence o fbclid da URL", () => {
+test("o cookie _fbc do MESMO clique fica, com a data original", () => {
   const r = rastreioDaRequisicao(
     req({
       cookie: "_fbc=fb.1.1600000000000.original",
-      referer: "https://melstorymaker.com.br/formulario?fbclid=outro",
+      referer: "https://melstorymaker.com.br/formulario?fbclid=original",
     }),
+    1_700_000_000_000,
   );
   assert.equal(r.fbc, "fb.1.1600000000000.original");
+});
+
+test("clique NOVO na URL vence o cookie de um clique anterior (remarketing)", () => {
+  const r = rastreioDaRequisicao(
+    req({
+      cookie: "_fbc=fb.1.1600000000000.antigo",
+      referer: "https://melstorymaker.com.br/casamento?fbclid=novo",
+    }),
+    1_700_000_000_000,
+  );
+  assert.equal(r.fbc, "fb.1.1700000000000.novo");
 });
 
 test("origem: ip desconhecido não é mandado como ip", () => {

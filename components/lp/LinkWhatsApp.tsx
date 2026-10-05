@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 import { EVENTO } from "@/lib/meta/eventos";
-import { rastrear } from "@/lib/meta/pixel";
+import { rastrearComCopia } from "@/lib/meta/pixel";
 import { linkPrimeiroContato } from "@/lib/whatsapp";
 
 /**
@@ -20,7 +20,9 @@ export function LinkWhatsApp({ numero, className, children }: { numero: string; 
       href={linkPrimeiroContato(numero, "casamento")}
       target="_blank"
       rel="noopener noreferrer"
-      onClick={() => rastrear(EVENTO.contato, { content_category: "casamento" })}
+      onClick={() =>
+        rastrearComCopia("track", EVENTO.contato, { content_category: "casamento", canal: "whatsapp" }, { urgente: true })
+      }
       className={className}
     >
       {children}

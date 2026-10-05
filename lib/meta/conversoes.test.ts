@@ -128,3 +128,53 @@ test("enviarConversao: Meta fora do ar ou recusando não lança", async () => {
   );
   mock.restoreAll();
 });
+
+test("montarEvento: visitante sem lead sai sem external_id, com os parâmetros do evento", async () => {
+  const { montarEvento } = await import("./conversoes");
+  const evento = montarEvento(
+    {
+      nome: "ViuSecao",
+      id: "ViuSecao.abc12345",
+      origem: "website",
+      url: "https://melstorymaker.com.br/casamento",
+      dados: { pagina: "casamento", secao: "pacotes" },
+      pessoa: { fbp: "fb.1.1700000000000.123456", ip: "200.1.2.3", userAgent: "Mozilla/5.0" },
+    },
+    0,
+  );
+  assert.equal("external_id" in evento.user_data, false);
+  assert.deepEqual(evento.custom_data, { pagina: "casamento", secao: "pacotes" });
+  assert.equal(evento.user_data.fbp, "fb.1.1700000000000.123456");
+});
+
+test("enviarConversoes: o lote vai numa chamada só, na ordem", async () => {
+  const chamadas: Record<string, unknown>[] = [];
+  mock.method(globalThis, "fetch", async (_url: string, init: RequestInit) => {
+    chamadas.push(JSON.parse(String(init.body)));
+    return new Response('{"events_received":2}');
+  });
+  const { enviarConversoes } = await import("./conversoes");
+  await enviarConversoes([
+    { nome: "PageView", id: "PageView.a1b2c3d4", origem: "website", url: "https://melstorymaker.com.br/casamento", pessoa: {} },
+    { nome: "RolouPagina", id: "RolouPagina.a1b2c3d4", origem: "website", dados: { profundidade: "50" }, pessoa: {} },
+  ]);
+  assert.equal(chamadas.length, 1);
+  const data = chamadas[0].data as Record<string, unknown>[];
+  assert.deepEqual(
+    data.map((e) => e.event_name),
+    ["PageView", "RolouPagina"],
+  );
+  // Sem URL, o padrão continua o do formulário.
+  assert.equal(data[1].event_source_url, "https://melstorymaker.com.br/formulario");
+  mock.restoreAll();
+
+  // Lote vazio nem chama a Meta.
+  let chamou = false;
+  mock.method(globalThis, "fetch", async () => {
+    chamou = true;
+    return new Response("{}");
+  });
+  await enviarConversoes([]);
+  assert.equal(chamou, false);
+  mock.restoreAll();
+});

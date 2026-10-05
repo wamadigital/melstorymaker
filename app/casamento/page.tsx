@@ -7,10 +7,12 @@ import { CtaFormulario } from "@/components/lp/CtaFormulario";
 import { GaleriaReels, type ReelLp } from "@/components/lp/GaleriaReels";
 import { HeroVideo } from "@/components/lp/HeroVideo";
 import { LinkWhatsApp } from "@/components/lp/LinkWhatsApp";
+import { RastreioLp } from "@/components/lp/RastreioLp";
 import { LogoMel } from "@/components/marca/LogoMel";
 import { MonogramaMel } from "@/components/marca/MonogramaMel";
 import { PixelMeta } from "@/components/meta/PixelMeta";
 import { CONTRATADA } from "@/lib/contrato/contratada";
+import { slugPergunta } from "@/lib/meta/engajamento";
 import { EVENTO } from "@/lib/meta/eventos";
 import { cn } from "@/lib/utils";
 import {
@@ -109,7 +111,7 @@ export default function Page() {
       {/* 1. Hero: texto no escuro liso e o vídeo num quadro de câmera (HeroVideo).
           Nada por cima do vídeo além do visor: o título sobre as pétalas não
           se lia (owner, 03/10/2026). */}
-      <section className="lp-escuro">
+      <section className="lp-escuro" data-secao="capa">
         <div className="mx-auto flex w-full max-w-xl flex-col gap-5 px-5 pb-10 pt-[max(1.25rem,env(safe-area-inset-top))]">
           <header className="flex items-center gap-3 pb-2">
             <MonogramaMel className="h-8 w-auto text-marca-creme" />
@@ -133,14 +135,14 @@ export default function Page() {
       </section>
 
       {/* Faixa logo abaixo da dobra */}
-      <section className="lp-escuro border-y border-marca-creme/10 bg-marca-medio/40 px-5 py-6">
+      <section className="lp-escuro border-y border-marca-creme/10 bg-marca-medio/40 px-5 py-6" data-secao="faixa">
         <p className="mx-auto max-w-xl text-center text-base leading-relaxed text-marca-creme/90">
           Desde {ANO_PRIMEIRO_CASAMENTO}, registrando em vídeos o que a emoção nem sempre deixa colocar em palavras.
         </p>
       </section>
 
       {/* 2. Galeria de Reels */}
-      <section className="lp-escuro py-16" aria-labelledby="titulo-galeria">
+      <section className="lp-escuro py-16" aria-labelledby="titulo-galeria" data-secao="galeria">
         <div className="mx-auto mb-8 flex max-w-xl flex-col gap-3 px-5">
           <Rotulo>Portfólio</Rotulo>
           <h2 id="titulo-galeria" className="text-3xl leading-tight font-bold text-balance text-marca-creme">
@@ -165,7 +167,7 @@ export default function Page() {
       </section>
 
       {/* 3. O que eu registro + benefícios + a escolha de publicar (transição para os pacotes) */}
-      <section className="bg-marca-creme px-5 py-16 text-marca-escuro" aria-labelledby="titulo-registro">
+      <section className="bg-marca-creme px-5 py-16 text-marca-escuro" aria-labelledby="titulo-registro" data-secao="cobertura">
         <div className="mx-auto flex max-w-xl flex-col gap-5">
           <Rotulo claro>A cobertura</Rotulo>
           <h2 id="titulo-registro" className="text-3xl leading-tight font-bold text-balance">
@@ -200,7 +202,7 @@ export default function Page() {
       </section>
 
       {/* 4. Pacotes */}
-      <section className="bg-marca-creme px-5 pb-16 text-marca-escuro" aria-labelledby="titulo-pacotes">
+      <section className="bg-marca-creme px-5 pb-16 text-marca-escuro" aria-labelledby="titulo-pacotes" data-secao="pacotes">
         <div className="mx-auto flex max-w-xl flex-col gap-5 border-t border-marca-escuro/15 pt-16">
           <Rotulo claro>Pacotes</Rotulo>
           <h2 id="titulo-pacotes" className="text-3xl leading-tight font-bold text-balance">
@@ -257,7 +259,7 @@ export default function Page() {
       </section>
 
       {/* 5. A Mel */}
-      <section className="lp-escuro relative overflow-hidden bg-marca-escuro px-5 pt-16">
+      <section className="lp-escuro relative overflow-hidden bg-marca-escuro px-5 pt-16" data-secao="sobre">
         <div aria-hidden className="lp-onda pointer-events-none absolute inset-0 bg-marca-areia/15" />
         <div className="relative mx-auto flex max-w-xl flex-col gap-5">
           <Rotulo>Quem sou eu</Rotulo>
@@ -281,7 +283,7 @@ export default function Page() {
       </section>
 
       {/* 6. Como funciona + garantias */}
-      <section className="bg-marca-creme px-5 py-16 text-marca-escuro" aria-labelledby="titulo-como">
+      <section className="bg-marca-creme px-5 py-16 text-marca-escuro" aria-labelledby="titulo-como" data-secao="como_funciona">
         <div className="mx-auto flex max-w-xl flex-col gap-6">
           <Rotulo claro>Como funciona</Rotulo>
           <h2 id="titulo-como" className="text-3xl leading-tight font-bold text-balance">
@@ -318,7 +320,7 @@ export default function Page() {
       </section>
 
       {/* 7. FAQ */}
-      <section className="bg-marca-creme px-5 pb-16 text-marca-escuro" aria-labelledby="titulo-faq">
+      <section className="bg-marca-creme px-5 pb-16 text-marca-escuro" aria-labelledby="titulo-faq" data-secao="duvidas">
         <div className="mx-auto flex max-w-xl flex-col gap-5 border-t border-marca-escuro/15 pt-16">
           <Rotulo claro>Dúvidas</Rotulo>
           <h2 id="titulo-faq" className="text-3xl leading-tight font-bold text-balance">
@@ -362,7 +364,7 @@ export default function Page() {
       </section>
 
       {/* 8. CTA final */}
-      <section className="lp-escuro relative overflow-hidden bg-marca-escuro px-5 py-20">
+      <section className="lp-escuro relative overflow-hidden bg-marca-escuro px-5 py-20" data-secao="chamada_final">
         <div aria-hidden className="lp-onda pointer-events-none absolute inset-0 bg-marca-areia/10" />
         <div className="relative mx-auto flex max-w-xl flex-col items-center gap-5 text-center">
           <MonogramaMel className="h-14 w-auto text-marca-areia" />
@@ -382,7 +384,7 @@ export default function Page() {
       </section>
 
       {/* 9. Rodapé. O padding de baixo deixa espaço para a barra fixa. */}
-      <footer className="lp-escuro border-t border-marca-creme/10 px-5 pb-32 pt-10">
+      <footer className="lp-escuro border-t border-marca-creme/10 px-5 pb-32 pt-10" data-secao="rodape">
         <div className="mx-auto flex max-w-xl flex-col gap-5">
           <div className="flex items-center gap-3">
             <MonogramaMel className="h-9 w-auto text-marca-creme" />
@@ -399,7 +401,7 @@ export default function Page() {
               </li>
             )}
             <li>
-              <a href={`mailto:${CONTRATADA.email}`} className="inline-flex min-h-11 items-center gap-2 text-marca-creme underline-offset-4 hover:underline">
+              <a href={`mailto:${CONTRATADA.email}`} data-link="email" className="inline-flex min-h-11 items-center gap-2 text-marca-creme underline-offset-4 hover:underline">
                 <Mail aria-hidden className="size-5 text-marca-areia" />
                 {CONTRATADA.email}
               </a>
@@ -407,6 +409,7 @@ export default function Page() {
             <li>
               <a
                 href="https://www.instagram.com/mel.storymaker/"
+                data-link="instagram"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex min-h-11 items-center gap-2 text-marca-creme underline-offset-4 hover:underline"
@@ -421,6 +424,7 @@ export default function Page() {
       </footer>
 
       <BarraCtaFixa idHero={ID_CTA_HERO} idFinal={ID_CTA_FINAL} />
+      <RastreioLp />
       {/* A query do anúncio (`fbclid`, `utm_*`) nos CTAs ANTES da hidratação.
           No 4G o lead toca no botão do hero antes de o React acordar, e o
           `<a>` do HTML estático não tem a query: o lead nasceria sem nada que o
@@ -492,7 +496,7 @@ function Garantia({ icone, titulo, children }: { icone: ReactNode; titulo: strin
 
 function Pergunta({ titulo, longo, children }: { titulo: string; longo?: boolean; children: ReactNode }) {
   return (
-    <details className="group rounded-md bg-white">
+    <details className="group rounded-md bg-white" data-duvida={slugPergunta(titulo)}>
       <summary className="flex min-h-14 list-none items-center justify-between gap-3 px-4 py-3 text-lg font-bold [&::-webkit-details-marker]:hidden">
         {titulo}
         <span aria-hidden className="text-2xl leading-none font-light text-marca-terracota transition-transform duration-200 group-open:rotate-45">

@@ -30,8 +30,8 @@ import {
 } from "@/lib/form/engine";
 import { validarResposta } from "@/lib/form/validacao";
 import { isCategoria, type Categoria, type Respostas } from "@/lib/form/types";
-import { EVENTO, idEvento } from "@/lib/meta/eventos";
-import { rastrear } from "@/lib/meta/pixel";
+import { EVENTO, EVENTO_FORMULARIO, idEvento } from "@/lib/meta/eventos";
+import { rastrear, rastrearComCopia } from "@/lib/meta/pixel";
 
 const CHAVE_LEAD = "mel:lead_id";
 
@@ -89,6 +89,8 @@ export function FormularioClient({
   const temWhatsapp = whatsappMel.trim() !== "";
   // Guarda o ultimo estado salvo com sucesso, para o botao "tentar de novo".
   const ultimoEnvio = useRef<Respostas>({});
+  /** `IniciouOrcamento` sai uma vez por visita, na primeira entrada no fluxo. */
+  const iniciouOrcamento = useRef(false);
 
   const passos = categoria ? passosVisiveis(categoria, respostas) : [];
   const passo = passos.find((p) => p.id === passoId) ?? null;
@@ -127,6 +129,9 @@ export function FormularioClient({
         const alvo = visiveis.find((p) => p.id === lead.passo_atual) ?? visiveis[0];
 
         setLeadId(lead.id);
+        // Lead que já existe passou do degrau numa visita anterior: voltar até a
+        // escolha do evento não conta outro começo.
+        iniciouOrcamento.current = true;
         setCategoria(lead.categoria);
         // Lead retomado volta para a tela de categoria, nunca para as portas:
         // de la, "Quero um orcamento" com `?evento=` trocaria a categoria dele
@@ -226,6 +231,13 @@ export function FormularioClient({
     if (!isCategoria(valor) || ocupado || retomando) return;
     setErro(null);
     setPulouCategoria(pelaPorta);
+
+    // O degrau entre a visita e o `Lead`: entrou no orçamento. Quem para aqui
+    // começou e desistiu antes de deixar o WhatsApp.
+    if (!iniciouOrcamento.current) {
+      iniciouOrcamento.current = true;
+      rastrearComCopia("trackCustom", EVENTO_FORMULARIO.iniciouOrcamento, { content_category: valor });
+    }
 
     // Trocar de categoria preserva o contato ja digitado: quem voltou para
     // trocar nao deve redigitar o proprio telefone.
@@ -435,10 +447,17 @@ export function FormularioClient({
                         // `Contact` da Meta e o unico registro de que o anuncio
                         // trouxe uma conversa. Com o evento da URL, ele vai
                         // junto, como no `Lead`.
+                        // Com cópia pelo servidor: quem só chama no WhatsApp
+                        // nunca chega às rotas do lead, que mandam as outras.
                         onClick={() =>
-                          rastrear(
+                          rastrearComCopia(
+                            "track",
                             EVENTO.contato,
-                            categoriaInicial ? { content_category: categoriaInicial } : undefined,
+                            {
+                              ...(categoriaInicial && { content_category: categoriaInicial }),
+                              canal: "whatsapp",
+                            },
+                            { urgente: true },
                           )
                         }
                         className={cn(

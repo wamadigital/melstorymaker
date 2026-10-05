@@ -1,6 +1,7 @@
 import Script from "next/script";
 import { preconnect } from "react-dom";
 import { snippetPixel, type EventoInicial } from "@/lib/meta/snippet";
+import { CopiaIniciais } from "./CopiaIniciais";
 
 /** Id do Pixel e so digitos. Validar aqui impede que um valor torto na Vercel vire script quebrado -- ou injetado. */
 const RE_PIXEL = /^\d{8,20}$/;
@@ -31,7 +32,8 @@ const RE_PIXEL = /^\d{8,20}$/;
  * ela e lida no build (na Vercel, trocar env ja exige redeploy de todo jeito).
  *
  * `eventosIniciais`: o que a pagina dispara ao carregar alem do PageView (a LP
- * manda `ViewContent`). Vai no mesmo snippet, ver `snippetPixel`.
+ * manda `ViewContent`). Vai no mesmo snippet, ver `snippetPixel`. O PageView e
+ * esses eventos ganham copia pelo servidor (`CopiaIniciais`), com o mesmo id.
  */
 export function PixelMeta({
   pixelId,
@@ -47,8 +49,11 @@ export function PixelMeta({
   preconnect("https://connect.facebook.net");
 
   return (
-    <Script id="meta-pixel" strategy="afterInteractive">
-      {snippetPixel(id, eventosIniciais)}
-    </Script>
+    <>
+      <Script id="meta-pixel" strategy="afterInteractive">
+        {snippetPixel(id, eventosIniciais)}
+      </Script>
+      <CopiaIniciais />
+    </>
   );
 }

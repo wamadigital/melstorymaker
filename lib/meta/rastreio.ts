@@ -69,14 +69,21 @@ export function rastreioDaRequisicao(req: Request, agoraMs: number = Date.now())
   const fbp = valido(lerCookie(req, "_fbp"), RE_FBP);
   let fbc = valido(lerCookie(req, "_fbc"), RE_FBC);
 
-  // Sem o cookie mas com o clique na URL: o Pixel nao carregou (bloqueador de
-  // anuncio, rede lenta) e e justamente o caso que a Conversions API existe
-  // para cobrir. O fetch do formulario e same-origin, entao o Referer traz a
-  // URL inteira da pagina, com o `fbclid` que o anuncio colou nela. Formato
-  // montado como a Meta documenta para `fbc` gerado no servidor.
-  if (!fbc) {
-    const fbclid = referer(req)?.searchParams.get("fbclid");
-    if (fbclid) fbc = valido(`fb.1.${agoraMs}.${fbclid}`, RE_FBC);
+  // O clique na URL vence o cookie quando e OUTRO clique, como o proprio
+  // fbevents.js faz ao carregar. Dois casos:
+  // - sem cookie: o Pixel nao carregou (bloqueador de anuncio, rede lenta), o
+  //   caso que a Conversions API existe para cobrir;
+  // - cookie de um clique ANTERIOR: quem volta por um anuncio novo de
+  //   remarketing, e a copia saiu antes de o fbevents.js reescrever o cookie
+  //   (no 4G ele chega depois do primeiro lote). Sem isto, o evento iria
+  //   atribuido ao anuncio velho.
+  // O fetch e o beacon sao same-origin, entao o Referer traz a URL inteira da
+  // pagina, com o `fbclid` que o anuncio colou nela. Mesmo clique do cookie: o
+  // cookie fica, com a data original. Formato montado como a Meta documenta
+  // para `fbc` gerado no servidor.
+  const fbclid = referer(req)?.searchParams.get("fbclid");
+  if (fbclid && !fbc?.endsWith(`.${fbclid}`)) {
+    fbc = valido(`fb.1.${agoraMs}.${fbclid}`, RE_FBC) ?? fbc;
   }
 
   return { ...(fbp && { fbp }), ...(fbc && { fbc }) };

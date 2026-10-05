@@ -12,7 +12,9 @@ import type { Origem, Rastreio } from "@/lib/meta/rastreio";
  *    quando a Mel move o cartao -- o lead nao esta na pagina.
  * 2. `Lead` e `SubmitApplication` saem TAMBEM daqui, com o mesmo `event_id` do
  *    navegador: quem tem bloqueador de anuncio continua sendo contado, e a
- *    Meta deduplica quem foi contado duas vezes.
+ *    Meta deduplica quem foi contado duas vezes. Os outros eventos do
+ *    navegador (visita, rolagem, cliques) tambem, pela rota
+ *    `/api/meta/eventos` -- ali a pessoa ainda e anonima, sem lead.
  *
  * Regras, no mesmo espirito da notificacao da Mel (`lib/notifica/`):
  * - Falha aqui NUNCA quebra o fluxo do lead nem o painel. Quem chama esta em
@@ -29,7 +31,8 @@ const RE_PIXEL = /^\d{8,20}$/;
 
 export type Pessoa = Rastreio &
   Pick<Origem, "ip" | "userAgent"> & {
-    leadId: string;
+    /** Sem lead (visitante da LP, porta do WhatsApp): sai sem `external_id`. */
+    leadId?: string;
     email?: string | null;
     whatsapp?: string | null;
     /** Nome de QUEM PREENCHEU (`nomeContato`), nunca o sujeito do evento. */
@@ -53,6 +56,8 @@ export type EventoConversao = {
   origem: "website" | "system_generated";
   url?: string;
   categoria?: string;
+  /** Parametros do evento (`custom_data`), os mesmos que o Pixel mandou. */
+  dados?: Record<string, string>;
   pessoa: Pessoa;
 };
 
@@ -84,7 +89,7 @@ export function montarEvento(e: EventoConversao, agoraMs: number) {
   const nome = primeiroNome(p.nome);
 
   const usuario = {
-    external_id: sha256(p.leadId),
+    ...(p.leadId && { external_id: sha256(p.leadId) }),
     ...(p.email?.trim() && { em: comHash(p.email) }),
     ...(telefone && { ph: sha256(telefone) }),
     ...(nome && { fn: sha256(nome) }),
@@ -103,7 +108,9 @@ export function montarEvento(e: EventoConversao, agoraMs: number) {
     action_source: e.origem,
     ...(e.url && { event_source_url: e.url }),
     user_data: usuario,
-    ...(e.categoria && { custom_data: { content_category: e.categoria } }),
+    ...((e.categoria || e.dados) && {
+      custom_data: { ...e.dados, ...(e.categoria && { content_category: e.categoria }) },
+    }),
   };
 }
 
@@ -122,10 +129,20 @@ export function configCapi(): Config | null {
 }
 
 export async function enviarConversao(e: EventoConversao): Promise<void> {
+  await enviarConversoes([e]);
+}
+
+/**
+ * Varios eventos numa chamada so (a Graph API aceita ate 1000). E o caminho
+ * das copias do navegador, que chegam em lote.
+ */
+export async function enviarConversoes(eventos: readonly EventoConversao[]): Promise<void> {
+  if (!eventos.length) return;
+  const nomes = eventos.map((e) => e.nome).join(", ");
   try {
     const config = configCapi();
     if (!config) {
-      console.log(`[meta] Conversions API desligada, ${e.nome} nao enviado`);
+      console.log(`[meta] Conversions API desligada, ${nomes} nao enviado`);
       return;
     }
 
@@ -134,17 +151,20 @@ export async function enviarConversao(e: EventoConversao): Promise<void> {
     // e o da Mel). Em ambos a URL certa e a do formulario: e por onde o lead
     // entrou, e sem URL a regra das conversoes personalizadas ("URL contem
     // melstorymaker.com.br") nao casa.
-    const evento: EventoConversao =
-      e.origem === "website" && !e.url
-        ? { ...e, url: `${env.APP_URL.replace(/\/+$/, "")}/formulario` }
-        : e;
+    const agora = Date.now();
+    const data = eventos.map((e) =>
+      montarEvento(
+        e.origem === "website" && !e.url ? { ...e, url: `${env.APP_URL.replace(/\/+$/, "")}/formulario` } : e,
+        agora,
+      ),
+    );
 
     const r = await fetch(`https://graph.facebook.com/${VERSAO_GRAPH}/${config.pixel}/events`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       // Token no corpo e nao na query: URL com segredo acaba em log de proxy.
       body: JSON.stringify({
-        data: [montarEvento(evento, Date.now())],
+        data,
         access_token: config.token,
         ...(config.teste && { test_event_code: config.teste }),
       }),
@@ -155,11 +175,12 @@ export async function enviarConversao(e: EventoConversao): Promise<void> {
 
     if (!r.ok) {
       const corpo = await r.text().catch(() => "");
-      console.error(`[meta] Conversions API recusou ${e.nome} (HTTP ${r.status}): ${corpo.slice(0, 300)}`);
+      console.error(`[meta] Conversions API recusou ${nomes} (HTTP ${r.status}): ${corpo.slice(0, 300)}`);
       return;
     }
-    console.log(`[meta] ${e.nome} enviado (${e.id})${config.teste ? " [teste]" : ""}`);
+    const ids = eventos.length === 1 ? ` (${eventos[0].id})` : ` (${eventos.length} eventos)`;
+    console.log(`[meta] ${nomes} enviado${ids}${config.teste ? " [teste]" : ""}`);
   } catch (erro) {
-    console.error(`[meta] falha ao enviar ${e.nome} (o fluxo do lead NAO foi afetado)`, erro);
+    console.error(`[meta] falha ao enviar ${nomes} (o fluxo do lead NAO foi afetado)`, erro);
   }
 }
