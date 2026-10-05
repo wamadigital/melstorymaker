@@ -157,6 +157,11 @@ export type Lead = {
    */
   lembrete_7_em: string | null;
   lembrete_30_em: string | null;
+  /**
+   * Ultimo lembrete por e-mail de quem parou no formulario (coluna "Novo"). O
+   * botao trava por 7 dias a partir daqui; ver `lib/admin/lembrete-email.ts`.
+   */
+  lembrete_email_em: string | null;
 };
 
 export function isCategoria(v: unknown): v is Categoria {

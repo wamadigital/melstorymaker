@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { dataCurta, dataExtenso, horaBr, nomeProprio } from "./formatadores";
+import { dataCurta, dataExtenso, diaMesLocal, horaBr, nomeProprio } from "./formatadores";
 
 test("data por extenso em pt-BR (RF-15)", () => {
   assert.equal(dataExtenso("2026-03-14"), "14 de março de 2026");
@@ -74,4 +74,13 @@ test("nome próprio: espaço sobrando não vira palavra vazia", () => {
   assert.equal(nomeProprio("  ana   paula  "), "Ana Paula");
   assert.equal(nomeProprio(""), "");
   assert.equal(nomeProprio(null), "");
+});
+
+test("dia/mês curto sai no fuso da Mel, não no do servidor", () => {
+  // 01h de 01/10 em UTC ainda e 30/09 em Sao Paulo: o quadro e renderizado
+  // na Vercel, em UTC, e a legenda do cartao mostraria o dia seguinte.
+  assert.equal(diaMesLocal("2026-10-01T01:00:00Z"), "30/09");
+  assert.equal(diaMesLocal("2026-03-14T15:00:00-03:00"), "14/03");
+  assert.equal(diaMesLocal(null), "");
+  assert.equal(diaMesLocal("nao e data"), "");
 });

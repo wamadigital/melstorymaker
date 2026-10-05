@@ -91,6 +91,18 @@ export function dataHoraLocal(iso: string | null | undefined): string {
 }
 
 /**
+ * Timestamp do banco para "14/03", no fuso da Mel. Para legenda curta no
+ * cartao do quadro, onde "14/03/2026 às 19h30" nao cabe. Mesmo fuso fixo de
+ * `dataHoraLocal`, pelo mesmo motivo: o quadro e renderizado em UTC.
+ */
+export function diaMesLocal(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return new Intl.DateTimeFormat("pt-BR", { timeZone: FUSO_MEL, day: "2-digit", month: "2-digit" }).format(d);
+}
+
+/**
  * Formatadores disponiveis no templates.config.ts.
  *
  * `data_curta` (DD/MM/AAAA) e o padrao das propostas, por decisao do owner.

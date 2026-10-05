@@ -36,6 +36,7 @@ function lead(categoria: Categoria, respostas: Respostas): Lead {
     enviado_em: null,
     lembrete_7_em: null,
     lembrete_30_em: null,
+    lembrete_email_em: null,
   };
 }
 

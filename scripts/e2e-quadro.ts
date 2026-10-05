@@ -9,11 +9,18 @@
  * realmente mantem o formulario publico fechado. Se um dia alguem afrouxar a
  * matriz de `lib/admin/status.ts`, e este script que fica vermelho.
  *
+ * Tambem cobre o "Lembrar por e-mail" dos cartoes de "Novo"
+ * (`POST /api/admin/leads/[id]/lembrete-email`) e a pagina `/continuar/[id]`
+ * do link do e-mail. As recusas rodam contra qualquer base; o ENVIO so contra
+ * servidor local com MAIL_DRY_RUN=1 no .env.local -- e o servidor ainda tem de
+ * confirmar o dry run na resposta, senao o script fica vermelho.
+ *
  * Cria admin e leads temporarios e remove tudo no fim.
  */
 import { createClient } from "@supabase/supabase-js";
 import { STATUS, type Status } from "@/lib/form/types";
 import { ROTULO_STATUS } from "@/lib/admin/rotulos";
+import { baseEhLocal } from "./e2e-contrato";
 
 const BASE = process.argv[2] || "http://localhost:3000";
 const URL_SB = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -28,6 +35,7 @@ const erro = (m: string) => {
   falhas++;
 };
 const checar = (c: boolean, m: string) => (c ? ok(m) : erro(m));
+const aviso = (m: string) => console.log(`  \x1b[33m!\x1b[0m ${m}`);
 
 const admin = createClient(URL_SB, SERVICE, { auth: { persistSession: false } });
 
@@ -35,8 +43,19 @@ const EMAIL_TEMP = `quadro-${Date.now()}@wama.digital`;
 const SENHA_TEMP = `E2e!${Math.random().toString(36).slice(2)}Aa9`;
 const criados: string[] = [];
 
+/**
+ * Destino dos lembretes por e-mail do teste. `.invalid` e reservado (RFC 2606)
+ * e nunca resolve: se um dia o dry run falhar, o e-mail nao chega a ninguem.
+ */
+const EMAIL_LEAD_LEMBRETE = "lead.teste@exemplo.invalid";
+const MAIL_DRY_RUN_LOCAL = ["1", "true"].includes((process.env.MAIL_DRY_RUN ?? "").toLowerCase());
+
 /** Lead de teste direto pela service role: o foco aqui e a rota de status. */
-async function semear(status: Status, opcoes: { comPdf?: boolean } = {}) {
+async function semear(
+  status: Status,
+  opcoes: { comPdf?: boolean; email?: string | null; lembreteEmailEm?: string } = {},
+) {
+  const email = opcoes.email === undefined ? "lead.teste@example.com" : opcoes.email;
   const { data } = await admin
     .from("leads")
     .insert({
@@ -46,14 +65,15 @@ async function semear(status: Status, opcoes: { comPdf?: boolean } = {}) {
         nome: "Lúcia",
         noivos: "TESTE Quadro",
         data: "2027-08-31",
-        contato_email: "lead.teste@example.com",
+        ...(email && { contato_email: email }),
         contato_whatsapp: "(19) 99999-8888",
       },
       nome_display: "TESTE Quadro",
       data_evento: "2027-08-31",
-      email: "lead.teste@example.com",
+      email,
       whatsapp: "19999998888",
       pdf_url: opcoes.comPdf ? "https://exemplo.invalid/proposta.pdf" : null,
+      lembrete_email_em: opcoes.lembreteEmailEm ?? null,
     })
     .select("id")
     .single();
@@ -184,6 +204,100 @@ async function main() {
   // aqui sem nunca ser conferido -- foi o que aconteceu com "Lead perdido".
   for (const status of STATUS) {
     checar(html.includes(ROTULO_STATUS[status]), `coluna "${ROTULO_STATUS[status]}" no HTML`);
+  }
+
+  // ------------------------------------------------------ lembrete por e-mail
+  const lembrar = (id: string, comSessao = true) =>
+    fetch(`${BASE}/api/admin/leads/${id}/lembrete-email`, {
+      method: "POST",
+      headers: comSessao ? { Cookie: cookie } : {},
+    });
+  const carimboDe = async (id: string) =>
+    (await admin.from("leads").select("status, lembrete_email_em").eq("id", id).single()).data;
+  const DIA = 86_400_000;
+
+  const novo = await semear("incompleto", { email: EMAIL_LEAD_LEMBRETE });
+
+  const lSemCookie = await lembrar(novo, false);
+  checar(lSemCookie.status === 401, `lembrete sem sessão → 401 (veio ${lSemCookie.status})`);
+
+  const lNaoUuid = await lembrar("nao-e-uuid");
+  checar(lNaoUuid.status === 404, `lembrete com id não-uuid → 404 (veio ${lNaoUuid.status})`);
+
+  const semEmail = await semear("incompleto", { email: null });
+  const lSemEmail = await lembrar(semEmail);
+  checar(lSemEmail.status === 422, `lembrete para lead sem e-mail → 422 (veio ${lSemEmail.status})`);
+
+  // O lembrete chama de volta para o formulario: fora de "Novo" nao ha para
+  // onde voltar.
+  const foraDeNovo = await semear("aguardando_revisao", { email: EMAIL_LEAD_LEMBRETE });
+  const lFora = await lembrar(foraDeNovo);
+  checar(lFora.status === 409, `lembrete fora de Novo → 409 (veio ${lFora.status})`);
+  checar(!(await carimboDe(foraDeNovo))?.lembrete_email_em, "fora de Novo nada é carimbado");
+
+  const ha3Dias = new Date(Date.now() - 3 * DIA).toISOString();
+  const lembradoHa3 = await semear("incompleto", { email: EMAIL_LEAD_LEMBRETE, lembreteEmailEm: ha3Dias });
+  const lCedo = await lembrar(lembradoHa3);
+  const jsonCedo = await lCedo.json().catch(() => ({}));
+  checar(lCedo.status === 409, `lembrete de 3 dias atrás → 409 (veio ${lCedo.status})`);
+  checar(jsonCedo.erro?.includes("O próximo libera em"), `mensagem diz quando libera: "${jsonCedo.erro}"`);
+  checar(
+    Date.parse((await carimboDe(lembradoHa3))?.lembrete_email_em) === Date.parse(ha3Dias),
+    "a recusa não mexe no carimbo",
+  );
+
+  // A pagina de passagem do link do e-mail.
+  const passagem = await fetch(`${BASE}/continuar/${novo}`, { redirect: "manual" });
+  const htmlPassagem = await passagem.text();
+  checar(passagem.status === 200, `/continuar/{id} → 200 (veio ${passagem.status})`);
+  checar(
+    htmlPassagem.includes(`"mel:lead_id","${novo}"`),
+    "/continuar grava o lead no localStorage e segue para o formulário",
+  );
+  checar(passagem.headers.get("referrer-policy") === "no-referrer", "/continuar responde no-referrer");
+  const passagemTorta = await fetch(`${BASE}/continuar/nao-e-uuid`, { redirect: "manual" });
+  checar(
+    passagemTorta.status === 307 && (passagemTorta.headers.get("location") ?? "").endsWith("/formulario"),
+    `/continuar com id torto → 307 para o formulário (veio ${passagemTorta.status})`,
+  );
+
+  if (!baseEhLocal(BASE) || !MAIL_DRY_RUN_LOCAL) {
+    aviso("envio do lembrete pulado: só roda contra servidor local, com MAIL_DRY_RUN=1 no .env.local");
+  } else {
+    const enviou = await lembrar(novo);
+    const jsonEnviou = await enviou.json().catch(() => ({}));
+    checar(enviou.status === 200, `lembrete em Novo com e-mail → 200 (veio ${enviou.status})`);
+    checar(jsonEnviou.dryRun === true, "o servidor confirmou o dry run: nada saiu de verdade");
+    const carimbado = await carimboDe(novo);
+    checar(
+      Date.parse(carimbado?.lembrete_email_em) === Date.parse(jsonEnviou.lembrete_email_em),
+      "lembrete_email_em carimbado",
+    );
+    checar(carimbado?.status === "incompleto", "o lead continua em Novo");
+
+    const deNovo = await lembrar(novo);
+    checar(deNovo.status === 409, `segundo clique logo depois → 409 (veio ${deNovo.status})`);
+
+    // Dois cliques ao mesmo tempo (ou duas abas): a escrita condicional deixa
+    // passar um so -- sao dois e-mails a menos na caixa do lead.
+    const corrida = await semear("incompleto", { email: EMAIL_LEAD_LEMBRETE });
+    const [a, b] = await Promise.all([lembrar(corrida), lembrar(corrida)]);
+    checar(
+      [a.status, b.status].sort().join(",") === "200,409",
+      `dois cliques simultâneos → um 200 e um 409 (veio ${a.status} e ${b.status})`,
+    );
+
+    const ha7Dias = new Date(Date.now() - 7 * DIA - 60_000).toISOString();
+    await admin.from("leads").update({ lembrete_email_em: ha7Dias }).eq("id", novo);
+    const liberado = await lembrar(novo);
+    checar(liberado.status === 200, `passados 7 dias, libera de novo → 200 (veio ${liberado.status})`);
+
+    const quadro = await (await fetch(`${BASE}/admin`, { headers: { Cookie: cookie } })).text();
+    checar(
+      quadro.includes("Lembrete enviado") && quadro.includes("Libera de novo em 7 dias"),
+      "o cartão mostra o botão travado, com a legenda de quando libera",
+    );
+    checar(quadro.includes("Libera de novo em 4 dias"), "o lembrado há 3 dias libera em 4");
   }
 
   await limpar();

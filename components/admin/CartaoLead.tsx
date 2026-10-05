@@ -4,7 +4,9 @@ import Link from "next/link";
 import { Check, FileText, GripVertical, Mail, MessageCircle } from "lucide-react";
 import { AcoesLead } from "@/components/admin/AcoesLead";
 import { BotaoLembrete } from "@/components/admin/BotaoLembrete";
+import { BotaoLembreteEmail } from "@/components/admin/BotaoLembreteEmail";
 import { estadoLembrete, SELO_LEMBRETE, TEMA_LEMBRETE } from "@/lib/admin/lembretes";
+import { estadoLembreteEmail } from "@/lib/admin/lembrete-email";
 import { linkConversaLead } from "@/lib/whatsapp";
 import { DESCRICAO_COLUNA, TEMA_COLUNA, rotuloCategoria, rotuloPasso } from "@/lib/admin/rotulos";
 import type { LeadCartao } from "@/lib/admin/tipos";
@@ -68,6 +70,10 @@ export function CartaoLead({
   // Abre a conversa VAZIA: a mensagem quem escreve e a Mel (ver
   // `linkConversaLead`).
   const chamar = coluna === "incompleto" ? linkConversaLead(lead.whatsapp) : null;
+
+  // Logo abaixo, o lembrete por e-mail: tambem so em "Novo", e so com e-mail.
+  // O clique envia e o botao trava por 7 dias (ver `lib/admin/lembrete-email.ts`).
+  const lembreteEmail = estadoLembreteEmail(lead, coluna, agoraMs);
 
   return (
     <div
@@ -139,21 +145,26 @@ export function CartaoLead({
         {/* Rodape de cobranca. Fora do <Link> pelo mesmo motivo do menu: botao
             dentro de <a> e HTML invalido. So aparece quando ha o que dizer --
             um cartao de dois dias nao ganha linha nenhuma. */}
-        {!sobreposto && chamar && (
-          <div className="px-3 pb-3">
-            <a
-              href={chamar}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={cn(
-                "flex w-full items-center justify-center gap-1.5 rounded-md border px-2 py-1.5",
-                "text-xs font-semibold transition-colors",
-                "border-border bg-background hover:bg-muted",
-              )}
-            >
-              <MessageCircle className="size-3.5" />
-              Chamar no WhatsApp
-            </a>
+        {!sobreposto && (chamar || lembreteEmail.visivel) && (
+          <div className="space-y-2 px-3 pb-3">
+            {chamar && (
+              <a
+                href={chamar}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={cn(
+                  "flex w-full items-center justify-center gap-1.5 rounded-md border px-2 py-1.5",
+                  "text-xs font-semibold transition-colors",
+                  "border-border bg-background hover:bg-muted",
+                )}
+              >
+                <MessageCircle className="size-3.5" />
+                Chamar no WhatsApp
+              </a>
+            )}
+            {lembreteEmail.visivel && lead.email && (
+              <BotaoLembreteEmail id={lead.id} email={lead.email} estado={lembreteEmail} />
+            )}
           </div>
         )}
 

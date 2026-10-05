@@ -17,8 +17,9 @@ export const maxDuration = 60;
 /**
  * POST /api/admin/leads/[id]/enviar -- RF-12.
  *
- * Human-in-the-loop: e a UNICA porta de saida de e-mail para o lead, e so abre
- * por clique da Mel no painel. Nao existe envio automatico apos o submit.
+ * Human-in-the-loop: e-mail para o lead so sai por clique da Mel no painel --
+ * aqui (a proposta) e em `../lembrete-email` (quem parou no formulario). Nao
+ * existe envio automatico apos o submit.
  */
 export async function POST(_req: Request, { params }: Ctx) {
   if (!(await getSessaoAdmin())) {

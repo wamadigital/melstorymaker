@@ -52,6 +52,10 @@ create table if not exists leads (
   -- e e a presenca delas que faz o cartao parar de gritar no quadro.
   lembrete_7_em timestamptz,
   lembrete_30_em timestamptz,
+  -- Lembrete por e-mail de quem parou no formulario (coluna "Novo"): QUANDO a
+  -- Mel mandou o ultimo. O botao trava por 7 dias a partir daqui, e a rota de
+  -- envio confere a mesma trava -- ver lib/admin/lembrete-email.ts.
+  lembrete_email_em timestamptz,
   -- Codigo curto do link publico da proposta: melstorymaker.com.br/p/a3f9.
   -- O UUID funcionava, mas o link ficava com 36 caracteres e a Mel manda isso
   -- por WhatsApp. Nasce so quando o PDF e gerado; lead sem proposta nao tem.
@@ -73,6 +77,7 @@ create table if not exists leads (
 alter table leads add column if not exists slug text;
 alter table leads add column if not exists lembrete_7_em timestamptz;
 alter table leads add column if not exists lembrete_30_em timestamptz;
+alter table leads add column if not exists lembrete_email_em timestamptz;
 alter table leads add column if not exists rastreio jsonb;
 
 create unique index if not exists leads_slug_key on leads (slug);
