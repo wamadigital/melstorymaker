@@ -7,7 +7,7 @@
  * rodar o script de novo.
  *
  * Sem nome de casal, por decisão do owner (01/10/2026): o rótulo é o espaço e
- * o mês. A ordem alterna os espaços (o Espaço Pieri aparece em 4 dos 10) em vez
+ * o mês. A ordem alterna os espaços (o Espaço Pieri aparece em 5 dos 11) em vez
  * de seguir as views do Instagram, que não dizem nada sobre quem chega pelo
  * anúncio.
  */
@@ -32,6 +32,9 @@ export const REELS: readonly Reel[] = [
   { id: "DXM41Y7DtAA", espaco: "Corsage Eventos", quando: "mar/2026", trecho: { inicio: 36, fim: 42 } },
   { id: "DdcXXy8O8hN", espaco: "Espaço Pieri", quando: "ago/2026", trecho: { inicio: 79, fim: 85 } },
   { id: "DdYyiYBxkMo", espaco: "Cerimoniello Festas", quando: "2026", trecho: { inicio: 12, fim: 18 } },
+  // Criativo de anúncio (05/10/2026). Trecho quebrado de propósito: entre o
+  // clarão de 55,3 s e o de 59,6 s, senão o pôster sairia branco.
+  { id: "DF8s1wUyhhE", espaco: "Espaço Pieri", quando: "2025", trecho: { inicio: 55.5, fim: 59.5 } },
   { id: "DPeG5utjo1d", espaco: "Spazzio Felicità", quando: "set/2025", trecho: { inicio: 73, fim: 78 } },
   { id: "DVyShjmjuOO", espaco: "Espaço Pieri", quando: "fev/2026", trecho: { inicio: 46, fim: 52 } },
   { id: "DLqRcGRSdzn", espaco: "Rancho Verde", quando: "jun/2025", trecho: { inicio: 50, fim: 56 } },
@@ -62,10 +65,14 @@ export const ANO_PRIMEIRO_CASAMENTO = 2024;
  * Teto de peso por arquivo, usado pelo `lp:reels` ao gerar e conferido de novo
  * pelo `reels.test.ts`. O preview é o que mais importa: a galeria toca um
  * atrás do outro conforme a pessoa desliza, no 4G.
+ *
+ * `reelsTotal` subiu de 100 para 110 MiB em 05/10/2026, com o 11º Reel (pedido
+ * do owner, criativo de anúncio): os dez já somavam 96 MiB. O Reel completo só
+ * baixa no toque, então o total pesa no repositório, não na página.
  */
 export const ORCAMENTO = {
   reel: 12 * 1024 * 1024,
-  reelsTotal: 100 * 1024 * 1024,
+  reelsTotal: 110 * 1024 * 1024,
   preview: 600 * 1024,
   teaser: 700 * 1024,
   poster: 120 * 1024,

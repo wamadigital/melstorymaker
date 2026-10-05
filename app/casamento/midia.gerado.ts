@@ -116,6 +116,25 @@ export const MIDIA = {
         "semAudio": false
       }
     },
+    "DF8s1wUyhhE": {
+      "video": "/midia/casamento/DF8s1wUyhhE.78953e4e29.mp4",
+      "preview": "/midia/casamento/DF8s1wUyhhE-preview.0fe9dc54ce.mp4",
+      "poster": "/midia/casamento/DF8s1wUyhhE-poster.b0a9c202ed.webp",
+      "duracao": 90.1,
+      "temAudio": true,
+      "bytes": {
+        "video": 10943316,
+        "preview": 340911,
+        "poster": 34926
+      },
+      "origem": {
+        "trecho": {
+          "inicio": 55.5,
+          "fim": 59.5
+        },
+        "semAudio": false
+      }
+    },
     "DPeG5utjo1d": {
       "video": "/midia/casamento/DPeG5utjo1d.80508c775f.mp4",
       "preview": "/midia/casamento/DPeG5utjo1d-preview.2f0333d04f.mp4",
