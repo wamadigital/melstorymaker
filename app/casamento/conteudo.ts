@@ -18,11 +18,12 @@ import type { Escopo } from "@/lib/contrato/tipos";
 export const TITULO_LP = "Seu casamento pelo meu olhar. Um registro para reviver a emoção deste dia.";
 
 /**
- * "Mais de 100 celebrações registradas", afirmado pelo owner em 03/10/2026
- * (todas as categorias, não só casamento). É o único número da LP que não sai
- * do contrato, do catálogo ou dos Reels: mudou, muda aqui.
+ * "Mais de 200 celebrações registradas", afirmado pelo owner (100 em
+ * 03/10/2026, 200 em 05/10/2026; todas as categorias, não só casamento). É o
+ * único número da LP que não sai do contrato, do catálogo ou dos Reels:
+ * mudou, muda aqui.
  */
-export const CELEBRACOES_MAIS_DE = 100;
+export const CELEBRACOES_MAIS_DE = 200;
 
 export type PacoteLp = {
   nome: string;
