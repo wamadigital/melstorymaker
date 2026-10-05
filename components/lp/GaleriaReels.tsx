@@ -66,7 +66,8 @@ export function GaleriaReels({ reels }: { reels: readonly ReelLp[] }) {
 
   // `?reel=<id>` (um por criativo do anúncio) põe o Reel que a pessoa acabou
   // de ver em primeiro. Lido no navegador porque a página é estática; a galeria
-  // fica abaixo do hero, então a troca não mexe em nada que está na tela.
+  // fica abaixo do hero, então a troca não mexe em nada que está na tela. O
+  // trilho é remontado junto (ver o `key` dele), senão o Reel ficaria fora dela.
   useEffect(() => {
     const id = new URLSearchParams(window.location.search).get("reel");
     const i = id ? reels.findIndex((r) => r.id === id) : -1;
@@ -312,7 +313,13 @@ export function GaleriaReels({ reels }: { reels: readonly ReelLp[] }) {
 
   return (
     <>
+      {/* `key` pelo primeiro Reel: o `?reel=` põe um card ANTES do que estava
+          encaixado, e o scroll-snap segue o card encaixado depois do layout. O
+          trilho andava um card sozinho e o Reel do anúncio ficava escondido à
+          esquerda (medido em 05/10/2026: scrollLeft 226). Trilho novo nasce no
+          início, em qualquer motor, sem depender de quando o reencaixe roda. */}
       <div
+        key={lista[0].id}
         ref={trilhoRef}
         inert={aberto}
         className="lp-sem-barra flex snap-x snap-mandatory scroll-px-5 gap-3 overflow-x-auto overscroll-x-contain px-5 pb-2"
