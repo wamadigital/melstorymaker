@@ -2,8 +2,8 @@
 //
 // Vieram do board da identidade no Figma (no 7121:660, dentro do frame
 // 7120:556): um M serifado cuja diagonal e um S grande. Usado na LP
-// `/casamento` (`components/marca/MonogramaMel.tsx`) e no favicon do site
-// (`app/icon.tsx`). Mesma regra do logo (`logo.ts`): nunca copiar os paths para
+// `/casamento` (`components/marca/MonogramaMel.tsx`) e no icone do site --
+// favicon e tela de inicio do iPhone, os dois por `lib/marca/icone.tsx`. Mesma regra do logo (`logo.ts`): nunca copiar os paths para
 // outro lugar -- os dois lados divergiriam na primeira vez que a marca mudar.
 //
 // Sem "server-only" e sem JSX: o navegador e o servidor importam o mesmo modulo.
