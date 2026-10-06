@@ -162,6 +162,11 @@ export type Lead = {
    * botao trava por 7 dias a partir daqui; ver `lib/admin/lembrete-email.ts`.
    */
   lembrete_email_em: string | null;
+  /**
+   * Quando a Mel marcou "ja chamei" ao lado do "Chamar no WhatsApp" (coluna
+   * "Novo"), ou null. Marcado, o botao apaga; ver `lib/admin/chamado.ts`.
+   */
+  chamado_whatsapp_em: string | null;
 };
 
 export function isCategoria(v: unknown): v is Categoria {

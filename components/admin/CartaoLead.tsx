@@ -5,6 +5,7 @@ import { Check, FileText, GripVertical, Mail, MessageCircle } from "lucide-react
 import { AcoesLead } from "@/components/admin/AcoesLead";
 import { BotaoLembrete } from "@/components/admin/BotaoLembrete";
 import { BotaoLembreteEmail } from "@/components/admin/BotaoLembreteEmail";
+import { ChamarWhatsApp } from "@/components/admin/ChamarWhatsApp";
 import { estadoLembrete, SELO_LEMBRETE, TEMA_LEMBRETE } from "@/lib/admin/lembretes";
 import { estadoLembreteEmail } from "@/lib/admin/lembrete-email";
 import { linkConversaLead } from "@/lib/whatsapp";
@@ -68,7 +69,8 @@ export function CartaoLead({
   // 03/09/2026 o lead so nasce COM ele: quem nao tem e registro antigo.
   //
   // Abre a conversa VAZIA: a mensagem quem escreve e a Mel (ver
-  // `linkConversaLead`).
+  // `linkConversaLead`). Ao lado vai a caixa "ja chamei", que apaga o botao
+  // enquanto o lead nao responde (ver `ChamarWhatsApp`).
   const chamar = coluna === "incompleto" ? linkConversaLead(lead.whatsapp) : null;
 
   // Logo abaixo, o lembrete por e-mail: tambem so em "Novo", e so com e-mail.
@@ -148,19 +150,7 @@ export function CartaoLead({
         {!sobreposto && (chamar || lembreteEmail.visivel) && (
           <div className="space-y-2 px-3 pb-3">
             {chamar && (
-              <a
-                href={chamar}
-                target="_blank"
-                rel="noopener noreferrer"
-                className={cn(
-                  "flex w-full items-center justify-center gap-1.5 rounded-md border px-2 py-1.5",
-                  "text-xs font-semibold transition-colors",
-                  "border-border bg-background hover:bg-muted",
-                )}
-              >
-                <MessageCircle className="size-3.5" />
-                Chamar no WhatsApp
-              </a>
+              <ChamarWhatsApp id={lead.id} link={chamar} chamadoEm={lead.chamado_whatsapp_em} />
             )}
             {lembreteEmail.visivel && lead.email && (
               <BotaoLembreteEmail id={lead.id} email={lead.email} estado={lembreteEmail} />

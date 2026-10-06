@@ -56,6 +56,10 @@ create table if not exists leads (
   -- Mel mandou o ultimo. O botao trava por 7 dias a partir daqui, e a rota de
   -- envio confere a mesma trava -- ver lib/admin/lembrete-email.ts.
   lembrete_email_em timestamptz,
+  -- "Ja chamei no WhatsApp": a Mel marca na caixa ao lado do botao, nos cartoes
+  -- de "Novo", e o botao apaga enquanto o lead nao responde. E marca dela, nao
+  -- prova de contato (o wa.me so abre a conversa). Null = nao marcado.
+  chamado_whatsapp_em timestamptz,
   -- Codigo curto do link publico da proposta: melstorymaker.com.br/p/a3f9.
   -- O UUID funcionava, mas o link ficava com 36 caracteres e a Mel manda isso
   -- por WhatsApp. Nasce so quando o PDF e gerado; lead sem proposta nao tem.
@@ -78,6 +82,7 @@ alter table leads add column if not exists slug text;
 alter table leads add column if not exists lembrete_7_em timestamptz;
 alter table leads add column if not exists lembrete_30_em timestamptz;
 alter table leads add column if not exists lembrete_email_em timestamptz;
+alter table leads add column if not exists chamado_whatsapp_em timestamptz;
 alter table leads add column if not exists rastreio jsonb;
 
 create unique index if not exists leads_slug_key on leads (slug);

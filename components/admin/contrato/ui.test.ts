@@ -116,6 +116,7 @@ async function registrarTestes() {
       lembrete_7_em: null,
       lembrete_30_em: null,
       lembrete_email_em: null,
+      chamado_whatsapp_em: null,
     };
   }
 

@@ -15,6 +15,10 @@
  * servidor local com MAIL_DRY_RUN=1 no .env.local -- e o servidor ainda tem de
  * confirmar o dry run na resposta, senao o script fica vermelho.
  *
+ * E a caixa "ja chamei" ao lado do "Chamar no WhatsApp"
+ * (`PATCH /api/admin/leads/[id]/chamado`): marca, desmarca, e recusa fora de
+ * "Novo".
+ *
  * Cria admin e leads temporarios e remove tudo no fim.
  */
 import { createClient } from "@supabase/supabase-js";
@@ -299,6 +303,56 @@ async function main() {
     );
     checar(quadro.includes("Libera de novo em 4 dias"), "o lembrado há 3 dias libera em 4");
   }
+
+  // ----------------------------------------------- "ja chamei no WhatsApp"
+  const marcarChamado = (id: string, corpo: unknown, comSessao = true) =>
+    fetch(`${BASE}/api/admin/leads/${id}/chamado`, {
+      method: "PATCH",
+      headers: comSessao ? auth : { "Content-Type": "application/json" },
+      body: JSON.stringify(corpo),
+    });
+  const chamadoDe = async (id: string) =>
+    (await admin.from("leads").select("chamado_whatsapp_em").eq("id", id).single()).data
+      ?.chamado_whatsapp_em;
+
+  const paraChamar = await semear("incompleto");
+
+  const cSemCookie = await marcarChamado(paraChamar, { chamado: true }, false);
+  checar(cSemCookie.status === 401, `"já chamei" sem sessão → 401 (veio ${cSemCookie.status})`);
+
+  const cNaoUuid = await marcarChamado("nao-e-uuid", { chamado: true });
+  checar(cNaoUuid.status === 404, `"já chamei" com id não-uuid → 404 (veio ${cNaoUuid.status})`);
+
+  const cInexistente = await marcarChamado(crypto.randomUUID(), { chamado: true });
+  checar(cInexistente.status === 404, `"já chamei" em lead que não existe → 404 (veio ${cInexistente.status})`);
+
+  const cLixo = await marcarChamado(paraChamar, { chamado: "sim" });
+  checar(cLixo.status === 400, `"já chamei" com payload torto → 400 (veio ${cLixo.status})`);
+
+  const marcou = await marcarChamado(paraChamar, { chamado: true });
+  const jsonMarcou = await marcou.json().catch(() => ({}));
+  checar(marcou.status === 200, `marcar "já chamei" em Novo → 200 (veio ${marcou.status})`);
+  checar(
+    !!jsonMarcou.chamado_whatsapp_em &&
+      Date.parse(await chamadoDe(paraChamar)) === Date.parse(jsonMarcou.chamado_whatsapp_em),
+    "chamado_whatsapp_em carimbado",
+  );
+
+  // O cartao sai do servidor ja apagado e com a caixa marcada.
+  const quadroChamado = await (await fetch(`${BASE}/admin`, { headers: { Cookie: cookie } })).text();
+  checar(
+    quadroChamado.includes("Já chamado no WhatsApp em ") && quadroChamado.includes('aria-disabled="true"'),
+    "o cartão mostra o botão apagado e a caixa marcada, com a data",
+  );
+
+  const desmarcou = await marcarChamado(paraChamar, { chamado: false });
+  checar(desmarcou.status === 200, `desmarcar → 200 (veio ${desmarcou.status})`);
+  checar((await chamadoDe(paraChamar)) === null, "desmarcar limpa o carimbo");
+
+  // Fora de "Novo" o botao nem existe: a rota recusa, e nada e carimbado.
+  const cFora = await marcarChamado(foraDeNovo, { chamado: true });
+  checar(cFora.status === 409, `"já chamei" fora de Novo → 409 (veio ${cFora.status})`);
+  checar((await chamadoDe(foraDeNovo)) === null, "fora de Novo nada é carimbado");
 
   await limpar();
 
