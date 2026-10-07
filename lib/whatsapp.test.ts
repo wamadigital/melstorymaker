@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  linkLembreteWhatsApp,
   linkPrimeiroContato,
   linkConversaLead,
   linkPropostaWhatsApp,
+  mensagemLembrete,
   mensagemPrimeiroContato,
   mensagemProposta,
   normalizarNumero,
@@ -44,6 +46,34 @@ test("a mensagem e a copy do owner, com o link em linha propria", () => {
   );
   // O link sozinho na linha e o que faz o WhatsApp gerar a previa.
   assert.ok(msg.split("\n").includes("https://x.test/p.pdf"));
+});
+
+test("a 'Última tentativa' (30 dias) é a copy do owner, com o link da proposta na linha do meio", () => {
+  // Texto, emojis e quebras de linha ao pe da letra, como o owner mandou em 07/10/2026.
+  const link = "https://melstorymaker.com.br/p/a3f9";
+  assert.equal(
+    mensagemLembrete(30, link),
+    "Oi! Passando só para saber se você conseguiu dar uma olhadinha na proposta que te enviei. 🤍\n" +
+      "\n" +
+      `${link}\n` +
+      "\n" +
+      "Se ainda fizer sentido, é só me dizer chamar que a gente conversa.\n" +
+      "E se não for o momento, sem problema nenhum, estarei por aqui pra quando você precisar! ✨",
+  );
+  // E o texto chega inteiro na conversa do lead, sem nada perdido no encode.
+  const aberto = new URL(linkLembreteWhatsApp(30, "(19) 99999-8888", link));
+  assert.equal(aberto.pathname, "/5519999998888");
+  assert.equal(aberto.searchParams.get("text"), mensagemLembrete(30, link));
+});
+
+test("sem proposta gerada, a 'Última tentativa' sai sem o link e sem linha vazia sobrando", () => {
+  assert.equal(
+    mensagemLembrete(30, null),
+    "Oi! Passando só para saber se você conseguiu dar uma olhadinha na proposta que te enviei. 🤍\n" +
+      "\n" +
+      "Se ainda fizer sentido, é só me dizer chamar que a gente conversa.\n" +
+      "E se não for o momento, sem problema nenhum, estarei por aqui pra quando você precisar! ✨",
+  );
 });
 
 test("a URL do PDF sobrevive ao encode", () => {
