@@ -77,10 +77,10 @@ export function linkConversaLead(whatsappLead: string | null | undefined): strin
 /**
  * Cobranca de quem recebeu a proposta e nao respondeu.
  *
- * A de 30 dias ("Ultima tentativa") e a copy do owner, de 07/10/2026, ao pe da
- * letra -- texto, emojis e quebras de linha. A de 7 dias continua PROVISORIA,
- * escrita por mim, ate a do owner entrar por cima. Duas regras que valem em
- * qualquer versao:
+ * As duas sao copy do owner, de 07/10/2026, ao pe da letra -- texto, emojis e
+ * quebras de linha: a de 7 dias ("Relembrar cliente") e a de 30 ("Ultima
+ * tentativa"). Abrem com a mesma frase; o que muda e o fecho. Duas regras que
+ * valem em qualquer versao:
  *
  *   1. O link da proposta VOLTA na mensagem. Faz 7 (ou 30) dias que ela foi
  *      enviada; obrigar a pessoa a procurar a conversa antiga e perder o lead
@@ -95,9 +95,9 @@ export function mensagemLembrete(marco: 7 | 30, pdfUrl: string | null): string {
   const linhas =
     marco === 7
       ? [
-          "Oi! Passando pra saber se você conseguiu dar uma olhada na proposta 😊",
+          "Oi! Passando só para saber se você conseguiu dar uma olhadinha na proposta que te enviei. 🤍",
           ...(pdfUrl ? ["", pdfUrl, ""] : [""]),
-          "Se ficou alguma dúvida, me chama que eu te explico com calma. ✨",
+          "Se ficou alguma dúvida, me chama que eu te explico. ✨",
         ]
       : [
           "Oi! Passando só para saber se você conseguiu dar uma olhadinha na proposta que te enviei. 🤍",

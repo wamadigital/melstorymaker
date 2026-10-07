@@ -66,6 +66,21 @@ test("a 'Última tentativa' (30 dias) é a copy do owner, com o link da proposta
   assert.equal(aberto.searchParams.get("text"), mensagemLembrete(30, link));
 });
 
+test("o 'Relembrar cliente' (7 dias) é a copy do owner, com o link da proposta na linha do meio", () => {
+  // Texto, emojis e quebras de linha ao pe da letra, como o owner mandou em 07/10/2026.
+  const link = "https://melstorymaker.com.br/p/a3f9";
+  assert.equal(
+    mensagemLembrete(7, link),
+    "Oi! Passando só para saber se você conseguiu dar uma olhadinha na proposta que te enviei. 🤍\n" +
+      "\n" +
+      `${link}\n` +
+      "\n" +
+      "Se ficou alguma dúvida, me chama que eu te explico. ✨",
+  );
+  const aberto = new URL(linkLembreteWhatsApp(7, "(19) 99999-8888", link));
+  assert.equal(aberto.searchParams.get("text"), mensagemLembrete(7, link));
+});
+
 test("sem proposta gerada, a 'Última tentativa' sai sem o link e sem linha vazia sobrando", () => {
   assert.equal(
     mensagemLembrete(30, null),
