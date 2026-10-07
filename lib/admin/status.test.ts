@@ -1,11 +1,14 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { STATUS, type Status } from "@/lib/form/types";
 import {
   ATALHOS_STATUS,
   MENSAGEM_RECUSA,
   estadoDoAtalho,
   mensagemConfirmacaoDeEnvio,
   pedeConfirmacaoDeEnvio,
+  proximoPasso,
+  recusarMovimento,
 } from "./status";
 
 test("atalhos do detalhe: enviado, cliente e perdido, nesta ordem", () => {
@@ -26,6 +29,26 @@ test("'Enviado' sem proposta e bloqueado com a mesma frase do quadro; cliente e 
   assert.deepEqual(estadoDoAtalho("incompleto", "virou_cliente", { temProposta: false }), { atual: false, bloqueio: null });
   assert.deepEqual(estadoDoAtalho("incompleto", "perdido", { temProposta: false }), { atual: false, bloqueio: null });
   assert.deepEqual(estadoDoAtalho("aguardando_revisao", "enviado", { temProposta: true }), { atual: false, bloqueio: null });
+});
+
+test("proximo passo: Novo e revisao vao para Enviado, Enviado e perdido para cliente, cliente e o fim", () => {
+  assert.equal(proximoPasso("incompleto"), "enviado");
+  assert.equal(proximoPasso("aguardando_revisao"), "enviado");
+  assert.equal(proximoPasso("enviado"), "virou_cliente");
+  assert.equal(proximoPasso("perdido"), "virou_cliente");
+  assert.equal(proximoPasso("virou_cliente"), null);
+});
+
+test("o proximo passo nunca e a coluna atual, nunca e perdido e so pode esbarrar na falta de proposta", () => {
+  for (const de of STATUS) {
+    const para = proximoPasso(de);
+    if (!para) continue;
+    assert.notEqual(para, de);
+    assert.notEqual(para, "perdido" as Status);
+    // Com proposta, a matriz do quadro sempre deixa: o botao verde nunca
+    // aparece travado por uma regra que nao seja "gere a proposta antes".
+    assert.equal(recusarMovimento(de, para, { temProposta: true }), null, `${de} -> ${para}`);
+  }
 });
 
 test("marcar como enviado so pergunta quando nada foi enviado de fato", () => {

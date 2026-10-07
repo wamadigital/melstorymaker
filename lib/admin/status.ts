@@ -57,13 +57,41 @@ export const MENSAGEM_RECUSA: Record<Exclude<MotivoRecusa, "mesmo_status">, stri
 // ---------------------------------------------------- atalhos do detalhe --
 
 /**
- * Os atalhos de coluna do detalhe do lead, na ordem dos botoes (pedido do owner
- * em 03/10/2026): mover sem arrastar, de dentro do lead. Sao os tres destinos
- * que a Mel decide depois de olhar o lead -- "Novo" e travado (ver acima) e
- * "Aguardando revisao" e consequencia do submit, nao decisao.
+ * Os destinos para onde o detalhe do lead move sem arrastar (pedido do owner em
+ * 03/10/2026). Sao os tres que a Mel decide depois de olhar o lead -- "Novo" e
+ * travado (ver acima) e "Aguardando revisao" e consequencia do submit, nao
+ * decisao. Desde 07/10/2026 eles nao aparecem mais lado a lado: `enviado` e
+ * `virou_cliente` sao o PROXIMO PASSO (um botao so, ver `proximoPasso`), e
+ * `perdido` e a saida do funil, com botao proprio no canto do cabecalho.
  */
 export const ATALHOS_STATUS = ["enviado", "virou_cliente", "perdido"] as const satisfies readonly Status[];
 export type AtalhoStatus = (typeof ATALHOS_STATUS)[number];
+
+/**
+ * O passo seguinte do funil, o botao verde do detalhe do lead (pedido do owner
+ * em 07/10/2026: tres botoes lado a lado confundiam, e a Mel quer ver so o que
+ * vem a seguir). O funil e uma linha -- Novo, Aguardando revisao, Enviado,
+ * Virou cliente -- e "Lead perdido" e a saida dele, nunca um passo.
+ *
+ * - De "Novo" o passo e "Enviado", e nao "Aguardando revisao": revisao e
+ *   consequencia do submit (ver `ATALHOS_STATUS`). Sem proposta o botao aparece
+ *   travado, com a frase da recusa, e isso ja diz o que falta fazer.
+ * - De "Lead perdido" o passo e "Virou cliente": o perdido que reaparece volta
+ *   para fechar. Reenviar proposta passa pelo e-mail, ou pelo quadro.
+ * - "Virou cliente" e o fim: sem botao.
+ */
+export function proximoPasso(status: Status): Exclude<AtalhoStatus, "perdido"> | null {
+  switch (status) {
+    case "incompleto":
+    case "aguardando_revisao":
+      return "enviado";
+    case "enviado":
+    case "perdido":
+      return "virou_cliente";
+    case "virou_cliente":
+      return null;
+  }
+}
 
 /**
  * Como o botao do atalho aparece: `atual` quando o lead ja esta naquela coluna

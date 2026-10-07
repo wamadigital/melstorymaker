@@ -19,7 +19,7 @@ import { Label } from "@/components/ui/label";
 import { normalizarOpcoes, passosVisiveis } from "@/lib/form/engine";
 import { A_DEFINIR, ehADefinir, type Lead, type Respostas, type Status } from "@/lib/form/types";
 import { sujeitoDoEvento } from "@/lib/leads";
-import { AtalhosStatus } from "@/components/admin/AtalhosStatus";
+import { BotaoPerdido, ProximoPasso } from "@/components/admin/AtalhosStatus";
 import { CaixaMarcacao } from "@/components/form/CaixaMarcacao";
 import { PreviaProposta } from "@/components/admin/PreviaProposta";
 import { SecaoContrato } from "@/components/admin/contrato/SecaoContrato";
@@ -309,27 +309,20 @@ export function DetalheLead({
 
           {/* ml-auto, nao justify-between: com flex-wrap em 360px o
               justify-between afastaria o badge do titulo na quebra de linha. */}
-          <Button
-            variant="destructive"
-            size="sm"
+          <BotaoPerdido
+            status={status}
+            ocupado={acao !== null || contratoOcupado}
+            movendo={movendo}
+            onMover={mover}
             className="ml-auto"
-            onClick={excluir}
-            disabled={acao !== null || contratoOcupado}
-          >
-            {acao === "excluir" ? (
-              <Loader2 className="mr-1.5 size-4 animate-spin" />
-            ) : (
-              <Trash2 className="mr-1.5 size-4" />
-            )}
-            Excluir lead
-          </Button>
+          />
         </div>
         <p className="text-sm text-muted-foreground">
           {rotuloCategoria(lead.categoria)} · recebido em {dataHoraLocal(lead.created_at)}
           {contato && <> · preenchido por {contato}</>}
         </p>
         <div className="pt-1">
-          <AtalhosStatus
+          <ProximoPasso
             status={status}
             temProposta={!!pdfUrl}
             ocupado={acao !== null || contratoOcupado}
@@ -550,6 +543,29 @@ export function DetalheLead({
         onStatusContrato={setStatusContrato}
         onOcupado={setContratoOcupado}
       />
+
+      {/* ---------------------------------------------------------- exclusao */}
+      {/* No fim da pagina, pedido do owner em 07/10/2026: o canto do cabecalho
+          ficou com "Lead perdido", e excluir, que nao se desfaz, saiu de perto
+          dos botoes de status. */}
+      <section className="flex flex-col gap-3 border-t pt-6 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-sm text-muted-foreground">
+          Excluir apaga o lead e tudo o que foi gerado para ele. Não dá para desfazer.
+        </p>
+        <Button
+          variant="destructive"
+          className="h-9 w-full px-3 sm:w-auto"
+          onClick={excluir}
+          disabled={acao !== null || contratoOcupado}
+        >
+          {acao === "excluir" ? (
+            <Loader2 className="mr-1.5 size-4 animate-spin" />
+          ) : (
+            <Trash2 className="mr-1.5 size-4" />
+          )}
+          Excluir lead
+        </Button>
+      </section>
     </div>
   );
 }

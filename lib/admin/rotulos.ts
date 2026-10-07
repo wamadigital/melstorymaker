@@ -112,25 +112,28 @@ export const TEMA_COLUNA: Record<
   },
 };
 
-/** O que cada atalho do detalhe do lead diz (botao que ainda move). */
+/**
+ * O que cada botao de mover do detalhe do lead diz. "Lead perdido" e o nome
+ * que o owner deu ao botao do canto (07/10/2026), o mesmo da coluna.
+ */
 export const ROTULO_ATALHO: Record<AtalhoStatus, string> = {
   enviado: "Marcar como enviado",
   virou_cliente: "Marcar como cliente",
-  perdido: "Marcar como perdido",
+  perdido: "Lead perdido",
 };
 
 /**
- * Botao do atalho, com a MESMA tinta da coluna do quadro: azul (sky) para
- * enviado, verde (emerald) para cliente, cinza (stone) para perdido -- a Mel
- * reconhece o destino pela cor antes de ler. Fundo claro + borda + texto e
- * ponto escuros, como o cabecalho da coluna. Classes LITERAIS, pelo mesmo
+ * O botao do proximo passo e VERDE SOLIDO, seja qual for o destino (pedido do
+ * owner em 07/10/2026): verde quer dizer "o que vem a seguir", e nao a cor da
+ * coluna de destino -- os botoes claros na tinta de cada coluna liam como selo,
+ * nao como botao. Emerald-700 e nao 600: texto branco de 14px sobre o 600 fica
+ * em 3,7:1 e reprova no AA; sobre o 700, 5,5:1. Classes LITERAIS, pelo mesmo
  * motivo de `TEMA_COLUNA`.
  */
-export const CLASSE_ATALHO: Record<AtalhoStatus, string> = {
-  enviado: "border-sky-300 bg-sky-50 text-sky-800 hover:bg-sky-100",
-  virou_cliente: "border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100",
-  perdido: "border-stone-300 bg-stone-100 text-stone-700 hover:bg-stone-200",
-};
+export const CLASSE_PROXIMO_PASSO = "bg-emerald-700 text-white hover:bg-emerald-800";
+
+/** "Lead perdido", no canto do cabecalho: contorno na tinta da coluna (stone). */
+export const CLASSE_PERDIDO = "border-stone-300 text-stone-700 hover:bg-stone-100 hover:text-stone-800";
 
 /**
  * "Parou em: Local da festa" para os leads incompletos (RF-09). Sem isso a Mel

@@ -1,81 +1,79 @@
 "use client";
 
-import { Check, Loader2 } from "lucide-react";
+import { ArrowRight, Loader2, UserX } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { CLASSE_ATALHO, ROTULO_ATALHO, ROTULO_STATUS, TEMA_COLUNA } from "@/lib/admin/rotulos";
-import { ATALHOS_STATUS, estadoDoAtalho, type AtalhoStatus } from "@/lib/admin/status";
+import { CLASSE_PERDIDO, CLASSE_PROXIMO_PASSO, ROTULO_ATALHO } from "@/lib/admin/rotulos";
+import { estadoDoAtalho, proximoPasso, type AtalhoStatus } from "@/lib/admin/status";
 import type { Status } from "@/lib/form/types";
 import { cn } from "@/lib/utils";
 
-/**
- * Mover o lead de coluna de dentro do detalhe, sem arrastar (pedido do owner em
- * 03/10/2026). Tres botoes, na cor da coluna de destino: azul para enviado,
- * verde para cliente, cinza para perdido.
- *
- * As regras sao as do quadro (`estadoDoAtalho` usa a mesma `recusarMovimento`):
- * o atalho nunca deixa o que o arraste recusaria. O da coluna atual aparece
- * marcado e sem acao, para a Mel ver onde o lead esta sem procurar o selo.
- *
- * Botao desabilitado nao mostra `title` (o Button do shadcn tem
- * `pointer-events: none` quando desabilitado): por isso o motivo do bloqueio
- * ("Gere a proposta antes...") vai escrito embaixo, e nao em tooltip.
- */
-export function AtalhosStatus({
-  status,
-  temProposta,
-  ocupado,
-  movendo,
-  onMover,
-}: {
+type PropsMover = {
   status: Status;
-  temProposta: boolean;
   /** Outra acao da pagina em andamento: tudo trava. */
   ocupado: boolean;
   /** Destino do movimento em andamento, para o spinner no botao certo. */
   movendo: AtalhoStatus | null;
   onMover: (para: AtalhoStatus) => void;
-}) {
-  const estados = ATALHOS_STATUS.map((para) => ({ para, ...estadoDoAtalho(status, para, { temProposta }) }));
-  const bloqueios = [...new Set(estados.map((e) => e.bloqueio).filter((b): b is string => !!b))];
+};
+
+/**
+ * Mover o lead de coluna de dentro do detalhe, sem arrastar. Ate 07/10/2026
+ * eram tres botoes lado a lado, um por destino, na tinta de cada coluna; o
+ * owner achou confuso e pediu um passo so: o botao mostra o que vem a seguir no
+ * funil (`proximoPasso`), em verde solido. "Lead perdido" e a saida do funil e
+ * mora no canto do cabecalho (`BotaoPerdido`).
+ *
+ * As regras sao as do quadro (`estadoDoAtalho` usa a mesma `recusarMovimento`):
+ * o botao nunca deixa o que o arraste recusaria. Botao desabilitado nao mostra
+ * `title` (o Button do shadcn tem `pointer-events: none` quando desabilitado):
+ * por isso o motivo do bloqueio ("Gere a proposta antes...") vai escrito
+ * embaixo, e nao em tooltip.
+ */
+export function ProximoPasso({ status, temProposta, ocupado, movendo, onMover }: PropsMover & { temProposta: boolean }) {
+  const para = proximoPasso(status);
+  // "Virou cliente" e o fim do funil: nao ha passo, e o selo ao lado do nome ja
+  // diz onde o lead esta.
+  if (!para) return null;
+  const { bloqueio } = estadoDoAtalho(status, para, { temProposta });
 
   return (
     <div className="space-y-1.5">
-      <div role="group" aria-label="Mover o lead de coluna" className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-        {estados.map(({ para, atual, bloqueio }) => (
-          <Button
-            key={para}
-            type="button"
-            variant="outline"
-            size="sm"
-            aria-pressed={atual}
-            disabled={ocupado || atual || !!bloqueio}
-            onClick={() => onMover(para)}
-            className={cn(
-              // Largura cheia no celular: empilhados, tres larguras diferentes
-              // ficavam serrilhadas. Do `sm` para cima, lado a lado.
-              "h-9 w-full justify-start gap-1.5 px-3 text-sm sm:h-8 sm:w-auto",
-              CLASSE_ATALHO[para],
-              // A coluna atual: mesma cor, sem acao. Opacidade cheia (o padrao
-              // de desabilitado apagaria justamente o "voce esta aqui").
-              atual && "disabled:opacity-100",
-            )}
-          >
-            {movendo === para ? (
-              <Loader2 className="size-3.5 animate-spin" />
-            ) : atual ? (
-              <Check className="size-3.5" />
-            ) : (
-              <span aria-hidden className={cn("size-2 shrink-0 rounded-sm", TEMA_COLUNA[para].ponto)} />
-            )}
-            {atual ? ROTULO_STATUS[para] : ROTULO_ATALHO[para]}
-          </Button>
-        ))}
-      </div>
-      {bloqueios.map((b) => (
-        <p key={b} className="text-xs text-muted-foreground">
-          {b}
-        </p>
-      ))}
+      <Button
+        type="button"
+        disabled={ocupado || !!bloqueio}
+        onClick={() => onMover(para)}
+        // Largura cheia no celular, que e onde a Mel mais abre o lead: o botao
+        // e a acao principal da tela e precisa ser o alvo mais facil.
+        className={cn("h-10 w-full gap-2 px-4 text-sm sm:w-auto", CLASSE_PROXIMO_PASSO)}
+      >
+        {movendo === para ? <Loader2 className="size-4 animate-spin" /> : <ArrowRight className="size-4" />}
+        {ROTULO_ATALHO[para]}
+      </Button>
+      {bloqueio && <p className="text-xs text-muted-foreground">{bloqueio}</p>}
     </div>
+  );
+}
+
+/**
+ * "Lead perdido", no canto do cabecalho, onde antes ficava o "Excluir lead"
+ * (que desceu para o fim da pagina). Sem confirmacao, como o arraste para a
+ * coluna no quadro. Some quando o lead ja esta perdido -- o selo ao lado do
+ * nome diz isso, e um botao travado repetindo o selo seria ruido.
+ */
+export function BotaoPerdido({ status, ocupado, movendo, onMover, className }: PropsMover & { className?: string }) {
+  if (status === "perdido") return null;
+
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      disabled={ocupado}
+      onClick={() => onMover("perdido")}
+      className={cn("h-8 gap-1.5 px-3 text-sm", CLASSE_PERDIDO, className)}
+    >
+      {movendo === "perdido" ? <Loader2 className="size-4 animate-spin" /> : <UserX className="size-4" />}
+      {ROTULO_ATALHO.perdido}
+    </Button>
   );
 }
