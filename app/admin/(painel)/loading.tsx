@@ -10,7 +10,11 @@ export default function CarregandoQuadro() {
   return (
     <div className="space-y-5">
       <div className="h-8 w-32 animate-pulse rounded-md bg-foreground/10" />
-      <div className="h-10 w-full animate-pulse rounded-lg bg-foreground/5" />
+      {/* Busca e periodo, na mesma proporcao do FiltrosLeads. */}
+      <div className="flex gap-2">
+        <div className="h-10 flex-1 animate-pulse rounded-lg bg-foreground/5" />
+        <div className="h-10 w-36 shrink-0 animate-pulse rounded-lg bg-foreground/5 sm:w-44" />
+      </div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
         {STATUS.map((status) => (

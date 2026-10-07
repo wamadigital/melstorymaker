@@ -24,6 +24,7 @@ import { FaixaDestinos } from "@/components/admin/FaixaDestinos";
 import { compararPorCobranca } from "@/lib/admin/lembretes";
 import { ROTULO_STATUS } from "@/lib/admin/rotulos";
 import { MENSAGEM_RECUSA, recusarMovimento, mensagemConfirmacaoDeEnvio, pedeConfirmacaoDeEnvio } from "@/lib/admin/status";
+import { FRASE_PERIODO, type Periodo } from "@/lib/admin/periodo";
 import type { LeadCartao } from "@/lib/admin/tipos";
 import { STATUS, type Status } from "@/lib/form/types";
 
@@ -38,10 +39,12 @@ const INSTRUCOES = {
 export function QuadroLeads({
   colunas,
   termo,
+  periodo,
   agoraMs,
 }: {
   colunas: Record<Status, Coluna>;
   termo: string;
+  periodo: Periodo;
   /** "Agora" do SERVIDOR, para a contagem de cobranca nao variar na hidratacao. */
   agoraMs: number;
 }) {
@@ -225,7 +228,9 @@ export function QuadroLeads({
     >
       {vazio && !termo && (
         <p className="mb-3 rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-          Nenhum lead por aqui ainda.
+          {/* "ainda" so cabe sem o filtro de periodo: num dia sem lead, o
+              quadro vazio e do dia, nao do sistema. */}
+          {periodo === "todo" ? "Nenhum lead por aqui ainda." : `Nenhum lead chegou ${FRASE_PERIODO[periodo]}.`}
         </p>
       )}
 

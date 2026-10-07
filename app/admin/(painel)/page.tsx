@@ -5,8 +5,9 @@ import { FiltrosLeads } from "@/components/admin/FiltrosLeads";
 import { QuadroLeads, type Coluna } from "@/components/admin/QuadroLeads";
 import { lerComRetentativa } from "@/lib/supabase/consulta";
 import { esfriarParados } from "@/lib/supabase/esfriar";
+import { FRASE_PERIODO, ehPeriodo, inicioDoPeriodo } from "@/lib/admin/periodo";
 
-type Busca = { q?: string; categoria?: string };
+type Busca = { q?: string; categoria?: string; periodo?: string };
 
 /** Teto por coluna. "Novo" e a raia gorda (formularios abandonados). */
 const LIMITE_COLUNA = 50;
@@ -16,8 +17,11 @@ function ehCategoria(v: string | undefined): v is Categoria {
 }
 
 export default async function PaginaLeads({ searchParams }: { searchParams: Promise<Busca> }) {
-  const { q, categoria } = await searchParams;
+  const { q, categoria, periodo: periodoUrl } = await searchParams;
   const termo = (q ?? "").trim();
+  // Sem `periodo` na URL (ou com lixo nela) e todo o periodo: o padrao nao
+  // ocupa a URL, como a categoria "Todas".
+  const periodo = ehPeriodo(periodoUrl) ? periodoUrl : "todo";
 
   // Um relogio so: o mesmo "agora" esfria os parados e desce para os cartoes.
   const agoraMs = Date.now();
@@ -26,6 +30,8 @@ export default async function PaginaLeads({ searchParams }: { searchParams: Prom
   // cobranca sai de "Enviado" e vai para "Esfriou" (lib/admin/esfriar.ts). Nunca
   // lanca -- se falhar, o quadro abre do mesmo jeito e o cron diario tenta de novo.
   await esfriarParados(agoraMs);
+
+  const desde = inicioDoPeriodo(periodo, agoraMs);
 
   // Uma consulta por coluna, com count exato: alem dos cartoes, traz o TOTAL
   // real da raia. E o que substitui o "N resultados" antigo, que era o length de
@@ -60,6 +66,7 @@ export default async function PaginaLeads({ searchParams }: { searchParams: Prom
 
     if (termo) c = c.ilike("nome_display", `%${termo}%`);
     if (ehCategoria(categoria)) c = c.eq("categoria", categoria);
+    if (desde) c = c.gte("created_at", desde);
     return c;
   };
 
@@ -90,7 +97,7 @@ export default async function PaginaLeads({ searchParams }: { searchParams: Prom
   ) as Record<Status, Coluna>;
 
   const totalGeral = STATUS.reduce((s, status) => s + colunas[status].total, 0);
-  const filtrando = !!termo || ehCategoria(categoria);
+  const filtrando = !!termo || ehCategoria(categoria) || periodo !== "todo";
 
   return (
     <div className="space-y-5">
@@ -100,16 +107,21 @@ export default async function PaginaLeads({ searchParams }: { searchParams: Prom
           <p className="text-sm text-muted-foreground">
             {totalGeral} {totalGeral === 1 ? "lead" : "leads"}
             {termo && <> com “{termo}”</>}
+            {periodo !== "todo" && <> {FRASE_PERIODO[periodo]}</>}
           </p>
         )}
       </div>
 
-      <FiltrosLeads categoriaAtual={ehCategoria(categoria) ? categoria : "todas"} termoAtual={termo} />
+      <FiltrosLeads
+        categoriaAtual={ehCategoria(categoria) ? categoria : "todas"}
+        termoAtual={termo}
+        periodoAtual={periodo}
+      />
 
       {/* `Date.now()` do SERVIDOR, descido como prop: a contagem de cobranca
           precisa dar o mesmo numero no HTML e na hidratacao, senao o cartao
           pisca de cor na fronteira do 7o dia. */}
-      <QuadroLeads colunas={colunas} termo={termo} agoraMs={agoraMs} />
+      <QuadroLeads colunas={colunas} termo={termo} periodo={periodo} agoraMs={agoraMs} />
     </div>
   );
 }
