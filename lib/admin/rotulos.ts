@@ -24,7 +24,22 @@ export const ROTULO_STATUS: Record<Status, string> = {
   aguardando_revisao: "Aguardando revisão",
   enviado: "Enviado",
   virou_cliente: "Virou cliente",
+  esfriou: "Esfriou",
   perdido: "Lead perdido",
+};
+
+/**
+ * Rotulo de UMA palavra, so para a faixa de destinos do arraste no celular
+ * (`FaixaDestinos`): com seis colunas, cada chip tem ~52px por dentro em 360px e
+ * "Aguardando" sozinho mede ~57px. Em todo o resto vale `ROTULO_STATUS`.
+ */
+export const ROTULO_CURTO_STATUS: Record<Status, string> = {
+  incompleto: "Novo",
+  aguardando_revisao: "Revisão",
+  enviado: "Enviado",
+  virou_cliente: "Cliente",
+  esfriou: "Esfriou",
+  perdido: "Perdido",
 };
 
 /** Linha de apoio no cabecalho da coluna e no estado vazio dela. */
@@ -33,6 +48,7 @@ export const DESCRICAO_COLUNA: Record<Status, string> = {
   aguardando_revisao: "Prontos para gerar a proposta",
   enviado: "Proposta já entregue",
   virou_cliente: "Fechou com a Mel",
+  esfriou: "Uma semana sem resposta",
   perdido: "Cobrado e sem retorno",
 };
 
@@ -49,6 +65,7 @@ export const CLASSE_STATUS: Record<Status, string> = {
   aguardando_revisao: "bg-amber-100 text-amber-900 border-amber-200",
   enviado: "bg-sky-100 text-sky-900 border-sky-200",
   virou_cliente: "bg-emerald-100 text-emerald-900 border-emerald-200",
+  esfriou: "bg-zinc-100 text-zinc-700 border-zinc-200",
   perdido: "bg-stone-100 text-stone-700 border-stone-200",
 };
 
@@ -97,6 +114,18 @@ export const TEMA_COLUNA: Record<
     ponto: "bg-emerald-500",
     alvo: "ring-emerald-300",
     barra: "bg-emerald-400",
+  },
+  // Esfriou: cinza FRIO (zinc), para nao se confundir com o stone de "Lead
+  // perdido", logo ao lado, nem com o slate de "Novo". O lead chega aqui
+  // sozinho depois de uma semana parado (ver lib/admin/esfriar.ts) e ainda pode
+  // voltar; o cartao que pede "Ultima tentativa" usa a mesma tinta da coluna.
+  esfriou: {
+    fundo: "bg-zinc-100",
+    corpo: "bg-zinc-50/50",
+    titulo: "text-zinc-700",
+    ponto: "bg-zinc-400",
+    alvo: "ring-zinc-300",
+    barra: "bg-zinc-300",
   },
   // Stone e nao vermelho, de proposito: o vermelho ja e do cartao que PRECISA de
   // cobranca, dentro de "Enviado". A raia de perdido e o lugar onde o lead para

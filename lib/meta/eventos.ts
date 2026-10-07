@@ -122,6 +122,8 @@ export const EVENTO_DO_STATUS: Partial<Record<Status, string>> = {
   enviado: "PropostaEnviada",
   virou_cliente: "VirouCliente",
   perdido: "LeadPerdido",
+  // `esfriou` fica de fora: e o sistema que move o lead para la depois de uma
+  // semana parado (lib/admin/esfriar.ts), nao uma decisao da Mel nem do lead.
 };
 
 /**

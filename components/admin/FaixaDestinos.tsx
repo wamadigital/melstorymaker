@@ -1,7 +1,7 @@
 "use client";
 
 import { useDroppable } from "@dnd-kit/core";
-import { ROTULO_STATUS, TEMA_COLUNA } from "@/lib/admin/rotulos";
+import { ROTULO_CURTO_STATUS, ROTULO_STATUS, TEMA_COLUNA } from "@/lib/admin/rotulos";
 import { recusarMovimento } from "@/lib/admin/status";
 import { STATUS, type Status } from "@/lib/form/types";
 import { cn } from "@/lib/utils";
@@ -33,7 +33,7 @@ export function FaixaDestinos({
     <div
       className={cn(
         // grid-cols LITERAL: status novo no enum tambem precisa mexer aqui.
-        "fixed inset-x-0 top-0 z-40 grid grid-cols-5 gap-1 border-b p-2",
+        "fixed inset-x-0 top-0 z-40 grid grid-cols-6 gap-1 border-b p-2",
         "bg-background/95 backdrop-blur sm:hidden",
       )}
     >
@@ -73,8 +73,13 @@ function ChipDestino({
       )}
     >
       <span aria-hidden className={cn("size-2 shrink-0 rounded-sm", tema.ponto)} />
-      <span className={cn("text-[0.625rem] leading-tight font-medium", tema.titulo)}>
-        {ROTULO_STATUS[status]}
+      {/* Uma palavra so: seis chips em 360px nao comportam "Aguardando
+          revisao". O nome inteiro vai para o leitor de tela. */}
+      <span
+        aria-label={ROTULO_STATUS[status]}
+        className={cn("text-[0.625rem] leading-tight font-medium", tema.titulo)}
+      >
+        {ROTULO_CURTO_STATUS[status]}
       </span>
     </div>
   );

@@ -13,6 +13,7 @@ export const STATUS = [
   "aguardando_revisao",
   "enviado",
   "virou_cliente",
+  "esfriou",
   "perdido",
 ] as const;
 export type Status = (typeof STATUS)[number];

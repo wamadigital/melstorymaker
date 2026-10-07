@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, MessageCircle } from "lucide-react";
 import { toast } from "sonner";
-import { ROTULO_LEMBRETE, TEMA_LEMBRETE, type Marco } from "@/lib/admin/lembretes";
+import { ROTULO_LEMBRETE, type Marco } from "@/lib/admin/lembretes";
 import { linkLembreteWhatsApp } from "@/lib/whatsapp";
 import { cn } from "@/lib/utils";
 
@@ -12,6 +12,8 @@ type Props = {
   id: string;
   nome: string;
   marco: Marco;
+  /** Tinta do texto, a mesma do cartao (`temaCobranca`): azul em Enviado, cinza em Esfriou. */
+  classeTexto?: string;
   whatsapp: string | null;
   pdfUrl: string | null;
 };
@@ -19,15 +21,14 @@ type Props = {
 /**
  * Botao de cobranca no cartao do quadro. Abre a conversa do lead com a mensagem
  * pronta E carimba que a Mel cobrou -- os dois no mesmo clique, porque separar
- * daria um segundo passo que ninguem faz e o cartao ficaria vermelho para sempre.
+ * daria um segundo passo que ninguem faz e o cartao ficaria pintado para sempre.
  *
  * O `window.open` vem ANTES do fetch, e sincrono dentro do handler: navegador
  * bloqueia popup aberta depois de um await, e o clique perderia a janela.
  */
-export function BotaoLembrete({ id, nome, marco, whatsapp, pdfUrl }: Props) {
+export function BotaoLembrete({ id, nome, marco, classeTexto, whatsapp, pdfUrl }: Props) {
   const router = useRouter();
   const [ocupado, setOcupado] = useState(false);
-  const tema = TEMA_LEMBRETE[marco];
 
   async function marcar(marcado: boolean) {
     const r = await fetch(`/api/admin/leads/${id}/lembrete`, {
@@ -62,24 +63,32 @@ export function BotaoLembrete({ id, nome, marco, whatsapp, pdfUrl }: Props) {
     }
   }
 
+  // Com seis colunas, em 1280px o cartao tem ~121px de linha e "Relembrar
+  // cliente" com o icone pede ~137px: quebraria em duas linhas. Abaixo de 140px
+  // de largura o botao fica so com o texto, como o "WhatsApp" do `ChamarWhatsApp`
+  // -- container query, porque quem manda e a largura do cartao, nao a da tela.
+  const icone = "hidden size-3.5 shrink-0 @min-[8.75rem]:block";
+
   return (
-    <button
-      type="button"
-      disabled={ocupado}
-      onClick={cobrar}
-      className={cn(
-        "flex w-full items-center justify-center gap-1.5 rounded-md border px-2 py-1.5",
-        "text-xs font-semibold transition-colors disabled:opacity-60",
-        "border-current/25 bg-white/60 hover:bg-white",
-        tema.texto,
-      )}
-    >
-      {ocupado ? (
-        <Loader2 className="size-3.5 animate-spin" />
-      ) : (
-        <MessageCircle className="size-3.5" />
-      )}
-      {ROTULO_LEMBRETE[marco]}
-    </button>
+    <div className="@container">
+      <button
+        type="button"
+        disabled={ocupado}
+        onClick={cobrar}
+        className={cn(
+          "flex w-full items-center justify-center gap-1.5 rounded-md border px-2 py-1.5",
+          "text-xs font-semibold whitespace-nowrap transition-colors disabled:opacity-60",
+          "border-current/25 bg-white/60 hover:bg-white",
+          classeTexto,
+        )}
+      >
+        {ocupado ? (
+          <Loader2 className={cn(icone, "animate-spin")} />
+        ) : (
+          <MessageCircle className={icone} />
+        )}
+        {ROTULO_LEMBRETE[marco]}
+      </button>
+    </div>
   );
 }

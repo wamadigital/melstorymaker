@@ -11,8 +11,13 @@ import type { Lead, Status } from "@/lib/form/types";
  * limpo. O lead nao esquece que recebeu a proposta ha 40 dias so porque a Mel
  * reorganizou o quadro.
  *
- * Nada aqui e automatico: o modulo so DIZ em que ponto o lead esta. Quem manda
- * a mensagem, marca o lembrete e move o cartao e a Mel, um clique de cada vez.
+ * A cobranca vive em DUAS colunas desde 07/10/2026: "Enviado" e "Esfriou". O
+ * lead que fica uma semana parado depois do prazo vai sozinho para "Esfriou"
+ * (`lib/admin/esfriar.ts` -- a unica transicao automatica do sistema), e la a
+ * "Ultima tentativa" dos 30 dias continua valendo.
+ *
+ * Este modulo so DIZ em que ponto o lead esta. Quem manda a mensagem, marca o
+ * lembrete e move o cartao para "Lead perdido" e a Mel, um clique de cada vez.
  */
 
 export const DIAS_LEMBRETE_1 = 7;
@@ -41,6 +46,14 @@ export const SEM_LEMBRETE: EstadoLembrete = {
 
 type CamposLembrete = Pick<Lead, "enviado_em" | "lembrete_7_em" | "lembrete_30_em">;
 
+/** As colunas em que existe cobranca: quem recebeu a proposta e ainda nao respondeu. */
+export const COLUNAS_COM_COBRANCA = ["enviado", "esfriou"] as const satisfies readonly Status[];
+export type ColunaCobranca = (typeof COLUNAS_COM_COBRANCA)[number];
+
+export function temCobranca(coluna: Status): coluna is ColunaCobranca {
+  return (COLUNAS_COM_COBRANCA as readonly Status[]).includes(coluna);
+}
+
 /**
  * Dias corridos entre duas datas, pela diferenca absoluta em milissegundos.
  *
@@ -60,15 +73,19 @@ export function diasCorridos(desdeIso: string, agoraMs: number): number {
  *
  * `coluna` e o status em que o cartao esta sendo DESENHADO -- inclusive o
  * otimista, enquanto o arraste ainda nao voltou do servidor. Cobranca so existe
- * dentro de `enviado`: quem virou cliente nao se cobra, e quem voltou para
- * revisao esta na mao da Mel, nao na do lead.
+ * em `enviado` e `esfriou`: quem virou cliente nao se cobra, quem foi perdido
+ * ja foi cobrado, e quem voltou para revisao esta na mao da Mel.
+ *
+ * Em `esfriou` o lembrete de 7 dias nunca fica pendente: o momento dele passou,
+ * e a propria coluna ja e o aviso. La so a "Ultima tentativa" (30 dias) pede
+ * acao; o selo de quem ja foi cobrado continua aparecendo.
  */
 export function estadoLembrete(
   lead: CamposLembrete,
   coluna: Status,
   agoraMs: number,
 ): EstadoLembrete {
-  if (coluna !== "enviado" || !lead.enviado_em) return SEM_LEMBRETE;
+  if (!temCobranca(coluna) || !lead.enviado_em) return SEM_LEMBRETE;
 
   const dias = diasCorridos(lead.enviado_em, agoraMs);
   const cobrado: Marco | null = lead.lembrete_30_em ? 30 : lead.lembrete_7_em ? 7 : null;
@@ -81,7 +98,9 @@ export function estadoLembrete(
 
   const jaCobrado = marco === 30 ? !!lead.lembrete_30_em : marco === 7 ? !!lead.lembrete_7_em : true;
 
-  return { dias, marco, pendente: jaCobrado ? null : marco, cobrado };
+  const passouDoPonto = coluna === "esfriou" && marco === 7;
+
+  return { dias, marco, pendente: jaCobrado || passouDoPonto ? null : marco, cobrado };
 }
 
 /**
@@ -128,23 +147,34 @@ export const COLUNA_LEMBRETE: Record<Marco, "lembrete_7_em" | "lembrete_30_em"> 
 };
 
 /**
- * Tema do cartao cobrado: ambar aos 7 dias, vermelho aos 30.
+ * Tema do cartao com cobranca pendente, pela COLUNA e nao pelo marco (pedido
+ * do owner em 07/10/2026, no lugar do ambar dos 7 dias e do vermelho dos 30):
+ *
+ * - "Enviado": azul mais claro que o da coluna. Separa quem ja passou do prazo
+ *   de quem ainda esta dentro dele, sem gritar -- o cartao no prazo e branco.
+ * - "Esfriou": a tinta da propria coluna (zinc). E o cartao que pede a
+ *   "Ultima tentativa"; os outros de la ficam brancos.
  *
  * Classes LITERAIS, como o `TEMA_COLUNA`: o scanner do Tailwind v4 nao le
  * string interpolada e `bg-${cor}-50` sumiria do CSS gerado.
  */
-export const TEMA_LEMBRETE: Record<Marco, { cartao: string; barra: string; texto: string }> = {
-  7: {
-    cartao: "border-amber-300 bg-amber-50",
-    barra: "bg-amber-400",
-    texto: "text-amber-800",
+export const TEMA_COBRANCA: Record<ColunaCobranca, { cartao: string; barra: string; texto: string }> = {
+  enviado: {
+    cartao: "border-sky-200 bg-sky-100/70",
+    barra: "bg-sky-300",
+    texto: "text-sky-800",
   },
-  30: {
-    cartao: "border-red-300 bg-red-50",
-    barra: "bg-red-500",
-    texto: "text-red-800",
+  esfriou: {
+    cartao: "border-zinc-300 bg-zinc-100",
+    barra: "bg-zinc-400",
+    texto: "text-zinc-800",
   },
 };
+
+/** Tema do cartao, ou null quando nao ha cobranca pendente nele. */
+export function temaCobranca(coluna: Status, estado: EstadoLembrete) {
+  return estado.pendente && temCobranca(coluna) ? TEMA_COBRANCA[coluna] : null;
+}
 
 /** Rotulo do botao de cobranca, na voz de quem vai clicar. */
 export const ROTULO_LEMBRETE: Record<Marco, string> = {

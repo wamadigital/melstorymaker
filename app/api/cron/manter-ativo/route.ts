@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { esfriarParados } from "@/lib/supabase/esfriar";
 
 /**
  * Mantem o projeto do Supabase acordado.
@@ -11,8 +12,10 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
  * entao uma consulta diaria resolve.
  *
  * Isso NAO e monitoramento nem analytics (proibidos no MVP): e a rotina minima
- * que mantem a infraestrutura de pe. No dia em que a conta virar Pro, esta rota
- * e a entrada do vercel.json podem sumir.
+ * que mantem a infraestrutura de pe. No dia em que a conta virar Pro, a consulta
+ * de keep-alive pode sumir -- mas a rota NAO: desde 07/10/2026 ela tambem move
+ * para "Esfriou" os leads parados (`esfriarParados`), para o banco ficar certo
+ * mesmo nos dias em que ninguem abre o quadro.
  *
  * Quem chama e o Vercel Cron. A Vercel injeta `Authorization: Bearer
  * $CRON_SECRET` na chamada; sem o segredo conferido, a rota fica publica e
@@ -46,5 +49,8 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: false, erro: error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true, leads: count ?? 0 });
+  // A unica transicao de status automatica do sistema (lib/admin/esfriar.ts).
+  const esfriados = await esfriarParados(Date.now());
+
+  return NextResponse.json({ ok: true, leads: count ?? 0, esfriados: esfriados.length });
 }

@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { compararPorCobranca, diasCorridos, estadoLembrete, SEM_LEMBRETE } from "./lembretes";
-import { ROTULO_STATUS, TEMA_COLUNA } from "./rotulos";
+import {
+  compararPorCobranca,
+  diasCorridos,
+  estadoLembrete,
+  SEM_LEMBRETE,
+  TEMA_COBRANCA,
+  temaCobranca,
+} from "./lembretes";
+import { ROTULO_CURTO_STATUS, ROTULO_STATUS, TEMA_COLUNA } from "./rotulos";
 import { recusarMovimento } from "./status";
 import { STATUS, type Status } from "@/lib/form/types";
 import { linkLembreteWhatsApp, mensagemLembrete } from "@/lib/whatsapp";
@@ -27,12 +34,12 @@ test("dias corridos saem da diferença em ms, não de componentes de data", () =
   assert.equal(diasCorridos("nao e data", AGORA), 0);
 });
 
-test("a cobrança só existe dentro de Enviado", () => {
+test("a cobrança só existe em Enviado e em Esfriou", () => {
   const lead = enviadoHa(40);
   for (const status of STATUS) {
     const estado = estadoLembrete(lead, status as Status, AGORA);
-    if (status === "enviado") {
-      assert.equal(estado.pendente, 30, "em enviado, 40 dias tem que cobrar");
+    if (status === "enviado" || status === "esfriou") {
+      assert.equal(estado.pendente, 30, `em ${status}, 40 dias tem que cobrar`);
     } else {
       assert.deepEqual(estado, SEM_LEMBRETE, `${status} não devia cobrar nada`);
     }
@@ -116,7 +123,7 @@ test("dentro da mesma faixa, quem espera há mais tempo vem antes", () => {
   assert.deepEqual(ordenada, ["25d", "12d", "8d"]);
 });
 
-test("fora de Enviado o comparador não reordena nada", () => {
+test("fora de Enviado e Esfriou o comparador não reordena nada", () => {
   // Devolver 0 é o ponto: `sort` é estável, então a ordem que veio do servidor
   // (mais novo primeiro) sobrevive nas outras quatro raias.
   const fila = [
@@ -196,4 +203,73 @@ test("`perdido` entrou no enum com rótulo, tema e trânsito próprios", () => {
     recusarMovimento("perdido", "incompleto", { temProposta: true }),
     "destino_travado",
   );
+});
+
+// --------------------------------------------------------------- Esfriou
+
+test("em Esfriou os 7 dias já passaram do ponto: só a Última tentativa pede ação", () => {
+  // O lead chega em Esfriou por volta do 14º dia. Pedir "Relembrar cliente" ali
+  // seria cobrar uma semana atrasado; a própria coluna já é o aviso.
+  const quinzeDias = estadoLembrete(enviadoHa(15), "esfriou", AGORA);
+  assert.equal(quinzeDias.marco, 7);
+  assert.equal(quinzeDias.pendente, null);
+  // Aos 30, a "Última tentativa" continua funcionando (pedido do owner).
+  assert.equal(estadoLembrete(enviadoHa(30), "esfriou", AGORA).pendente, 30);
+  // E quem foi cobrado aos 7 segue com o selo, para a Mel saber.
+  const cobrado = estadoLembrete(
+    enviadoHa(15, { lembrete_7_em: new Date(AGORA - 7 * DIA).toISOString() }),
+    "esfriou",
+    AGORA,
+  );
+  assert.equal(cobrado.cobrado, 7);
+});
+
+test("a cor do cartão sai da coluna: azul-claro em Enviado, cinza em Esfriou, nunca âmbar nem vermelho", () => {
+  assert.equal(temaCobranca("enviado", estadoLembrete(enviadoHa(8), "enviado", AGORA)), TEMA_COBRANCA.enviado);
+  assert.equal(temaCobranca("enviado", estadoLembrete(enviadoHa(31), "enviado", AGORA)), TEMA_COBRANCA.enviado);
+  assert.equal(temaCobranca("esfriou", estadoLembrete(enviadoHa(31), "esfriou", AGORA)), TEMA_COBRANCA.esfriou);
+  // Sem cobrança pendente, cartão comum.
+  assert.equal(temaCobranca("enviado", estadoLembrete(enviadoHa(3), "enviado", AGORA)), null);
+  assert.equal(temaCobranca("esfriou", estadoLembrete(enviadoHa(15), "esfriou", AGORA)), null);
+  for (const tema of Object.values(TEMA_COBRANCA)) {
+    assert.ok(!/amber|red/.test(Object.values(tema).join(" ")), "âmbar e vermelho saíram do quadro");
+  }
+  assert.match(TEMA_COBRANCA.enviado.cartao, /sky/);
+  assert.match(TEMA_COBRANCA.esfriou.cartao, /zinc/);
+  // A tinta do cartão de Esfriou é a da coluna.
+  assert.match(TEMA_COLUNA.esfriou.ponto, /zinc/);
+});
+
+test("em Esfriou a Última tentativa também sobe para o topo da coluna", () => {
+  const fila = [
+    { id: "15d", ...enviadoHa(15) },
+    { id: "33d", ...enviadoHa(33) },
+    { id: "cobrado", ...enviadoHa(40), lembrete_30_em: new Date(AGORA - DIA).toISOString() },
+  ];
+  const ordenada = [...fila]
+    .sort((a, b) => compararPorCobranca(a, b, "esfriou", AGORA))
+    .map((l) => l.id);
+  assert.deepEqual(ordenada, ["33d", "15d", "cobrado"]);
+});
+
+test("`esfriou` entrou no enum entre Virou cliente e Lead perdido, com rótulo e trânsito", () => {
+  const i = STATUS.indexOf("esfriou");
+  assert.equal(STATUS[i - 1], "virou_cliente");
+  assert.equal(STATUS[i + 1], "perdido");
+  assert.equal(ROTULO_STATUS.esfriou, "Esfriou");
+  // Esfriou exige proposta, como Enviado: só esfria quem recebeu uma.
+  assert.equal(recusarMovimento("aguardando_revisao", "esfriou", { temProposta: false }), "sem_proposta");
+  // De lá a Mel leva para onde quiser: de volta (o cliente respondeu), cliente ou perdido.
+  for (const para of ["enviado", "virou_cliente", "perdido"] as const) {
+    assert.equal(recusarMovimento("esfriou", para, { temProposta: true }), null, para);
+  }
+  assert.equal(recusarMovimento("esfriou", "incompleto", { temProposta: true }), "destino_travado");
+});
+
+test("a faixa de destinos do celular cabe seis chips: rótulo curto de uma palavra", () => {
+  // Em 360px cada chip tem ~52px por dentro; "Aguardando" sozinho mede ~57px.
+  for (const status of STATUS) {
+    const curto = ROTULO_CURTO_STATUS[status];
+    assert.ok(!curto.includes(" ") && curto.length <= 7, `${status}: "${curto}"`);
+  }
 });

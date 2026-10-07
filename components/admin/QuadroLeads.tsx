@@ -54,8 +54,9 @@ export function QuadroLeads({
   const [movendo, setMovendo] = useState<string | null>(null);
   const [arrastando, setArrastando] = useState<string | null>(null);
   // No celular as raias sao accordion. "Lead perdido" nasce FECHADA: e a unica
-  // que nao pede acao nenhuma, e aberta empurraria as quatro que pedem para
-  // fora da primeira tela. No desktop o CSS forca toda coluna aberta.
+  // que nao pede acao nenhuma, e aberta empurraria as que pedem para fora da
+  // primeira tela. "Esfriou" nasce aberta: la mora a "Ultima tentativa" dos 30
+  // dias. No desktop o CSS forca toda coluna aberta.
   const [aberta, setAberta] = useState<Record<string, boolean>>(() =>
     Object.fromEntries(STATUS.map((s) => [s, s !== "perdido"])),
   );
@@ -231,7 +232,7 @@ export function QuadroLeads({
       {/* grid-cols LITERAL, e nao derivado de STATUS.length: o scanner do
           Tailwind nao le string interpolada. Status novo no enum = mexer aqui e
           na FaixaDestinos. */}
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
         {STATUS.map((status) => (
           <Raia
             key={status}

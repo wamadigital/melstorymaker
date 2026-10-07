@@ -200,10 +200,11 @@ Regras do engine:
 | RF-13 | Envio via WhatsApp | Botão abre `wa.me` com mensagem pré-preenchida + link público do PDF; com número do lead vai direto pro contato, sem número abre o seletor de conversa |
 | RF-14 | Regerar PDF após edição | Novo PDF sobrescreve o anterior (mesma URL, cache-bust no preview) |
 | RF-15 | Formatação pt-BR no PDF | Data em **DD/MM/AAAA** ("14/03/2026") e horário no padrão "19h30" |
-| RF-20 | Cobrança de lead sem retorno: aos 7 dias em "Enviado" o cartão fica âmbar com "Relembrar cliente"; aos 30, vermelho com "Última tentativa" | Botão abre o WhatsApp do lead com a mensagem e o link da proposta, e carimba o lembrete; cobrado, o cartão silencia e mostra "Lembrado aos N dias". Os vencidos sobem para o topo da coluna, o de 30 dias na frente do de 7 |
-| RF-21 | Coluna "Lead perdido" como 5ª raia do quadro | A Mel move o cartão pelo arraste ou pelo menu; nada vira perdido sozinho. No celular a raia nasce recolhida |
+| RF-20 | Cobrança de lead sem retorno: aos 7 dias em "Enviado" o cartão fica azul-claro com "Relembrar cliente"; aos 30, "Última tentativa" (em "Esfriou", na cor cinza da coluna) | Botão abre o WhatsApp do lead com a mensagem e o link da proposta, e carimba o lembrete; cobrado, o cartão silencia e mostra "Lembrado aos N dias". Os vencidos sobem para o topo da coluna, o de 30 dias na frente do de 7 |
+| RF-21 | Coluna "Lead perdido" como 6ª raia do quadro | A Mel move o cartão pelo arraste ou pelo menu; nada vira perdido sozinho. No celular a raia nasce recolhida |
 | RF-22 | Botão "Chamar no WhatsApp" no lead de "Novo" que deixou telefone | Aparece no cartão do quadro e no detalhe do lead; abre a conversa do lead com a caixa vazia — a Mel escreve manualmente. Some sem telefone, fora de "Novo", e no detalhe quando já há proposta gerada. No cartão do quadro, ao lado do botão, uma caixa "já chamei": a Mel marca depois de chamar, o botão apaga e fica sem link até ela desmarcar |
 | RF-23 | Botão "Lembrar por e-mail" no lead de "Novo" que deixou e-mail | Fica no cartão do quadro, embaixo do "Chamar no WhatsApp". O clique da Mel envia na hora um e-mail com o link para continuar o formulário de onde o lead parou (e o WhatsApp da Mel), e o botão trava por 7 dias com "Lembrete enviado · Libera de novo em N dias" — a trava também é conferida no servidor. Nunca sai sem o clique. Some sem e-mail e fora de "Novo" |
+| RF-24 | Coluna "Esfriou" (cinza) entre "Virou cliente" e "Lead perdido" | O lead de "Enviado" que passou do prazo (azul-claro a partir do 7º dia) e ficou mais 7 dias sem nenhum update vai sozinho para "Esfriou". Lá a "Última tentativa" continua aos 30 dias; a Mel pode trazê-lo de volta para "Enviado", fechar ou marcar como perdido |
 
 ## 8. Painel admin
 

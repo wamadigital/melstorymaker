@@ -31,10 +31,11 @@ test("'Enviado' sem proposta e bloqueado com a mesma frase do quadro; cliente e 
   assert.deepEqual(estadoDoAtalho("aguardando_revisao", "enviado", { temProposta: true }), { atual: false, bloqueio: null });
 });
 
-test("proximo passo: Novo e revisao vao para Enviado, Enviado e perdido para cliente, cliente e o fim", () => {
+test("proximo passo: Novo e revisao vao para Enviado, Enviado, Esfriou e perdido para cliente, cliente e o fim", () => {
   assert.equal(proximoPasso("incompleto"), "enviado");
   assert.equal(proximoPasso("aguardando_revisao"), "enviado");
   assert.equal(proximoPasso("enviado"), "virou_cliente");
+  assert.equal(proximoPasso("esfriou"), "virou_cliente");
   assert.equal(proximoPasso("perdido"), "virou_cliente");
   assert.equal(proximoPasso("virou_cliente"), null);
 });

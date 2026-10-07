@@ -67,7 +67,9 @@ export function ColunaKanban({
           )}
         >
           <span aria-hidden className={cn("size-2 shrink-0 rounded-sm", tema.ponto)} />
-          <span className={cn("truncate text-sm font-semibold", tema.titulo)}>
+          {/* `title`: com seis colunas, "Aguardando revisão" corta em telas de
+              ~1280px. O leitor de tela ja le o texto inteiro. */}
+          <span title={ROTULO_STATUS[status]} className={cn("truncate text-sm font-semibold", tema.titulo)}>
             {ROTULO_STATUS[status]}
           </span>
           <span className="ml-auto rounded-md bg-black/5 px-1.5 py-0.5 text-xs tabular-nums text-muted-foreground">

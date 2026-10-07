@@ -57,7 +57,14 @@ const MAIL_DRY_RUN_LOCAL = ["1", "true"].includes((process.env.MAIL_DRY_RUN ?? "
 /** Lead de teste direto pela service role: o foco aqui e a rota de status. */
 async function semear(
   status: Status,
-  opcoes: { comPdf?: boolean; email?: string | null; lembreteEmailEm?: string } = {},
+  opcoes: {
+    comPdf?: boolean;
+    email?: string | null;
+    lembreteEmailEm?: string;
+    /** Data do envio da proposta e do ultimo update, para a regra do Esfriou. */
+    enviadoEm?: string;
+    atualizadoEm?: string;
+  } = {},
 ) {
   const email = opcoes.email === undefined ? "lead.teste@example.com" : opcoes.email;
   const { data } = await admin
@@ -78,6 +85,9 @@ async function semear(
       whatsapp: "19999998888",
       pdf_url: opcoes.comPdf ? "https://exemplo.invalid/proposta.pdf" : null,
       lembrete_email_em: opcoes.lembreteEmailEm ?? null,
+      ...(opcoes.enviadoEm && { enviado_em: opcoes.enviadoEm }),
+      // O trigger de `updated_at` so roda em UPDATE: no insert, vale o que vier.
+      ...(opcoes.atualizadoEm && { updated_at: opcoes.atualizadoEm }),
     })
     .select("id")
     .single();
@@ -353,6 +363,36 @@ async function main() {
   const cFora = await marcarChamado(foraDeNovo, { chamado: true });
   checar(cFora.status === 409, `"já chamei" fora de Novo → 409 (veio ${cFora.status})`);
   checar((await chamadoDe(foraDeNovo)) === null, "fora de Novo nada é carimbado");
+
+  // ------------------------------------------------------------- Esfriou
+  // Abrir o quadro move para "Esfriou" quem ficou uma semana parado depois do
+  // prazo da cobranca (lib/admin/esfriar.ts). ATENCAO: o banco do .env.local e o
+  // de producao -- este GET move os leads reais tambem, entao so rode este
+  // script depois que o codigo com a coluna "Esfriou" estiver no ar.
+  const statusDe = async (id: string) =>
+    (await admin.from("leads").select("status").eq("id", id).single()).data?.status as Status;
+  const diasAtras = (d: number) => new Date(Date.now() - d * DIA).toISOString();
+
+  const parado = await semear("enviado", { comPdf: true, enviadoEm: diasAtras(15), atualizadoEm: diasAtras(8) });
+  const cobradoHaPouco = await semear("enviado", { comPdf: true, enviadoEm: diasAtras(15), atualizadoEm: diasAtras(2) });
+  const noPrazo = await semear("enviado", { comPdf: true, enviadoEm: diasAtras(3), atualizadoEm: diasAtras(3) });
+
+  const quadroEsfriou = await (await fetch(`${BASE}/admin`, { headers: { Cookie: cookie } })).text();
+  checar(quadroEsfriou.includes("Esfriou"), 'coluna "Esfriou" no HTML');
+  checar((await statusDe(parado)) === "esfriou", "parado há uma semana depois do prazo → Esfriou");
+  checar((await statusDe(cobradoHaPouco)) === "enviado", "com update recente → continua em Enviado");
+  checar((await statusDe(noPrazo)) === "enviado", "dentro do prazo → continua em Enviado");
+
+  // O cliente respondeu: a Mel traz de volta, e a propria mudanca e update.
+  const deVolta = await mover(parado, { status: "enviado", de: "esfriou" });
+  checar(deVolta.status === 200, `Esfriou → Enviado → 200 (veio ${deVolta.status})`);
+  await fetch(`${BASE}/admin`, { headers: { Cookie: cookie } });
+  checar((await statusDe(parado)) === "enviado", "quem voltou de Esfriou não esfria de novo na hora");
+
+  const esfriaDeNovo = await semear("enviado", { comPdf: true, enviadoEm: diasAtras(40), atualizadoEm: diasAtras(9) });
+  await fetch(`${BASE}/admin`, { headers: { Cookie: cookie } });
+  const perdeu = await mover(esfriaDeNovo, { status: "perdido", de: "esfriou" });
+  checar(perdeu.status === 200, `Esfriou → Lead perdido → 200 (veio ${perdeu.status})`);
 
   await limpar();
 

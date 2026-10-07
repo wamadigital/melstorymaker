@@ -6,7 +6,7 @@ import { AcoesLead } from "@/components/admin/AcoesLead";
 import { BotaoLembrete } from "@/components/admin/BotaoLembrete";
 import { BotaoLembreteEmail } from "@/components/admin/BotaoLembreteEmail";
 import { ChamarWhatsApp } from "@/components/admin/ChamarWhatsApp";
-import { estadoLembrete, SELO_LEMBRETE, TEMA_LEMBRETE } from "@/lib/admin/lembretes";
+import { estadoLembrete, SELO_LEMBRETE, temaCobranca } from "@/lib/admin/lembretes";
 import { estadoLembreteEmail } from "@/lib/admin/lembrete-email";
 import { linkConversaLead } from "@/lib/whatsapp";
 import { DESCRICAO_COLUNA, TEMA_COLUNA, rotuloCategoria, rotuloPasso } from "@/lib/admin/rotulos";
@@ -58,10 +58,11 @@ export function CartaoLead({
   // "Parou em: Local da festa" (RF-09) so faz sentido em quem nao terminou.
   const parouEm = coluna === "incompleto" ? rotuloPasso(lead.categoria, lead.passo_atual) : null;
 
-  // `coluna` e nao `lead.status`: arrastar um cartao vermelho para "Virou
-  // cliente" apaga a cobranca na hora, sem esperar o servidor responder.
+  // `coluna` e nao `lead.status`: arrastar um cartao com cobranca para "Virou
+  // cliente" apaga a cobranca na hora, sem esperar o servidor responder. A cor
+  // tambem sai da coluna: azul-claro em "Enviado", cinza em "Esfriou".
   const lembrete = estadoLembrete(lead, coluna, agoraMs);
-  const alerta = lembrete.pendente ? TEMA_LEMBRETE[lembrete.pendente] : null;
+  const alerta = temaCobranca(coluna, lembrete);
 
   // Quem parou no meio do formulario mas deixou telefone: da para puxar a
   // conversa. So em "Novo" -- de `aguardando_revisao` em diante a acao certa e
@@ -159,18 +160,21 @@ export function CartaoLead({
         )}
 
         {!sobreposto && (lembrete.pendente || lembrete.cobrado) && (
-          <div className="px-3 pb-3">
+          <div className="@container px-3 pb-3">
             {lembrete.pendente ? (
               <BotaoLembrete
                 id={lead.id}
                 nome={nome}
                 marco={lembrete.pendente}
+                classeTexto={alerta?.texto}
                 whatsapp={lead.whatsapp}
                 pdfUrl={lead.pdf_url}
               />
             ) : (
-              <p className="flex items-center gap-1 text-[0.6875rem] text-muted-foreground">
-                <Check className="size-3 shrink-0" strokeWidth={3} />
+              <p className="flex items-center gap-1 text-[0.6875rem] whitespace-nowrap text-muted-foreground">
+                {/* Sem o check abaixo de ~132px: "Lembrado aos 30 dias" so cabe
+                    numa linha do cartao de seis colunas sem ele. */}
+                <Check className="hidden size-3 shrink-0 @min-[8.25rem]:block" strokeWidth={3} />
                 {SELO_LEMBRETE[lembrete.cobrado!]}
               </p>
             )}

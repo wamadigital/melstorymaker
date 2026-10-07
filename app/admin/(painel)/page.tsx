@@ -4,6 +4,7 @@ import { COLUNAS_CARTAO, type LeadCartao } from "@/lib/admin/tipos";
 import { FiltrosLeads } from "@/components/admin/FiltrosLeads";
 import { QuadroLeads, type Coluna } from "@/components/admin/QuadroLeads";
 import { lerComRetentativa } from "@/lib/supabase/consulta";
+import { esfriarParados } from "@/lib/supabase/esfriar";
 
 type Busca = { q?: string; categoria?: string };
 
@@ -17,6 +18,14 @@ function ehCategoria(v: string | undefined): v is Categoria {
 export default async function PaginaLeads({ searchParams }: { searchParams: Promise<Busca> }) {
   const { q, categoria } = await searchParams;
   const termo = (q ?? "").trim();
+
+  // Um relogio so: o mesmo "agora" esfria os parados e desce para os cartoes.
+  const agoraMs = Date.now();
+
+  // Antes de ler as colunas: quem ficou uma semana parado depois do prazo da
+  // cobranca sai de "Enviado" e vai para "Esfriou" (lib/admin/esfriar.ts). Nunca
+  // lanca -- se falhar, o quadro abre do mesmo jeito e o cron diario tenta de novo.
+  await esfriarParados(agoraMs);
 
   // Uma consulta por coluna, com count exato: alem dos cartoes, traz o TOTAL
   // real da raia. E o que substitui o "N resultados" antigo, que era o length de
@@ -41,8 +50,11 @@ export default async function PaginaLeads({ searchParams }: { searchParams: Prom
     // buscados -- e o quadro deixaria de mostrar exatamente os cartoes que
     // pedem acao, em silencio. Assim o corte cai sobre os envios recentes, que
     // sao justamente os que nao precisam de nada.
+    //
+    // "Esfriou" ordena igual, pelo mesmo motivo: e a raia que acumula depois de
+    // "Enviado", e a "Ultima tentativa" (30 dias) esta nos mais antigos.
     c =
-      status === "enviado"
+      status === "enviado" || status === "esfriou"
         ? c.order("enviado_em", { ascending: true, nullsFirst: false })
         : c.order("created_at", { ascending: false });
 
@@ -54,7 +66,7 @@ export default async function PaginaLeads({ searchParams }: { searchParams: Prom
   // Uma por status, em paralelo: custam a latencia de 1 e todas caem no
   // leads_status_idx.
   // Com retentativa porque uma falha transitoria do Supabase em UMA consulta
-  // apagava a coluna inteira, enquanto as outras tres carregavam normalmente.
+  // apagava a coluna inteira, enquanto as outras carregavam normalmente.
   const respostas = await Promise.all(
     STATUS.map((status) => lerComRetentativa(`coluna ${status}`, () => consultar(status))),
   );
@@ -68,7 +80,7 @@ export default async function PaginaLeads({ searchParams }: { searchParams: Prom
           cartoes: (data ?? []) as unknown as LeadCartao[],
           total: count ?? 0,
           // Erro por coluna, e nao da pagina inteira: uma raia que falhou nao
-          // pode derrubar as outras tres. A mensagem tecnica fica no log do
+          // pode derrubar as outras. A mensagem tecnica fica no log do
           // servidor -- "JWT issued at future" nao diz nada para a Mel, e ela
           // nao tem o que fazer com isso alem de tentar de novo.
           erro: error ? "Não consegui carregar esta coluna." : null,
@@ -97,7 +109,7 @@ export default async function PaginaLeads({ searchParams }: { searchParams: Prom
       {/* `Date.now()` do SERVIDOR, descido como prop: a contagem de cobranca
           precisa dar o mesmo numero no HTML e na hidratacao, senao o cartao
           pisca de cor na fronteira do 7o dia. */}
-      <QuadroLeads colunas={colunas} termo={termo} agoraMs={Date.now()} />
+      <QuadroLeads colunas={colunas} termo={termo} agoraMs={agoraMs} />
     </div>
   );
 }

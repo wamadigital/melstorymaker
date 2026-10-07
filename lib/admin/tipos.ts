@@ -6,7 +6,7 @@ import type { Lead } from "@/lib/form/types";
  * estava escrita duas vezes na mesma pagina, e nada avisaria se uma mudasse.
  *
  * Coluna nova aqui precisa existir no banco ANTES do deploy: o select pede
- * todas de uma vez, e uma que falte derruba as cinco raias do quadro.
+ * todas de uma vez, e uma que falte derruba todas as raias do quadro.
  */
 export const COLUNAS_CARTAO =
   "id, created_at, categoria, status, nome_display, data_evento, passo_atual, enviado_em, " +

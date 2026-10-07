@@ -28,12 +28,13 @@ export const DESTINOS_PROIBIDOS: readonly Status[] = ["incompleto"];
 /**
  * REGRA MACIA: "Enviado" sem PDF seria um badge mentindo -- nao existe o que
  * possa ter sido enviado. Uma linha para o dono relaxar, se um dia quiser.
+ * "Esfriou" pelo mesmo motivo: so esfria quem recebeu uma proposta.
  *
  * `virou_cliente` NAO entra aqui: da para fechar negocio no telefone antes de
  * qualquer proposta formal, e travar isso impediria a Mel de registrar a
  * realidade dela.
  */
-export const EXIGE_PROPOSTA: readonly Status[] = ["enviado"];
+export const EXIGE_PROPOSTA: readonly Status[] = ["enviado", "esfriou"];
 
 export type MotivoRecusa = "destino_travado" | "sem_proposta" | "mesmo_status";
 
@@ -76,8 +77,8 @@ export type AtalhoStatus = (typeof ATALHOS_STATUS)[number];
  * - De "Novo" o passo e "Enviado", e nao "Aguardando revisao": revisao e
  *   consequencia do submit (ver `ATALHOS_STATUS`). Sem proposta o botao aparece
  *   travado, com a frase da recusa, e isso ja diz o que falta fazer.
- * - De "Lead perdido" o passo e "Virou cliente": o perdido que reaparece volta
- *   para fechar. Reenviar proposta passa pelo e-mail, ou pelo quadro.
+ * - De "Lead perdido" e de "Esfriou" o passo e "Virou cliente": quem reaparece
+ *   volta para fechar. Reenviar proposta passa pelo e-mail, ou pelo quadro.
  * - "Virou cliente" e o fim: sem botao.
  */
 export function proximoPasso(status: Status): Exclude<AtalhoStatus, "perdido"> | null {
@@ -86,6 +87,7 @@ export function proximoPasso(status: Status): Exclude<AtalhoStatus, "perdido"> |
     case "aguardando_revisao":
       return "enviado";
     case "enviado":
+    case "esfriou":
     case "perdido":
       return "virou_cliente";
     case "virou_cliente":

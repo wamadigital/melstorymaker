@@ -27,6 +27,9 @@ end $$;
 -- esta linha isolada ANTES do arquivo inteiro.
 alter type lead_status add value if not exists 'virou_cliente';
 alter type lead_status add value if not exists 'perdido';
+-- `esfriou` entra ANTES de `perdido` so por arrumacao (a ordem do enum nao e
+-- usada em comparacao nenhuma). Ver lib/admin/esfriar.ts.
+alter type lead_status add value if not exists 'esfriou' before 'perdido';
 
 -- Tabela ------------------------------------------------------------------
 
