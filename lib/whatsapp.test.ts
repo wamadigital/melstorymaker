@@ -57,7 +57,7 @@ test("a 'Última tentativa' (30 dias) é a copy do owner, com o link da proposta
       "\n" +
       `${link}\n` +
       "\n" +
-      "Se ainda fizer sentido, é só me dizer chamar que a gente conversa.\n" +
+      "Se ainda fizer sentido, é só me chamar que a gente conversa.\n" +
       "E se não for o momento, sem problema nenhum, estarei por aqui pra quando você precisar! ✨",
   );
   // E o texto chega inteiro na conversa do lead, sem nada perdido no encode.
@@ -71,7 +71,7 @@ test("sem proposta gerada, a 'Última tentativa' sai sem o link e sem linha vazi
     mensagemLembrete(30, null),
     "Oi! Passando só para saber se você conseguiu dar uma olhadinha na proposta que te enviei. 🤍\n" +
       "\n" +
-      "Se ainda fizer sentido, é só me dizer chamar que a gente conversa.\n" +
+      "Se ainda fizer sentido, é só me chamar que a gente conversa.\n" +
       "E se não for o momento, sem problema nenhum, estarei por aqui pra quando você precisar! ✨",
   );
 });

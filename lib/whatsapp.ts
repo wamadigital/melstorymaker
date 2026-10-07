@@ -102,7 +102,7 @@ export function mensagemLembrete(marco: 7 | 30, pdfUrl: string | null): string {
       : [
           "Oi! Passando só para saber se você conseguiu dar uma olhadinha na proposta que te enviei. 🤍",
           ...(pdfUrl ? ["", pdfUrl, ""] : [""]),
-          "Se ainda fizer sentido, é só me dizer chamar que a gente conversa.",
+          "Se ainda fizer sentido, é só me chamar que a gente conversa.",
           "E se não for o momento, sem problema nenhum, estarei por aqui pra quando você precisar! ✨",
         ];
   return linhas.join("\n");
