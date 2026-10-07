@@ -6,6 +6,7 @@ import {
   estadoLembrete,
   SEM_LEMBRETE,
   TEMA_COBRANCA,
+  TEMA_ULTIMA_TENTATIVA,
   temaCobranca,
 } from "./lembretes";
 import { ROTULO_CURTO_STATUS, ROTULO_STATUS, TEMA_COLUNA } from "./rotulos";
@@ -207,49 +208,49 @@ test("`perdido` entrou no enum com rótulo, tema e trânsito próprios", () => {
 
 // --------------------------------------------------------------- Esfriou
 
-test("em Esfriou os 7 dias já passaram do ponto: só a Última tentativa pede ação", () => {
-  // O lead chega em Esfriou por volta do 14º dia. Pedir "Relembrar cliente" ali
-  // seria cobrar uma semana atrasado; a própria coluna já é o aviso.
-  const quinzeDias = estadoLembrete(enviadoHa(15), "esfriou", AGORA);
-  assert.equal(quinzeDias.marco, 7);
-  assert.equal(quinzeDias.pendente, null);
-  // Aos 30, a "Última tentativa" continua funcionando (pedido do owner).
+test("no Esfriou aparecem o Relembrar cliente e, aos 30 dias, a Última tentativa", () => {
+  // O lead esfria no 7º dia: é lá que a Mel cobra.
+  assert.equal(estadoLembrete(enviadoHa(8), "esfriou", AGORA).pendente, 7);
   assert.equal(estadoLembrete(enviadoHa(30), "esfriou", AGORA).pendente, 30);
-  // E quem foi cobrado aos 7 segue com o selo, para a Mel saber.
+  // Quem foi cobrado aos 7 silencia até os 30, com o selo.
   const cobrado = estadoLembrete(
     enviadoHa(15, { lembrete_7_em: new Date(AGORA - 7 * DIA).toISOString() }),
     "esfriou",
     AGORA,
   );
+  assert.equal(cobrado.pendente, null);
   assert.equal(cobrado.cobrado, 7);
 });
 
-test("a cor do cartão sai da coluna: azul-claro em Enviado, cinza em Esfriou, nunca âmbar nem vermelho", () => {
+test("cores: Relembrar na tinta da coluna, Última tentativa vermelha, âmbar nunca mais", () => {
+  // 7 dias: cinza no Esfriou; azul-claro em Enviado (quem ficou além da semana por update).
+  assert.equal(temaCobranca("esfriou", estadoLembrete(enviadoHa(8), "esfriou", AGORA)), TEMA_COBRANCA.esfriou);
   assert.equal(temaCobranca("enviado", estadoLembrete(enviadoHa(8), "enviado", AGORA)), TEMA_COBRANCA.enviado);
-  assert.equal(temaCobranca("enviado", estadoLembrete(enviadoHa(31), "enviado", AGORA)), TEMA_COBRANCA.enviado);
-  assert.equal(temaCobranca("esfriou", estadoLembrete(enviadoHa(31), "esfriou", AGORA)), TEMA_COBRANCA.esfriou);
+  // 30 dias: vermelho, em qualquer coluna, como era antes.
+  assert.equal(temaCobranca("esfriou", estadoLembrete(enviadoHa(31), "esfriou", AGORA)), TEMA_ULTIMA_TENTATIVA);
+  assert.equal(temaCobranca("enviado", estadoLembrete(enviadoHa(31), "enviado", AGORA)), TEMA_ULTIMA_TENTATIVA);
+  assert.match(TEMA_ULTIMA_TENTATIVA.cartao, /red/);
   // Sem cobrança pendente, cartão comum.
   assert.equal(temaCobranca("enviado", estadoLembrete(enviadoHa(3), "enviado", AGORA)), null);
-  assert.equal(temaCobranca("esfriou", estadoLembrete(enviadoHa(15), "esfriou", AGORA)), null);
-  for (const tema of Object.values(TEMA_COBRANCA)) {
-    assert.ok(!/amber|red/.test(Object.values(tema).join(" ")), "âmbar e vermelho saíram do quadro");
+  for (const tema of [...Object.values(TEMA_COBRANCA), TEMA_ULTIMA_TENTATIVA]) {
+    assert.ok(!/amber/.test(Object.values(tema).join(" ")), "o âmbar saiu do quadro");
   }
   assert.match(TEMA_COBRANCA.enviado.cartao, /sky/);
   assert.match(TEMA_COBRANCA.esfriou.cartao, /zinc/);
-  // A tinta do cartão de Esfriou é a da coluna.
   assert.match(TEMA_COLUNA.esfriou.ponto, /zinc/);
 });
 
 test("em Esfriou a Última tentativa também sobe para o topo da coluna", () => {
   const fila = [
-    { id: "15d", ...enviadoHa(15) },
-    { id: "33d", ...enviadoHa(33) },
     { id: "cobrado", ...enviadoHa(40), lembrete_30_em: new Date(AGORA - DIA).toISOString() },
+    { id: "10d", ...enviadoHa(10) },
+    { id: "33d", ...enviadoHa(33) },
   ];
   const ordenada = [...fila]
     .sort((a, b) => compararPorCobranca(a, b, "esfriou", AGORA))
     .map((l) => l.id);
-  assert.deepEqual(ordenada, ["33d", "15d", "cobrado"]);
+  // O vermelho (30 dias) primeiro, depois o Relembrar, depois quem já foi cobrado.
+  assert.deepEqual(ordenada, ["33d", "10d", "cobrado"]);
 });
 
 test("`esfriou` entrou no enum entre Virou cliente e Lead perdido, com rótulo e trânsito", () => {

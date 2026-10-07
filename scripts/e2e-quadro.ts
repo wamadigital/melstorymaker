@@ -365,22 +365,22 @@ async function main() {
   checar((await chamadoDe(foraDeNovo)) === null, "fora de Novo nada é carimbado");
 
   // ------------------------------------------------------------- Esfriou
-  // Abrir o quadro move para "Esfriou" quem ficou uma semana parado depois do
-  // prazo da cobranca (lib/admin/esfriar.ts). ATENCAO: o banco do .env.local e o
+  // Abrir o quadro move para "Esfriou" quem passou de uma semana em "Enviado"
+  // sem update (lib/admin/esfriar.ts). ATENCAO: o banco do .env.local e o
   // de producao -- este GET move os leads reais tambem, entao so rode este
   // script depois que o codigo com a coluna "Esfriou" estiver no ar.
   const statusDe = async (id: string) =>
     (await admin.from("leads").select("status").eq("id", id).single()).data?.status as Status;
   const diasAtras = (d: number) => new Date(Date.now() - d * DIA).toISOString();
 
-  const parado = await semear("enviado", { comPdf: true, enviadoEm: diasAtras(15), atualizadoEm: diasAtras(8) });
-  const cobradoHaPouco = await semear("enviado", { comPdf: true, enviadoEm: diasAtras(15), atualizadoEm: diasAtras(2) });
+  const parado = await semear("enviado", { comPdf: true, enviadoEm: diasAtras(8), atualizadoEm: diasAtras(8) });
+  const cobradoHaPouco = await semear("enviado", { comPdf: true, enviadoEm: diasAtras(20), atualizadoEm: diasAtras(2) });
   const noPrazo = await semear("enviado", { comPdf: true, enviadoEm: diasAtras(3), atualizadoEm: diasAtras(3) });
 
   const quadroEsfriou = await (await fetch(`${BASE}/admin`, { headers: { Cookie: cookie } })).text();
   checar(quadroEsfriou.includes("Esfriou"), 'coluna "Esfriou" no HTML');
-  checar((await statusDe(parado)) === "esfriou", "parado há uma semana depois do prazo → Esfriou");
-  checar((await statusDe(cobradoHaPouco)) === "enviado", "com update recente → continua em Enviado");
+  checar((await statusDe(parado)) === "esfriou", "8 dias em Enviado sem update → Esfriou");
+  checar((await statusDe(cobradoHaPouco)) === "enviado", "trazido de volta há 2 dias → continua em Enviado");
   checar((await statusDe(noPrazo)) === "enviado", "dentro do prazo → continua em Enviado");
 
   // O cliente respondeu: a Mel traz de volta, e a propria mudanca e update.
