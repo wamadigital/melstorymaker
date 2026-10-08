@@ -1,6 +1,6 @@
 # Estabilização da Mel — 08/10/2026
 
-Base auditada: `main`, commit `02e51023cd51f3cdc1d78680f67e096a949797b2`. As alterações abaixo estão no checkout local, sem commit, push ou publicação. Não houve alteração do schema nem escrita nos leads de produção.
+Base auditada: `main`, commit `02e51023cd51f3cdc1d78680f67e096a949797b2`. As alterações abaixo foram publicadas pelo commit `da073c2cdb5288e879644d06c12d2e8a7136ab3a`, após autorização do usuário em 08/10/2026. Não houve alteração do schema nem escrita de teste nos leads de produção.
 
 ## Alterações implementadas
 
@@ -62,7 +62,19 @@ As colunas de total e custo foram salvas com a nova conversão na predefinição
 
 A conversão antiga continua preservada; seu Contact sem filtro de canal também inclui e-mail. A visita ao formulário continua limitada a `/formulario`; `/orcamento` tem Pixel, mas está fora dessa métrica. Clique no WhatsApp mede abertura de contato, sem confirmar mensagem enviada.
 
-A publicação do código e sua conferência em produção continuam pendentes. O lote local está disponível para revisão; os testes não modificaram campanhas, orçamento de anúncios, contratos ou contatos reais.
+A Vercel confirmou o deployment `dpl_6JqMB72MXx7oFhw4RwCWtZ38Q485` como **READY**, ambiente **production**, com o SHA completo acima e os domínios `melstorymaker.com.br` e `www.melstorymaker.com.br` vinculados. [Registro da versão publicada](https://vercel.com/wamadigitals-projects/melstorymaker/6JqMB72MXx7oFhw4RwCWtZ38Q485).
+
+| Conferência da publicação | Resultado |
+|---|---|
+| Páginas públicas e login | `/casamento`, `/formulario`, `/formulario?evento=casamento`, `/orcamento` e `/admin/login`: HTTP 200 |
+| Redirecionamentos | `/` → `/formulario`; `/admin` anônimo → `/admin/login` |
+| Proteções das APIs | Admin anônimo: 401; UUID inválido: 404; GET nas três rotas de escrita: 405 |
+| JavaScript servido pelo domínio | 19 arquivos referenciados pelo HTML responderam 200; marcadores de criação idempotente e rascunho encontrados |
+| Pixel no HTML | ID `28251176377887999` e PageView nas quatro páginas públicas; ViewContent da landing com `content_category=casamento` e `content_name=lp_casamento`; ausente no login administrativo |
+| Segredos no JavaScript público | Cinco valores privados conferidos; nenhum encontrado |
+| Logs da versão publicada | Consulta às 18h31 BRT, janela de 30 minutos, filtros error/fatal e agrupamento por nível: nenhum grupo retornado |
+
+Relatório das requisições: `/private/tmp/mel-production-smoke.json`. A conferência usou somente GET, sem cookies, execução de JavaScript, IDs reais ou ações de provedores. Não disparou conversões de teste nem acessou o Kanban autenticado. O vínculo SHA/deployment confirma qual código foi publicado; os fluxos de gravação continuam sustentados pela validação isolada acima. A consulta de logs se limita à janela e aos filtros informados. Os testes não modificaram campanhas, orçamento de anúncios, contratos ou contatos reais.
 
 Evidências visuais locais: `/private/tmp/mel-formulario-rascunho-final.jpg`, `/private/tmp/mel-formulario-confirmacao-final.jpg` e `/private/tmp/mel-criacao-recuperada-final.jpg` usam dados fictícios e banco isolado. `/private/tmp/mel-meta-conversao-preparada.jpg` registra a preparação histórica anterior à criação. `/private/tmp/mel-meta-whatsapp-criado.jpg` comprova a conversão salva e suas regras; `/private/tmp/mel-meta-funil-site-cliente-atualizado.jpg` registra o salvamento da predefinição; `/private/tmp/mel-meta-funil-mel-salvo.jpg` registra a visualização Funil Mel reaberta com as novas colunas.
 
