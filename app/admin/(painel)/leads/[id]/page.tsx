@@ -1,34 +1,43 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
+import { z } from "zod";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { lerRegistro } from "@/lib/supabase/contratos";
 import { iaDisponivel } from "@/lib/contrato/ia";
 import { assinaturaConfigurada } from "@/lib/assinatura/adapter";
 import { hojeEmSaoPaulo } from "@/lib/contrato/regras";
-import type { RegistroContrato } from "@/lib/contrato/tipos";
+import { carregarDetalhe } from "@/lib/admin/detalhe";
+import { lerComRetentativa } from "@/lib/supabase/consulta";
 import { env } from "@/lib/env";
 import type { Lead } from "@/lib/form/types";
 import { DetalheLead } from "@/components/admin/DetalheLead";
+import { FalhaCarregamentoLead } from "@/components/admin/FalhaCarregamentoLead";
 
 export default async function PaginaDetalhe({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  if (!z.string().uuid().safeParse(id).success) notFound();
 
-  const { data } = await supabaseAdmin().from("leads").select("*").eq("id", id).maybeSingle();
-  if (!data) notFound();
+  const resultado = await carregarDetalhe({
+    lerLead: () => lerComRetentativa<Lead>(`detalhe ${id}`, () =>
+      supabaseAdmin().from("leads").select("*").eq("id", id).maybeSingle(),
+    ),
+    lerContrato: () => lerRegistro(id),
+  });
 
-  // O contrato e lido a parte, e a falha dele NAO derruba o detalhe: a Mel
-  // continua vendo o lead e a proposta. A secao de contrato recebe a flag e
-  // mostra "nao consegui carregar" -- em vez de abrir o formulario
-  // pre-preenchido, cujo "Salvar rascunho" sobrescreveria o contrato que existe.
-  let registroContrato: RegistroContrato | null = null;
-  let falhaAoLerContrato = false;
-  try {
-    registroContrato = await lerRegistro(id);
-  } catch (e) {
-    // So o id e o tipo do erro: a mensagem pode trazer pedaco do payload.
-    console.error(`[contrato] ${id} nao consegui ler o registro do contrato`, (e as Error)?.name ?? "erro");
-    falhaAoLerContrato = true;
+  if (resultado.estado === "erro") {
+    // Nada do payload entra no log ou na tela. O erro de SELECT já foi
+    // registrado por lerComRetentativa; aqui cobre também falhas lançadas.
+    console.error(`[admin] ${id}: não consegui carregar o lead`, (resultado.erro as Error)?.name ?? "consulta");
+    return <FalhaCarregamentoLead />;
+  }
+  if (resultado.estado === "ausente") notFound();
+
+  const { lead, registroContrato, falhaAoLerContrato, erroContrato } = resultado;
+  if (falhaAoLerContrato) {
+    // O contrato falhou: mantém lead/proposta acessíveis e bloqueia a seção
+    // de contrato em vez de oferecer um rascunho que sobrescreva o existente.
+    console.error(`[contrato] ${id} nao consegui ler o registro do contrato`, (erroContrato as Error)?.name ?? "erro");
   }
 
   return (
@@ -44,7 +53,7 @@ export default async function PaginaDetalhe({ params }: { params: Promise<{ id: 
       </Link>
 
       <DetalheLead
-        lead={data as Lead}
+        lead={lead}
         registroContrato={registroContrato}
         falhaAoLerContrato={falhaAoLerContrato}
         // "Hoje" em Sao Paulo, calculado AQUI: o servidor da Vercel roda em UTC

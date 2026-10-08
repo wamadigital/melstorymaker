@@ -31,7 +31,8 @@ import {
   type AtalhoStatus,
 } from "@/lib/admin/status";
 import { dataHoraLocal } from "@/lib/pdf/formatadores";
-import { linkConversaLead, linkPropostaWhatsApp } from "@/lib/whatsapp";
+import { linkPropostaWhatsApp } from "@/lib/whatsapp";
+import { linkContatoInicial, textoExclusao } from "@/lib/admin/acoes";
 import { cn } from "@/lib/utils";
 import type { RegistroContrato, StatusContrato } from "@/lib/contrato/tipos";
 
@@ -51,30 +52,6 @@ export type PropsContratoDoLead = {
   assinaturaConfigurada: boolean;
   assinaturaDryRun: boolean;
 };
-
-/** O que a exclusao do lead leva junto, dito conforme o estado do contrato. */
-function textoExclusao(
-  sujeito: string,
-  statusContrato: StatusContrato | null,
-  contratoDesconhecido: boolean,
-): string {
-  const cabeca = `Excluir o lead ${sujeito || "sem nome"}?`;
-  const fim = "Não dá para desfazer.";
-  if (contratoDesconhecido) {
-    // A leitura do contrato falhou: pelo pior caso, que e haver um assinado.
-    return `${cabeca}\n\nIsso apaga também a proposta em PDF e o contrato deste lead, se houver, inclusive um contrato já assinado.\n\n${fim}`;
-  }
-  if (statusContrato === "assinado") {
-    return `${cabeca}\n\nIsso apaga também a proposta em PDF e o CONTRATO ASSINADO, com a trilha de auditoria. Se precisar guardar, baixe as cópias antes.\n\n${fim}`;
-  }
-  if (statusContrato === "enviado") {
-    return `${cabeca}\n\nIsso apaga também a proposta em PDF e o contrato, e cancela o envio para assinatura (os links que as pessoas receberam deixam de valer).\n\n${fim}`;
-  }
-  if (statusContrato) {
-    return `${cabeca}\n\nIsso apaga também a proposta em PDF e o contrato (dados, texto e PDF).\n\n${fim}`;
-  }
-  return `${cabeca}\n\nIsso apaga também a proposta em PDF. ${fim}`;
-}
 
 export function DetalheLead({
   lead,
@@ -122,7 +99,7 @@ export function DetalheLead({
   // Puxar conversa so faz sentido ANTES de existir proposta: com PDF gerado, o
   // botao certo e "Enviar via WhatsApp", logo abaixo. Dois botoes de WhatsApp
   // lado a lado obrigariam a Mel a escolher entre eles a cada lead.
-  const linkChamar = pdfUrl ? null : linkConversaLead(whatsapp);
+  const linkChamar = pdfUrl ? null : linkContatoInicial(status, whatsapp);
 
   async function salvar() {
     setAcao("salvar");

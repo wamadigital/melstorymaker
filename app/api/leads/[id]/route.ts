@@ -5,6 +5,7 @@ import { idsValidos, limparRespostasOrfas, passosVisiveis } from "@/lib/form/eng
 import { CATEGORIAS, type Respostas } from "@/lib/form/types";
 import { colunasPromovidas } from "@/lib/leads";
 import { excedeuLimite, ipDaRequisicao, LIMITES } from "@/lib/rate-limit";
+import { atualizarVersaoLead, CAMPOS_VERSAO_LEAD, corpoBaseLead, mesmaVersaoLead } from "@/lib/form/versao-lead";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -12,9 +13,13 @@ const uuid = z.string().uuid();
 
 const corpoPatch = z.object({
   respostas: z.record(z.string(), z.string()).optional(),
-  passo_atual: z.string().optional(),
+  passo_atual: z.string().nullable().optional(),
   categoria: z.enum(CATEGORIAS).optional(),
-});
+  base: corpoBaseLead.optional(),
+}).refine(
+  (valor) => !valor.base || (valor.categoria !== undefined && valor.respostas !== undefined && Object.hasOwn(valor, "passo_atual")),
+  { message: "Com base, envie categoria, respostas e passo_atual completos." },
+);
 
 /**
  * GET /api/leads/[id] -- retomada do formulario (RF-04).
@@ -71,7 +76,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
 
   const { data: lead, error: erroLeitura } = await supabaseAdmin()
     .from("leads")
-    .select("id, categoria, status, respostas")
+    .select(CAMPOS_VERSAO_LEAD)
     .eq("id", id)
     .maybeSingle();
 
@@ -83,9 +88,8 @@ export async function PATCH(req: Request, { params }: Ctx) {
     return NextResponse.json({ erro: "Lead não encontrado." }, { status: 404 });
   }
   if (lead.status !== "incompleto") {
-    return NextResponse.json({ erro: "Esse formulário já foi enviado." }, { status: 409 });
+    return NextResponse.json({ erro: "Esse formulário já foi enviado.", codigo: "formulario_enviado" }, { status: 409 });
   }
-
   // Trocar de categoria zera o fluxo anterior mas preserva o contato ja digitado.
   const trocouCategoria = !!parsed.data.categoria && parsed.data.categoria !== lead.categoria;
   const categoria = parsed.data.categoria ?? lead.categoria;
@@ -101,9 +105,16 @@ export async function PATCH(req: Request, { params }: Ctx) {
   // Sem isso, qualquer um injeta campo arbitrario no jsonb.
   const permitidos = idsValidos(categoria);
   const recebidas = parsed.data.respostas ?? {};
-  const mescladas: Respostas = { ...base };
+  // O cliente com base manda o snapshot inteiro: campos ausentes foram removidos
+  // (inclusive ao trocar de categoria e voltar antes de a fila enviar). O
+  // cliente anterior, sem base, continua podendo mandar apenas um delta.
+  const mescladas: Respostas = parsed.data.base ? {} : { ...base };
+  const recebidasValidas: Respostas = {};
   for (const [chave, valor] of Object.entries(recebidas)) {
-    if (permitidos.has(chave)) mescladas[chave] = valor;
+    if (permitidos.has(chave)) {
+      mescladas[chave] = valor;
+      recebidasValidas[chave] = valor;
+    }
   }
 
   const respostas = limparRespostasOrfas(categoria, mescladas);
@@ -117,16 +128,41 @@ export async function PATCH(req: Request, { params }: Ctx) {
       ? passoPedido
       : (visiveis[0]?.id ?? null);
 
-  const { error } = await supabaseAdmin()
-    .from("leads")
-    .update({ categoria, respostas, passo_atual, ...colunasPromovidas(categoria, respostas) })
-    .eq("id", id)
-    .eq("status", "incompleto");
+  if (parsed.data.base && !mesmaVersaoLead(parsed.data.base, lead)) {
+    // A escrita anterior pode ter sido gravada e perdido apenas a resposta.
+    // Reconhece o replay exato sem nova escrita; uma resposta diferente continua
+    // em conflito e nunca e reaplicada sobre a versao da outra aba.
+    const snapshotCompleto = parsed.data.categoria && parsed.data.respostas && Object.hasOwn(parsed.data, "passo_atual");
+    if (snapshotCompleto && mesmaVersaoLead({
+      categoria,
+      respostas: limparRespostasOrfas(categoria, recebidasValidas),
+      passo_atual,
+    }, lead)) {
+      return NextResponse.json({ ok: true, categoria: lead.categoria, respostas: lead.respostas ?? {}, passo_atual: lead.passo_atual });
+    }
+    return NextResponse.json(
+      { erro: "Esse formulário mudou em outra tela. Suas respostas continuam neste aparelho.", codigo: "conflito_respostas" },
+      { status: 409 },
+    );
+  }
 
-  if (error) {
-    console.error("[leads] falha no autosave", error);
+  const escrita = await atualizarVersaoLead(lead, { categoria, respostas, passo_atual, ...colunasPromovidas(categoria, respostas) });
+
+  if (escrita.tipo === "erro") {
+    console.error("[leads] falha no autosave", escrita.erro);
     return NextResponse.json({ erro: "Não consegui salvar agora." }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true, categoria, respostas, passo_atual });
+  if (escrita.tipo === "mudou") {
+    if (escrita.lead && escrita.lead.status !== "incompleto") {
+      return NextResponse.json({ erro: "Esse formulário já foi enviado.", codigo: "formulario_enviado" }, { status: 409 });
+    }
+    return NextResponse.json(
+      { erro: "Esse formulário mudou em outra tela. Suas respostas continuam neste aparelho.", codigo: "conflito_respostas" },
+      { status: 409 },
+    );
+  }
+
+  const salvo = escrita.lead;
+  return NextResponse.json({ ok: true, categoria: salvo.categoria, respostas: salvo.respostas ?? {}, passo_atual: salvo.passo_atual });
 }

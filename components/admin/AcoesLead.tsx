@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ROTULO_STATUS, TEMA_COLUNA } from "@/lib/admin/rotulos";
 import { recusarMovimento } from "@/lib/admin/status";
+import { avisoPropostaEnviada, textoExclusao } from "@/lib/admin/acoes";
 import { STATUS, type Status } from "@/lib/form/types";
 import { linkPropostaWhatsApp } from "@/lib/whatsapp";
 import { cn } from "@/lib/utils";
@@ -62,7 +63,8 @@ export function AcoesLead({
       const r = await fetch(`/api/admin/leads/${id}/enviar`, { method: "POST" });
       const json = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(json.erro ?? "Não consegui enviar.");
-      toast.success(`Proposta enviada para ${nome || "o lead"}.`);
+      const aviso = avisoPropostaEnviada(nome, json.dryRun === true);
+      toast[aviso.tipo](aviso.texto);
       router.refresh();
     } catch (e) {
       toast.error((e as Error).message);
@@ -74,9 +76,7 @@ export function AcoesLead({
   async function excluir() {
     // window.confirm de proposito: exclusao e irreversivel e o dialogo nativo
     // nao tem como ser clicado por engano num toque perdido na lista.
-    const certeza = window.confirm(
-      `Excluir o lead ${nome || "sem nome"}?\n\nIsso apaga também a proposta em PDF. Não dá para desfazer.`,
-    );
+    const certeza = window.confirm(textoExclusao(nome, null, true));
     if (!certeza) return;
 
     setOcupado("excluir");

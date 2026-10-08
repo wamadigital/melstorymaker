@@ -12,10 +12,12 @@ import { env } from "@/lib/env";
 import { EVENTO, idEvento } from "@/lib/meta/eventos";
 import { enviarConversao } from "@/lib/meta/conversoes";
 import { origemDaRequisicao, rastreioDaRequisicao } from "@/lib/meta/rastreio";
+import { atualizarVersaoLead, CAMPOS_VERSAO_LEAD, corpoBaseLead, mesmaVersaoLead } from "@/lib/form/versao-lead";
 
 type Ctx = { params: Promise<{ id: string }> };
 
 const uuid = z.string().uuid();
+const corpoSubmit = z.object({ base: corpoBaseLead.optional() });
 
 /**
  * POST /api/leads/[id]/submit -- fecha o formulario (RF-07).
@@ -34,9 +36,23 @@ export async function POST(req: Request, { params }: Ctx) {
     return NextResponse.json({ erro: "Lead não encontrado." }, { status: 404 });
   }
 
+  // POST sem corpo continua valido para os clientes anteriores. O cliente novo
+  // manda a ultima base confirmada, para nao fechar as respostas de outra aba.
+  let json: unknown;
+  try {
+    const texto = await req.text();
+    json = texto.trim() ? JSON.parse(texto) : {};
+  } catch {
+    json = null;
+  }
+  const parsed = corpoSubmit.safeParse(json);
+  if (!parsed.success) {
+    return NextResponse.json({ erro: "Payload inválido." }, { status: 400 });
+  }
+
   const { data: lead, error: erroLeitura } = await supabaseAdmin()
     .from("leads")
-    .select("id, categoria, status, respostas")
+    .select(CAMPOS_VERSAO_LEAD)
     .eq("id", id)
     .maybeSingle();
 
@@ -51,7 +67,19 @@ export async function POST(req: Request, { params }: Ctx) {
   // Reenvio do mesmo formulario (duplo clique, retomada) nao e erro: se ja
   // passou por aqui, o estado desejado ja existe.
   if (lead.status !== "incompleto") {
+    if (parsed.data.base && !mesmaVersaoLead(parsed.data.base, lead)) {
+      return NextResponse.json(
+        { erro: "Esse formulário já foi enviado com outras respostas. Seu rascunho continua neste aparelho.", codigo: "conflito_respostas" },
+        { status: 409 },
+      );
+    }
     return NextResponse.json({ ok: true, status: lead.status });
+  }
+  if (parsed.data.base && !mesmaVersaoLead(parsed.data.base, lead)) {
+    return NextResponse.json(
+      { erro: "Esse formulário mudou em outra tela. Suas respostas continuam neste aparelho.", codigo: "conflito_respostas" },
+      { status: 409 },
+    );
   }
 
   const respostas = (lead.respostas ?? {}) as Respostas;
@@ -65,21 +93,37 @@ export async function POST(req: Request, { params }: Ctx) {
   }
 
   const promovidas = colunasPromovidas(lead.categoria, respostas);
-  const { error } = await supabaseAdmin()
-    .from("leads")
-    .update({ status: "aguardando_revisao", ...promovidas })
-    .eq("id", id)
-    .eq("status", "incompleto");
+  const escrita = await atualizarVersaoLead(lead, { status: "aguardando_revisao", ...promovidas });
 
-  if (error) {
-    console.error("[leads] falha no submit", error);
+  if (escrita.tipo === "erro") {
+    console.error("[leads] falha no submit", escrita.erro);
     return NextResponse.json({ erro: "Não consegui enviar agora." }, { status: 500 });
+  }
+
+  if (escrita.tipo === "mudou") {
+    // Outro submit venceu: devolve o estado atual, sem avisar a Mel nem mandar
+    // CAPI de novo. Se foi um autosave, o que validamos ja nao e a versao atual.
+    const atual = escrita.lead;
+    if (atual && atual.status !== "incompleto") {
+      const validada = parsed.data.base ?? { categoria: lead.categoria, respostas, passo_atual: lead.passo_atual };
+      if (!mesmaVersaoLead(validada, atual)) {
+        return NextResponse.json(
+          { erro: "Esse formulário já foi enviado com outras respostas. Seu rascunho continua neste aparelho.", codigo: "conflito_respostas" },
+          { status: 409 },
+        );
+      }
+      return NextResponse.json({ ok: true, status: atual.status });
+    }
+    return NextResponse.json(
+      { erro: "Esse formulário mudou em outra tela. Suas respostas continuam neste aparelho.", codigo: "conflito_respostas" },
+      { status: 409 },
+    );
   }
 
   // Avisa a Mel DEPOIS de responder ao lead: after() roda pos-resposta, entao
   // gateway lento ou fora do ar nao atrasa nem quebra o submit. Dispara so
-  // aqui, na transicao incompleto -> aguardando_revisao (o guard de status
-  // acima ja engoliu reenvio e duplo clique).
+  // aqui, na transicao incompleto -> aguardando_revisao: a linha devolvida pelo
+  // UPDATE escolhe o vencedor, inclusive quando duas leituras viram incompleto.
   after(async () => {
     await notificarMel(
       mensagemNovoLead(lead.categoria, respostas, `${env.APP_URL.replace(/\/+$/, "")}/admin`),

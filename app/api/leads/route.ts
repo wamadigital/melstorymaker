@@ -17,8 +17,11 @@ import { origemDaRequisicao, paraGuardar, rastreioDaRequisicao } from "@/lib/met
 const corpo = z.object({
   categoria: z.enum(CATEGORIAS),
   respostas: z.record(z.string(), z.string()).optional(),
-  passo_atual: z.string().optional(),
+  passo_atual: z.string().nullable().optional(),
+  tentativa_id: z.string().uuid().optional(),
 });
+
+const camposCriacao = "id, categoria, passo_atual, respostas, status";
 
 /**
  * POST /api/leads -- cria o lead no primeiro avanco do formulario (RF-02).
@@ -65,6 +68,7 @@ export async function POST(req: Request) {
   const { data, error } = await supabaseAdmin()
     .from("leads")
     .insert({
+      ...(parsed.data.tentativa_id && { id: parsed.data.tentativa_id }),
       categoria,
       status: "incompleto",
       respostas,
@@ -73,11 +77,28 @@ export async function POST(req: Request) {
       // painel sem esperar o proximo autosave.
       ...promovidas,
     })
-    .select("id, categoria, passo_atual")
+    .select(camposCriacao)
     .single();
 
   if (error) {
-    console.error("[leads] falha ao criar lead", error);
+    // O mesmo UUID torna a repeticao segura mesmo se o INSERT anterior ocorreu
+    // e somente a resposta se perdeu. Nunca fazer upsert: respostas e status
+    // podem ter avancado depois da primeira tentativa.
+    if (error.code === "23505" && parsed.data.tentativa_id) {
+      const { data: existente, error: erroRecuperacao } = await supabaseAdmin()
+        .from("leads")
+        .select(camposCriacao)
+        .eq("id", parsed.data.tentativa_id)
+        .maybeSingle();
+      if (existente && !erroRecuperacao) {
+        // Recuperacao tem a mesma superficie do GET publico pelo UUID. Somente
+        // a criacao vencedora agenda rastreio e Lead; repeticao nao tem efeitos.
+        return NextResponse.json(existente);
+      }
+      console.error("[leads] falha ao recuperar tentativa de criacao", erroRecuperacao ?? error);
+    } else {
+      console.error("[leads] falha ao criar lead", error);
+    }
     return NextResponse.json({ erro: "Não consegui salvar agora. Tenta de novo?" }, { status: 500 });
   }
 

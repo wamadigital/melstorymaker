@@ -89,7 +89,14 @@ export function estadoLembrete(
   if (!temCobranca(coluna) || !lead.enviado_em) return SEM_LEMBRETE;
 
   const dias = diasCorridos(lead.enviado_em, agoraMs);
-  const cobrado: Marco | null = lead.lembrete_30_em ? 30 : lead.lembrete_7_em ? 7 : null;
+  // Reenviar a proposta reinicia o relógio. Os carimbos ficam no banco como
+  // histórico, mas só uma cobrança do envio vigente pode silenciar o cartão.
+  const enviadoMs = Date.parse(lead.enviado_em);
+  const nesteEnvio = (carimbo: string | null) =>
+    !!carimbo && Number.isFinite(enviadoMs) && Date.parse(carimbo) >= enviadoMs;
+  const cobrado7 = nesteEnvio(lead.lembrete_7_em);
+  const cobrado30 = nesteEnvio(lead.lembrete_30_em);
+  const cobrado: Marco | null = cobrado30 ? 30 : cobrado7 ? 7 : null;
 
   // A ordem importa: aos 40 dias o marco e 30 mesmo que os 7 nunca tenham sido
   // cobrados. Cobrar "faz uma semana" em cima de um lead de mes e meio seria
@@ -97,7 +104,7 @@ export function estadoLembrete(
   const marco: Marco | null =
     dias >= DIAS_LEMBRETE_2 ? 30 : dias >= DIAS_LEMBRETE_1 ? 7 : null;
 
-  const jaCobrado = marco === 30 ? !!lead.lembrete_30_em : marco === 7 ? !!lead.lembrete_7_em : true;
+  const jaCobrado = marco === 30 ? cobrado30 : marco === 7 ? cobrado7 : true;
 
   return { dias, marco, pendente: jaCobrado ? null : marco, cobrado };
 }

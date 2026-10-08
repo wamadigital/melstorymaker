@@ -8,7 +8,7 @@ import { BotaoLembreteEmail } from "@/components/admin/BotaoLembreteEmail";
 import { ChamarWhatsApp } from "@/components/admin/ChamarWhatsApp";
 import { estadoLembrete, SELO_LEMBRETE, temaCobranca } from "@/lib/admin/lembretes";
 import { estadoLembreteEmail } from "@/lib/admin/lembrete-email";
-import { linkConversaLead } from "@/lib/whatsapp";
+import { linkContatoInicial } from "@/lib/admin/acoes";
 import { DESCRICAO_COLUNA, TEMA_COLUNA, rotuloCategoria, rotuloPasso } from "@/lib/admin/rotulos";
 import type { LeadCartao } from "@/lib/admin/tipos";
 import type { Status } from "@/lib/form/types";
@@ -72,7 +72,7 @@ export function CartaoLead({
   // Abre a conversa VAZIA: a mensagem quem escreve e a Mel (ver
   // `linkConversaLead`). Ao lado vai a caixa "ja chamei", que apaga o botao
   // enquanto o lead nao responde (ver `ChamarWhatsApp`).
-  const chamar = coluna === "incompleto" ? linkConversaLead(lead.whatsapp) : null;
+  const chamar = linkContatoInicial(coluna, lead.whatsapp);
 
   // Logo abaixo, o lembrete por e-mail: tambem so em "Novo", e so com e-mail.
   // O clique envia e o botao trava por 7 dias (ver `lib/admin/lembrete-email.ts`).

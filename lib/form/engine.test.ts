@@ -107,9 +107,9 @@ test("normalizarOpcoes aceita as duas formas do arvore.json", () => {
   ]);
 });
 
-test("dataMinima usa a data local, nao UTC", () => {
+test("dataMinima usa o dia de Sao Paulo, nao UTC", () => {
   // 23h45 em Brasilia (UTC-3) ja e o dia seguinte em UTC. Deve continuar dia 14.
-  const noite = new Date(2026, 2, 14, 23, 45);
+  const noite = new Date("2026-03-15T02:45:00Z");
   assert.equal(dataMinima({ min: "hoje" } as Passo, noite), "2026-03-14");
 });
 

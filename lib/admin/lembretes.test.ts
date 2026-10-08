@@ -96,6 +96,48 @@ test("com as duas cobranças feitas o cartão silencia e mostra o selo de 30 dia
   assert.equal(estado.cobrado, 30, "é este selo que diz à Mel que dá para arquivar");
 });
 
+test("reenviar reinicia cobranças e selos sem apagar carimbos do envio anterior", () => {
+  const antigo7 = new Date(AGORA - 50 * DIA).toISOString();
+  const antigo30 = new Date(AGORA - 40 * DIA).toISOString();
+  for (const dias of [0, 6, 7, 29, 30]) {
+    const lead = enviadoHa(dias, { lembrete_7_em: antigo7, lembrete_30_em: antigo30 });
+    const antes = { ...lead };
+    for (const coluna of ["enviado", "esfriou"] as const) {
+      const estado = estadoLembrete(lead, coluna, AGORA);
+      assert.equal(estado.pendente, dias >= 30 ? 30 : dias >= 7 ? 7 : null, `${coluna}/${dias}`);
+      assert.equal(estado.cobrado, null, "cobrança antiga não vira selo no envio vigente");
+    }
+    assert.deepEqual(lead, antes, "a leitura do estado preserva o histórico");
+  }
+});
+
+test("só carimbos iguais ou posteriores ao envio vigente silenciam a cobrança", () => {
+  for (const dias of [7, 30]) {
+    const lead = enviadoHa(dias);
+    const coluna = dias === 7 ? "lembrete_7_em" : "lembrete_30_em";
+    const enviadoMs = Date.parse(lead.enviado_em);
+    for (const deslocamento of [-1, 0, 1]) {
+      const carimbo = new Date(enviadoMs + deslocamento).toISOString();
+      const estado = estadoLembrete({ ...lead, [coluna]: carimbo }, "esfriou", AGORA);
+      assert.equal(estado.pendente, deslocamento < 0 ? dias : null);
+      assert.equal(estado.cobrado, deslocamento < 0 ? null : dias);
+    }
+    const invalido = estadoLembrete({ ...lead, [coluna]: "nao e data" }, "esfriou", AGORA);
+    assert.equal(invalido.pendente, dias);
+    assert.equal(invalido.cobrado, null);
+  }
+});
+
+test("carimbo antigo de 30 dias não esconde cobrança válida de 7 dias do novo envio", () => {
+  const lead = enviadoHa(31, {
+    lembrete_7_em: new Date(AGORA - 24 * DIA).toISOString(),
+    lembrete_30_em: new Date(AGORA - 40 * DIA).toISOString(),
+  });
+  const estado = estadoLembrete(lead, "esfriou", AGORA);
+  assert.equal(estado.cobrado, 7);
+  assert.equal(estado.pendente, 30);
+});
+
 test("a mensagem de cobrança leva o link da proposta de volta", () => {
   // Faz 7 (ou 30) dias: obrigar a pessoa a caçar a conversa antiga perderia o
   // lead pelo mesmo motivo de novo.

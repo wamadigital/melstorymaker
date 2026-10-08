@@ -3,23 +3,29 @@ import fs from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
 import { CHAVE_LEAD, caminhoContinuar } from "./retomada";
+import { guardarLead, lerLeadSalvo } from "./persistencia";
+import { GET } from "@/app/continuar/[id]/route";
 
-test("o link do lembrete grava a mesma chave que o formulário lê", () => {
-  // Divergir aqui nao quebra nada visivel: o link do e-mail so passa a abrir o
-  // formulario do zero, e o lead perde as respostas que ja tinha dado. O
-  // formulario pode importar a constante ou declarar a propria -- o que nao
-  // pode e usar outra.
-  const fonte = fs.readFileSync(
-    path.join(process.cwd(), "app/formulario/FormularioClient.tsx"),
-    "utf8",
-  );
-  const importa = /from "@\/lib\/form\/retomada"/.test(fonte);
-  const propria = /const CHAVE_LEAD = "([^"]+)"/.exec(fonte)?.[1];
-  assert.ok(
-    importa || propria === CHAVE_LEAD,
-    `FormularioClient usa "${propria}", e /continuar grava "${CHAVE_LEAD}"`,
-  );
-  assert.ok(/localStorage\.(get|set)Item\(CHAVE_LEAD/.test(fonte), "o formulário lê pela constante");
+test("o link do lembrete grava a chave que a persistencia do formulario lê", async () => {
+  const id = "3f1c2a9e-8b7d-4c6e-9a1b-2c3d4e5f6a7b";
+  const valores = new Map<string, string>();
+  const armazenamento = {
+    getItem: (chave: string) => valores.get(chave) ?? null,
+    setItem: (chave: string, valor: string) => { valores.set(chave, valor); },
+    removeItem: (chave: string) => { valores.delete(chave); },
+  };
+  const resposta = await GET(new Request(`https://mel.invalid/continuar/${id}`), { params: Promise.resolve({ id }) });
+  const html = await resposta.text();
+  // Executa somente a gravação de retomada extraída da resposta real, sem navegação.
+  const gravacao = html.match(/<script>(try\{localStorage\.setItem.*?catch\(e\)\{\})/)?.[1];
+  assert.ok(gravacao);
+  new Function("localStorage", gravacao)(armazenamento);
+  assert.equal(lerLeadSalvo(armazenamento), id);
+  assert.equal(valores.get(CHAVE_LEAD), id);
+  guardarLead("novo-lead", armazenamento);
+  assert.equal(lerLeadSalvo(armazenamento), "novo-lead");
+  assert.equal(resposta.headers.get("Referrer-Policy"), "no-referrer");
+  assert.ok(!html.includes("fbq"), "o UUID não entra em uma página com Pixel");
 });
 
 test("o caminho do link é o da página de passagem", () => {

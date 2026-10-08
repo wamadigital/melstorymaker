@@ -21,6 +21,7 @@ import { adicionalDoCatalogo, novoAdicional, pacoteDoCatalogo, precoPacote } fro
 import { normalizarEmail } from "@/lib/contrato/documento";
 import { pagamentoDoPreset } from "@/lib/contrato/pagamento";
 import { normalizarComparacao } from "@/lib/contrato/texto";
+export { hojeEmSaoPaulo } from "@/lib/data-local";
 
 /** Maioridade civil (CC art. 5º). Abaixo disso, quem contrata e o responsavel. */
 export const MAIORIDADE = 18;
@@ -106,25 +107,6 @@ export function contextoDoLead(lead: Pick<Lead, "categoria" | "respostas">, hoje
     hojeISO,
     entregaSolicitada: (respostas.entrega ?? "").trim(),
   };
-}
-
-/**
- * "Hoje" em America/Sao_Paulo, em ISO ("2026-09-29").
- *
- * Calculado no SERVIDOR e passado adiante (para a pagina e para a montagem):
- * o servidor da Vercel roda em UTC, e depois das 21h de Brasilia um
- * `toISOString()` ja seria amanha -- o que faria uma parcela que vence hoje
- * parecer vencida.
- */
-export function hojeEmSaoPaulo(agora: Date | number): string {
-  const partes = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/Sao_Paulo",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(typeof agora === "number" ? new Date(agora) : agora);
-  const parte = (tipo: Intl.DateTimeFormatPartTypes) => partes.find((p) => p.type === tipo)?.value ?? "";
-  return `${parte("year")}-${parte("month")}-${parte("day")}`;
 }
 
 // ---------------------------------------------------------- listas do painel --

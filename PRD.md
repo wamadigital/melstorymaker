@@ -33,9 +33,9 @@ Estas decisões já foram tomadas e não devem ser reabertas durante o desenvolv
 3. **Envio ao lead por e-mail.** Complementado por botão `wa.me` no painel para a Mel encaminhar o link do PDF pelo WhatsApp dela (canal onde o lead já está). Sem API de WhatsApp, custo zero.
 4. **E-mail pelo Gmail da Mel, via SMTP.** Nodemailer + App Password, atrás da interface `MailAdapter`. Sem serviço transacional: a conta Google Workspace entrega 2.000 destinatários/dia, muito acima do volume da Mel, e não custa nada. O Google reescreve o remetente para a conta autenticada, então a proposta chega do endereço configurado em `GMAIL_USER`.
 5. **Form engine próprio com árvore declarativa em JSON.** Uma pergunta por tela, estilo Typeform, mobile-first. Sem Typeform/mensalidade.
-6. **Etapa de contato adicionada ao final do formulário.** E-mail obrigatório (sem ele não existe envio), WhatsApp opcional (alimenta o botão de compartilhamento).
+6. **Contato em duas etapas obrigatórias.** WhatsApp com DDD é a primeira pergunta de todo fluxo, para permitir contato mesmo em caso de abandono. O e-mail validado é a última pergunta, necessário para enviar a proposta por e-mail.
 7. **Preço e pacotes ficam na arte estática.** Os valores já estão desenhados na proposta de cada categoria. Nenhuma lógica de precificação no MVP.
-8. **Lead parcial é lead.** O registro é criado na primeira interação (escolha da categoria) e salvo a cada passo. Abandono no meio ainda deixa dados para a Mel fazer follow-up.
+8. **Lead parcial com telefone é lead.** Escolher a categoria não grava nada. O registro nasce no primeiro avanço, depois de responder um WhatsApp válido, já com essa resposta; os avanços seguintes salvam as respostas parciais para a Mel fazer follow-up.
 
 ## 4. Escopo
 
@@ -88,7 +88,8 @@ Tela de confirmação        (status: aguardando_revisao)
 [Mel no /admin] vê o lead novo > confere/edita respostas > "Gerar proposta"
         v                    (PDF gerado, salvo no Storage, preview no painel)
 Mel revisa o PDF > "Enviar por e-mail" e/ou "Enviar via WhatsApp"
-        v                    (status: enviado, timestamp registrado)
+        v                    (e-mail marca enviado; WhatsApp só abre a conversa,
+                              e a Mel marca como enviado no painel)
 [Lead] recebe e-mail com PDF anexo + link
 ```
 
@@ -188,12 +189,12 @@ Regras do engine:
 | RF-01 | Formulário público em `/formulario`, sem login | Link abre direto na tela de boas-vindas em qualquer navegador mobile, com as duas portas (falar com a Mel / pedir orçamento) lado a lado |
 | RF-02 | O lead nasce quando a pessoa responde o WhatsApp e avança | Escolher a categoria não grava nada; o registro aparece com `status = incompleto`, o WhatsApp no jsonb e a coluna `whatsapp` promovida, já na criação |
 | RF-03 | Uma pergunta por tela, avanço por clique ou Enter, botão voltar, barra de progresso | Navegável 100% por teclado no desktop e por toque no mobile |
-| RF-04 | Autosave a cada avanço de passo | Fechar a aba e reabrir o link no mesmo device retoma do passo onde parou (leadId em localStorage) |
+| RF-04 | Autosave a cada avanço de passo, com recuperação de alterações pendentes | O primeiro avanço exige rede para criar o lead. Depois disso, o rascunho pendente preserva categoria, respostas e passo no mesmo navegador. Na recarga, a retomada consulta o servidor e reaplica o rascunho somente se o lead continua em Novo; uma falha preserva o identificador e oferece retentativa sem criar outro lead. Falha de rede/servidor é tentada novamente ao voltar a conexão ou a aba; conflito entre abas preserva o rascunho e exige escolha explícita. O painel recebe só o estado confirmado, e o envio final aguarda a fila de autosave. Cada confirmação limpa apenas o que foi salvo; submit confirmado limpa somente o rascunho do lead atual |
 | RF-05 | Ramificação do making of | Responder "Não" pula direto para a pergunta de entrega; "Sim" exibe o local do making of |
-| RF-06 | Etapa de contato com e-mail validado (obrigatório) e WhatsApp com máscara BR (opcional) | E-mail inválido bloqueia o avanço com mensagem clara |
+| RF-06 | WhatsApp obrigatório e com máscara BR na primeira pergunta; e-mail obrigatório e validado na última | WhatsApp vazio, DDD ou formato inválido bloqueiam o primeiro avanço; o lead nasce só depois dessa validação. E-mail vazio ou inválido bloqueia a conclusão com mensagem clara |
 | RF-07 | Submit final muda status e confirma | `status = aguardando_revisao`, tela de confirmação exibida com CTA de WhatsApp da Mel |
 | RF-08 | Admin protegido por login (Supabase Auth), sem tela de signup | Usuária única da Mel criada via seed/dashboard; rota `/admin` inacessível sem sessão |
-| RF-09 | Lista de leads com filtro por status e busca por nome | Leads incompletos aparecem na lista com indicação do passo onde pararam |
+| RF-09 | Kanban de leads com seis status, busca por nome e filtros por categoria e período de chegada | As raias são Novo, Aguardando revisão, Enviado, Virou cliente, Esfriou e Lead perdido. Os filtros e a busca ficam na URL; o cartão de Novo mostra a pergunta em que o lead parou. Cada raia ordena pela chegada, do mais novo para o mais antigo, e informa quando o teto de 50 cartões corta resultados |
 | RF-10 | Detalhe do lead com respostas editáveis | Mel corrige um nome com erro de digitação e salva antes de gerar o PDF |
 | RF-11 | Geração de PDF por categoria | Botão "Gerar proposta" aplica os campos dinâmicos no template da categoria, salva no Storage e exibe preview embedado no painel |
 | RF-12 | Envio por e-mail | Botão "Enviar por e-mail" dispara mensagem com PDF anexo + link; `status = enviado` com timestamp |
@@ -212,35 +213,51 @@ Rotas:
 
 ```
 /admin/login          Login (e-mail + senha, Supabase Auth)
-/admin                Lista de leads
+/admin                Quadro Kanban de leads
 /admin/leads/[id]     Detalhe + ações
 ```
 
-Lista (`/admin`):
+Quadro (`/admin`):
 
-1. Colunas: Nome, Categoria, Data do evento, Status, Recebido em
-2. Filtro por status (Todos / Incompletos / Aguardando revisão / Enviados)
-3. Busca por nome
-4. Ordenação padrão: mais recente primeiro
-5. Badge visual por status (incompleto = cinza, aguardando_revisao = destaque, enviado = verde)
+| Elemento | Comportamento |
+|---|---|
+| Raias | Novo, Aguardando revisão, Enviado, Virou cliente, Esfriou e Lead perdido, nessa ordem |
+| Cartão | Sujeito do evento, categoria, data do evento, data de chegada e sinais de PDF/e-mail/WhatsApp; em Novo, mostra onde o preenchimento parou |
+| Busca e filtros | Busca pelo nome do sujeito do evento, categoria e período de chegada (Todo o período, Hoje, Esta semana, Este mês), mantidos na URL. A semana começa na segunda-feira e os cortes usam São Paulo |
+| Ordem e limite | Mais novos primeiro em todas as raias; até 50 cartões por raia, com contagem total e aviso quando existem outros resultados |
+| Movimentação | Arraste ou menu do cartão; não permite voltar para Novo. Enviado e Esfriou exigem PDF; Cliente e Perdido não exigem. Uma tela desatualizada recebe aviso e recarrega o estado real |
+| Desktop e celular | Seis colunas no desktop, duas no tablet e seções recolhíveis empilhadas no celular. Lead perdido começa recolhida no celular; Esfriou começa aberta |
+| Cores | Novo em slate, revisão em âmbar, Enviado em azul, Cliente em verde, Esfriou em cinza frio e Perdido em stone. Aos 30 dias do envio, cobrança pendente deixa o cartão vermelho |
+| Contato de abandono | Em Novo e com WhatsApp válido, a conversa abre vazia; a caixa “já chamei” silencia o botão. Com e-mail, o lembrete explícito da Mel permite continuar o formulário e trava por sete dias |
+| Cobrança da proposta | Somente em Enviado e Esfriou, aos sete e 30 dias do envio. Cobrança marcada silencia o cartão; reenviar por e-mail reinicia a contagem sem apagar os carimbos anteriores, que deixam de silenciar o novo envio |
+| Falha de leitura | Cada raia apresenta seu próprio erro e ação de tentar novamente; a falha de uma não derruba as outras |
+
+O quadro executa a passagem de leads parados para Esfriou antes das consultas. A mesma regra roda no cron diário: abrir o painel também atualiza esses status no banco.
 
 Detalhe (`/admin/leads/[id]`):
 
-1. Todas as respostas em campos editáveis (bind direto no `respostas` jsonb) + botão Salvar
-2. Bloco de contato: e-mail e WhatsApp do lead
-3. Ação "Gerar proposta" > preview do PDF embedado (iframe)
-4. Ação "Enviar por e-mail" (habilitada só com PDF gerado)
-5. Ação "Enviar via WhatsApp" (habilitada só com PDF gerado)
-6. Ação "Baixar PDF"
-7. Histórico simples: gerado em, enviado em
+| Elemento | Comportamento |
+|---|---|
+| Respostas | Campos editáveis derivados da árvore do formulário e botão Salvar respostas; editar não substitui sozinho o PDF existente |
+| Contato | E-mail e WhatsApp do lead; Chamar no WhatsApp somente em Novo, com número válido e sem proposta gerada |
+| Proposta | Gerar/Regerar, preview, enviar por e-mail, enviar via WhatsApp e baixar PDF. E-mail exige PDF e endereço cadastrado; WhatsApp da proposta exige PDF |
+| Preview | Visualizador nativo em iframe no desktop; PDF paginado em canvas abaixo de 640px, com abertura em tela cheia |
+| Histórico | Datas de geração e envio, no fuso de São Paulo |
+| Status | Um botão de próximo passo e ação separada de Lead perdido; usam as mesmas regras de movimentação do quadro |
+| Contrato | Dados, texto, PDF e assinatura eletrônica, em seção própria; não altera o status do lead automaticamente. Ao terminar a assinatura, oferece mover para Virou cliente |
+| Exclusão | Confirmação informa proposta, contrato e arquivos que serão removidos; contrato desconhecido exige aviso conservador sobre assinado, trilha e envio ainda aberto |
+| Falha de leitura | Lead ilegível mostra erro e retentativa; lead realmente inexistente retorna 404. Contrato ilegível bloqueia sua seção e mantém lead/proposta acessíveis |
 
 Estados do lead:
 
-| Status | Significado | Transição |
+| Status | Raia | Entrada e regra |
 |---|---|---|
-| `incompleto` | Começou e não terminou o form | Criado na escolha da categoria |
-| `aguardando_revisao` | Form completo, esperando a Mel | Submit final do lead |
-| `enviado` | Proposta enviada por e-mail | Clique em "Enviar por e-mail" |
+| `incompleto` | Novo | Criado ao responder WhatsApp válido e avançar; somente aqui o formulário público aceita alterações. Nenhum outro estado volta para Novo |
+| `aguardando_revisao` | Aguardando revisão | Submit final do lead; a Mel também pode retornar um cartão para revisão pelo quadro |
+| `enviado` | Enviado | Envio por e-mail ou marcação manual da Mel após enviar por WhatsApp. Exige PDF; a primeira entrada registra `enviado_em`, e reenviar por e-mail atualiza essa data |
+| `virou_cliente` | Virou cliente | Decisão da Mel pelo quadro ou detalhe; permite registrar fechamento sem PDF |
+| `esfriou` | Esfriou | Passagem automática quando `enviado_em` e `updated_at` completam sete dias, somente a partir de Enviado; também aceita movimentação manual com PDF. Voltar para Enviado renova o prazo pelo último update |
+| `perdido` | Lead perdido | Somente decisão da Mel pelo quadro ou detalhe; nunca é marcado automaticamente |
 
 ## 9. Pipeline da proposta (PDF)
 
@@ -335,38 +352,26 @@ Sem número do lead: `https://wa.me/?text={mensagem_encoded}` (abre o seletor de
 
 ## 11. Modelo de dados
 
-```sql
-create type lead_categoria as enum ('debutante', 'aniversario', 'casamento', 'corporativo');
-create type lead_status as enum ('incompleto', 'aguardando_revisao', 'enviado');
+**Fonte de execução:** [supabase/schema.sql](supabase/schema.sql). Esse arquivo contém os enums completos, tabelas, alterações idempotentes para bancos existentes, índices, trigger de `updated_at`, RLS e buckets. Deve ser aplicado manualmente conforme suas instruções; este PRD descreve o uso dos dados e não mantém uma segunda cópia do SQL.
 
-create table leads (
-  id uuid primary key default gen_random_uuid(),
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  categoria lead_categoria not null,
-  status lead_status not null default 'incompleto',
-  respostas jsonb not null default '{}'::jsonb,
-  passo_atual text,
-  nome_display text,
-  data_evento date,
-  email text,
-  whatsapp text,
-  pdf_url text,
-  pdf_gerado_em timestamptz,
-  enviado_em timestamptz
-);
-
-create index leads_status_idx on leads (status);
-create index leads_created_idx on leads (created_at desc);
-
-alter table leads enable row level security;
-```
+| Grupo | Dados persistidos e finalidade |
+|---|---|
+| Identidade e datas do lead | `id`, `created_at`, `updated_at`; o trigger atualiza `updated_at` em toda alteração |
+| Evento e funil | `categoria` tem quatro valores: `debutante`, `aniversario`, `casamento` e `corporativo`. `status` tem os seis estados da seção 8 |
+| Formulário | `respostas` em jsonb e `passo_atual`; armazenam respostas e ponto de retomada do preenchimento |
+| Colunas promovidas | `nome_display`, `data_evento`, `email`, `whatsapp`, extraídos das respostas para consulta do painel e contato |
+| Proposta | `pdf_url`, `pdf_gerado_em`, `enviado_em`, `slug`; o código curto nasce ao gerar o PDF e mantém o link estável |
+| Acompanhamento | `lembrete_7_em`, `lembrete_30_em`, `lembrete_email_em`, `chamado_whatsapp_em`; registram cobranças e ações explícitas da Mel |
+| Atribuição Meta | `rastreio` em jsonb com identificadores do navegador/clique, user agent e IP; separado das respostas do formulário |
+| Contrato | Uma linha em `contratos` por lead, com dados, documento, avisos, PDF e estado da assinatura. A linha é removida por cascade ao excluir o lead; os arquivos são removidos pela rota admin antes da exclusão |
+| Storage | Bucket público `propostas` para os PDFs enviados ao lead; bucket privado `contratos` para rascunho, assinado e trilha, servidos pelas rotas autenticadas do admin |
 
 Regras:
 
 1. **Nenhuma policy pública.** Todo acesso do formulário passa por route handlers do Next.js usando a service role key (server-side). O client nunca fala direto com o Supabase para leads.
 2. `respostas` em jsonb: mudanças na árvore de perguntas não exigem migration.
-3. `nome_display` e `data_evento` são colunas promovidas (preenchidas no autosave) para a lista do admin ser rápida sem parse de jsonb.
+3. `nome_display`, `data_evento`, `email` e `whatsapp` são colunas promovidas, preenchidas junto das respostas na criação e no autosave. O quadro seleciona somente as colunas necessárias para o cartão.
+4. Contratos também têm RLS sem policies públicas; os arquivos privados exigem sessão admin e respostas sem cache compartilhado.
 
 ## 12. Arquitetura e stack
 
@@ -385,7 +390,7 @@ Regras:
 ```
 /app
   /formulario            Form público multi-etapas
-  /admin                 Painel (login, lista, detalhe)
+  /admin                 Painel (login, quadro Kanban, detalhe)
   /api
     /leads               POST (criar), PATCH [id] (autosave), POST [id]/submit
     /admin/leads/[id]    POST gerar-pdf, POST enviar
@@ -487,12 +492,12 @@ Qualquer dúvida, me chama! 🤍
 
 **Quem preenche não é quem o evento homenageia.** A cerimonialista preenche o casamento; a mãe preenche os 15 anos da filha. Por isso são dois conceitos:
 
-- `nome` — **sempre** quem está preenchendo o formulário. É a primeira pergunta de todo fluxo, e é quem recebe e lê o e-mail.
+- `nome` — **sempre** quem está preenchendo o formulário. Vem depois do WhatsApp no fluxo e identifica quem recebe e lê o e-mail.
 - Sujeito do evento — chave própria por categoria, com o mesmo nome da variável na arte do Figma: `{{debutante}}`, `{{aniversariante}}`, `{{noivos}}`, `{{empresa}}`.
 
 Regras derivadas:
 
-- `nome_display` (coluna promovida, lista do admin e PDF) = **sujeito do evento**. É assim que a Mel identifica um lead: "o casamento da Ana & João".
+- `nome_display` (coluna promovida, quadro do admin e PDF) = **sujeito do evento**. É assim que a Mel identifica um lead: "o casamento da Ana & João".
 - Saudação do e-mail e `primeiro_nome` do WhatsApp = **quem preencheu**. "Oi, Lúcia!" funciona seja ela a noiva, a mãe ou a cerimonialista.
 - A copy corporativa é a exceção: "Obrigada pelo interesse da {empresa}" usa o sujeito, porque a frase é sobre a empresa.
 

@@ -1,4 +1,5 @@
 import arvoreJson from "./arvore.json";
+import { hojeEmSaoPaulo } from "@/lib/data-local";
 import {
   IDADE_MAXIMA_INFANTIL,
   type Arvore,
@@ -144,15 +145,11 @@ export function resolverTemplateId(categoria: Categoria, respostas: Respostas): 
 }
 
 /**
- * Data minima para o input, em ISO local. `new Date().toISOString()` daria a
- * data em UTC e, depois das 21h no horario de Brasilia, ja seria "amanha".
+ * Data mínima em São Paulo: navegador e servidor usam o mesmo dia civil.
  */
 export function dataMinima(passo: Passo, hoje = new Date()): string | undefined {
   // `min` tambem carrega numero (tipo "numero"); aqui so interessa string.
   if (typeof passo.min === "number") return undefined;
   if (passo.min !== "hoje") return passo.min;
-  const ano = hoje.getFullYear();
-  const mes = String(hoje.getMonth() + 1).padStart(2, "0");
-  const dia = String(hoje.getDate()).padStart(2, "0");
-  return `${ano}-${mes}-${dia}`;
+  return hojeEmSaoPaulo(hoje);
 }
