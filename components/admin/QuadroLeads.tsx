@@ -21,7 +21,7 @@ import { toast } from "sonner";
 import { CartaoLead, ColunaVazia } from "@/components/admin/CartaoLead";
 import { ColunaKanban } from "@/components/admin/ColunaKanban";
 import { FaixaDestinos } from "@/components/admin/FaixaDestinos";
-import { compararPorCobranca } from "@/lib/admin/lembretes";
+import { maisNovoPrimeiro } from "@/lib/admin/ordem";
 import { ROTULO_STATUS } from "@/lib/admin/rotulos";
 import { MENSAGEM_RECUSA, recusarMovimento, mensagemConfirmacaoDeEnvio, pedeConfirmacaoDeEnvio } from "@/lib/admin/status";
 import { FRASE_PERIODO, type Periodo } from "@/lib/admin/periodo";
@@ -96,16 +96,12 @@ export function QuadroLeads({
     >;
     for (const s of STATUS) for (const c of colunas[s].cartoes) saida[colunaDe(c)].push(c);
 
-    // Cobranca vencida sobe. Ordenar aqui, e nao no `order` da consulta, porque
-    // "vencido" nao existe no banco: sai de `enviado_em` cruzado com o agora e
-    // com as duas datas de lembrete. Como `agoraMs` vem do servidor, a ordem
-    // calculada na hidratacao e a mesma do HTML.
-    //
-    // Roda em todas as colunas de proposito: fora de `enviado` o comparador
-    // devolve 0 para todo mundo, e `sort` estavel preserva a ordem do servidor.
-    for (const s of STATUS) saida[s].sort((a, b) => compararPorCobranca(a, b, s, agoraMs));
+    // A mesma ordem do servidor -- chegada do lead, mais novo em cima --
+    // refeita aqui para valer tambem no cartao movido no otimismo, que senao
+    // cairia no fim da coluna nova ate o refresh chegar.
+    for (const s of STATUS) saida[s].sort((a, b) => maisNovoPrimeiro(a, b));
     return saida;
-  }, [colunas, colunaDe, agoraMs]);
+  }, [colunas, colunaDe]);
 
   const leadArrastado = arrastando ? (porId.get(arrastando) ?? null) : null;
 

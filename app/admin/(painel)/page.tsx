@@ -46,23 +46,15 @@ export default async function PaginaLeads({ searchParams }: { searchParams: Prom
       .eq("status", status)
       .limit(LIMITE_COLUNA);
 
-    // "Enviado" ordena pelo ENVIO, do mais antigo para o mais novo. As outras
-    // raias seguem por criacao, do mais novo para o mais velho.
+    // Toda raia na mesma ordem: pela CHEGADA do lead, a data que o cartao
+    // mostra, do mais novo (em cima) para o mais antigo (embaixo). Pedido do
+    // owner em 07/10/2026 -- antes "Enviado" e "Esfriou" vinham do mais antigo
+    // para o mais novo, com a cobranca vencida no topo.
     //
-    // A razao e o teto de LIMITE_COLUNA: "Enviado" e a raia que acumula (todo
-    // lead fica ali ate virar cliente ou perdido), e cobranca vencida so existe
-    // em quem foi enviado ha MAIS tempo. Ordenando por criacao, o dia em que a
-    // coluna passasse do teto seria o dia em que os vencidos parariam de ser
-    // buscados -- e o quadro deixaria de mostrar exatamente os cartoes que
-    // pedem acao, em silencio. Assim o corte cai sobre os envios recentes, que
-    // sao justamente os que nao precisam de nada.
-    //
-    // "Esfriou" ordena igual, pelo mesmo motivo: e a raia que acumula depois de
-    // "Enviado", e a "Ultima tentativa" (30 dias) esta nos mais antigos.
-    c =
-      status === "enviado" || status === "esfriou"
-        ? c.order("enviado_em", { ascending: true, nullsFirst: false })
-        : c.order("created_at", { ascending: false });
+    // O preco: passando de LIMITE_COLUNA, o corte cai nos mais ANTIGOS. Em
+    // "Esfriou" sao eles que tem a "Ultima tentativa" (vermelha); a coluna avisa
+    // "Mostrando 50 de N", e o caminho e a Mel dar os antigos por perdidos.
+    c = c.order("created_at", { ascending: false });
 
     if (termo) c = c.ilike("nome_display", `%${termo}%`);
     if (ehCategoria(categoria)) c = c.eq("categoria", categoria);

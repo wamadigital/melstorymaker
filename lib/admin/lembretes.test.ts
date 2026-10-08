@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  compararPorCobranca,
   diasCorridos,
   estadoLembrete,
   SEM_LEMBRETE,
@@ -12,6 +11,7 @@ import {
 import { ROTULO_CURTO_STATUS, ROTULO_STATUS, TEMA_COLUNA } from "./rotulos";
 import { recusarMovimento } from "./status";
 import { STATUS, type Status } from "@/lib/form/types";
+import { maisNovoPrimeiro } from "./ordem";
 import { linkLembreteWhatsApp, mensagemLembrete } from "@/lib/whatsapp";
 
 const DIA = 86_400_000;
@@ -96,69 +96,6 @@ test("com as duas cobranças feitas o cartão silencia e mostra o selo de 30 dia
   assert.equal(estado.cobrado, 30, "é este selo que diz à Mel que dá para arquivar");
 });
 
-test("cobrança vencida sobe na coluna, e o vermelho passa na frente do âmbar", () => {
-  // Ordem de leitura da Mel: o que precisa de ação primeiro. Os 30 dias vêm
-  // antes porque são a última chance antes do lead virar perdido; o de 7 dias
-  // ainda aguenta um dia.
-  const fila = [
-    { id: "novo", ...enviadoHa(1) },
-    { id: "ambar", ...enviadoHa(9) },
-    { id: "cobrado", ...enviadoHa(12), lembrete_7_em: new Date(AGORA - DIA).toISOString() },
-    { id: "vermelho", ...enviadoHa(33) },
-  ];
-  const ordenada = [...fila]
-    .sort((a, b) => compararPorCobranca(a, b, "enviado", AGORA))
-    .map((l) => l.id);
-  assert.deepEqual(ordenada, ["vermelho", "ambar", "novo", "cobrado"]);
-});
-
-test("dentro da mesma faixa, quem espera há mais tempo vem antes", () => {
-  const fila = [
-    { id: "8d", ...enviadoHa(8) },
-    { id: "25d", ...enviadoHa(25) },
-    { id: "12d", ...enviadoHa(12) },
-  ];
-  const ordenada = [...fila]
-    .sort((a, b) => compararPorCobranca(a, b, "enviado", AGORA))
-    .map((l) => l.id);
-  assert.deepEqual(ordenada, ["25d", "12d", "8d"]);
-});
-
-test("fora de Enviado e Esfriou o comparador não reordena nada", () => {
-  // Devolver 0 é o ponto: `sort` é estável, então a ordem que veio do servidor
-  // (mais novo primeiro) sobrevive nas outras quatro raias.
-  const fila = [
-    { id: "a", ...enviadoHa(40) },
-    { id: "b", ...enviadoHa(2) },
-    { id: "c", ...enviadoHa(90) },
-  ];
-  for (const coluna of ["incompleto", "aguardando_revisao", "virou_cliente", "perdido"] as const) {
-    const ordenada = [...fila]
-      .sort((a, b) => compararPorCobranca(a, b, coluna, AGORA))
-      .map((l) => l.id);
-    assert.deepEqual(ordenada, ["a", "b", "c"], `${coluna} não devia reordenar`);
-  }
-});
-
-test("cartões sem cobrança pendente mantêm a ordem do servidor", () => {
-  // Todos com lembrete já feito: nenhum é "vencido", então o comparador não
-  // pode inverter a fila só porque um é mais velho que o outro.
-  const feito = (d: number) => ({
-    ...enviadoHa(d),
-    lembrete_7_em: new Date(AGORA - DIA).toISOString(),
-    lembrete_30_em: d >= 30 ? new Date(AGORA - DIA).toISOString() : null,
-  });
-  const fila = [
-    { id: "primeiro", ...feito(35) },
-    { id: "segundo", ...feito(10) },
-    { id: "terceiro", ...feito(60) },
-  ];
-  const ordenada = [...fila]
-    .sort((a, b) => compararPorCobranca(a, b, "enviado", AGORA))
-    .map((l) => l.id);
-  assert.deepEqual(ordenada, ["primeiro", "segundo", "terceiro"]);
-});
-
 test("a mensagem de cobrança leva o link da proposta de volta", () => {
   // Faz 7 (ou 30) dias: obrigar a pessoa a caçar a conversa antiga perderia o
   // lead pelo mesmo motivo de novo.
@@ -240,19 +177,6 @@ test("cores: Relembrar na tinta da coluna, Última tentativa vermelha, âmbar nu
   assert.match(TEMA_COLUNA.esfriou.ponto, /zinc/);
 });
 
-test("em Esfriou a Última tentativa também sobe para o topo da coluna", () => {
-  const fila = [
-    { id: "cobrado", ...enviadoHa(40), lembrete_30_em: new Date(AGORA - DIA).toISOString() },
-    { id: "10d", ...enviadoHa(10) },
-    { id: "33d", ...enviadoHa(33) },
-  ];
-  const ordenada = [...fila]
-    .sort((a, b) => compararPorCobranca(a, b, "esfriou", AGORA))
-    .map((l) => l.id);
-  // O vermelho (30 dias) primeiro, depois o Relembrar, depois quem já foi cobrado.
-  assert.deepEqual(ordenada, ["33d", "10d", "cobrado"]);
-});
-
 test("`esfriou` entrou no enum entre Virou cliente e Lead perdido, com rótulo e trânsito", () => {
   const i = STATUS.indexOf("esfriou");
   assert.equal(STATUS[i - 1], "virou_cliente");
@@ -273,4 +197,17 @@ test("a faixa de destinos do celular cabe seis chips: rótulo curto de uma palav
     const curto = ROTULO_CURTO_STATUS[status];
     assert.ok(!curto.includes(" ") && curto.length <= 7, `${status}: "${curto}"`);
   }
+});
+
+test("toda coluna ordena pela chegada do lead: o mais novo em cima, o mais antigo embaixo", () => {
+  // Pedido do owner em 07/10/2026, "sempre": nem o cartão vermelho sobe.
+  const fila = [
+    { id: "agosto", created_at: "2026-08-19T14:00:00Z" },
+    { id: "outubro", created_at: "2026-10-07T09:00:00Z" },
+    { id: "setembro", created_at: "2026-09-12T23:59:59.123456+00:00" },
+  ];
+  assert.deepEqual(
+    [...fila].sort(maisNovoPrimeiro).map((l) => l.id),
+    ["outubro", "setembro", "agosto"],
+  );
 });
