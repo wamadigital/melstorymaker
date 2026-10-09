@@ -23,6 +23,7 @@ import { BotaoPerdido, ProximoPasso } from "@/components/admin/AtalhosStatus";
 import { CaixaMarcacao } from "@/components/form/CaixaMarcacao";
 import { PreviaProposta } from "@/components/admin/PreviaProposta";
 import { SecaoContrato } from "@/components/admin/contrato/SecaoContrato";
+import { QualificacaoLead } from "@/components/admin/QualificacaoLead";
 import { CLASSE_STATUS, ROTULO_STATUS, rotuloCategoria } from "@/lib/admin/rotulos";
 import {
   estadoDoAtalho,
@@ -35,6 +36,7 @@ import { linkPropostaWhatsApp } from "@/lib/whatsapp";
 import { linkContatoInicial, textoExclusao } from "@/lib/admin/acoes";
 import { cn } from "@/lib/utils";
 import type { RegistroContrato, StatusContrato } from "@/lib/contrato/tipos";
+import { validarTelefoneBr } from "@/lib/form/validacao";
 
 type Aviso = { tom: "erro" | "ok" | "atencao"; texto: string };
 
@@ -74,7 +76,7 @@ export function DetalheLead({
   // pode nao ser o ano corrente -- por isso vai visivel, e nao suposto.
   const [tabelaPreco, setTabelaPreco] = useState<string | null>(null);
 
-  const [acao, setAcao] = useState<null | "salvar" | "gerar" | "enviar" | "excluir" | "mover">(null);
+  const [acao, setAcao] = useState<null | "salvar" | "gerar" | "enviar" | "excluir" | "mover" | "qualificar">(null);
   const [movendo, setMovendo] = useState<AtalhoStatus | null>(null);
   const [aviso, setAviso] = useState<Aviso | null>(null);
 
@@ -308,6 +310,14 @@ export function DetalheLead({
           />
         </div>
       </header>
+
+      <QualificacaoLead
+        id={lead.id}
+        qualificadoEm={lead.qualificado_em ?? null}
+        temWhatsapp={!!lead.whatsapp && !validarTelefoneBr(lead.whatsapp)}
+        ocupado={acao !== null || contratoOcupado}
+        onOcupado={(ocupado) => setAcao(ocupado ? "qualificar" : null)}
+      />
 
       {aviso && (
         <p

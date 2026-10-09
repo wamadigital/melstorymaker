@@ -168,6 +168,8 @@ export type Lead = {
    * "Novo"), ou null. Marcado, o botao apaga; ver `lib/admin/chamado.ts`.
    */
   chamado_whatsapp_em: string | null;
+  /** Confirmação manual de interesse e compatibilidade; independente da raia. */
+  qualificado_em?: string | null;
 };
 
 export function isCategoria(v: unknown): v is Categoria {

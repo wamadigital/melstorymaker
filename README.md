@@ -49,6 +49,16 @@ Mantenha `MAIL_DRY_RUN=1` em desenvolvimento: o e-mail vai para o log em vez da 
 
 > A tabela `leads` tem RLS ligado e nenhuma policy. Isso é proposital: todo acesso passa por route handlers usando a service role. Se algo falhar por RLS, a correção é no route handler — nunca criar policy pública.
 
+### Atualizar a integração CRM → Meta (09/10/2026)
+
+Em um projeto existente, aplicar **[supabase/crm-outbox.sql](supabase/crm-outbox.sql) antes de publicar o código**. Ele acrescenta `qualificado_em`, outbox privada, trigger atômico e RPC de reivindicação; não importa nem reenviará fatos históricos anteriores. Para instalação nova, o bloco já integra `schema.sql`. Nenhuma credencial nova: reutiliza `META_PIXEL_ID`, `META_CAPI_TOKEN` e `CRON_SECRET` da produção.
+
+O card permite marcar Lead qualificado sem mudar a raia. O retorno CRM usa nomes `CRM*` e origem `system_generated`; os eventos de site existentes continuam alimentando suas conversões. A Meta recebe ID e horário fixos, e apenas ACK válido marca a fila como enviada. Falhas transitórias aguardam novas tentativas e o cron diário recupera pendências; erros definitivos, cinco tentativas ou 47h encerram o item com motivo, sem gerar outro fato.
+
+Validação de banco: executar [supabase/crm-outbox.test.sql](supabase/crm-outbox.test.sql) com `psql -v ON_ERROR_STOP=1` **somente num banco isolado**. O teste verifica atomicidade, RLS, lease, snapshot, limites e deduplicação e termina em rollback. `MAIL_DRY_RUN=1` não impede escrita de leads: não executar testes de integração com credenciais de produção.
+
+Após publicar, conferir no Gerenciador de Eventos os novos eventos, erros e origem CRM antes de trocar a meta de desempenho dos anúncios. A recomendação de 18,4% é resultado possível do experimento da Meta, não uma melhoria comprovada desta conta.
+
 ### 2. E-mail (Gmail)
 
 O envio sai pelo Gmail da Mel via SMTP. Sem serviço transacional: a conta Workspace entrega 2.000 destinatários/dia, muito acima do volume, e não custa nada.

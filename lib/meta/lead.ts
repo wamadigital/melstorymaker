@@ -5,23 +5,20 @@ import type { Categoria, Respostas, Status } from "@/lib/form/types";
 import { EVENTO_DO_STATUS, idEvento } from "@/lib/meta/eventos";
 import { configCapi, enviarConversao, type EventoConversao } from "@/lib/meta/conversoes";
 import { rastreioGuardado, type RastreioGuardado } from "@/lib/meta/rastreio";
+import { enviarEventosCrmDoLead } from "@/lib/meta/crm";
 
 /**
- * Guarda cookies, navegador e ip do lead na criacao, para os eventos do quadro
- * poderem sair como evento de site e voltar ao anuncio dias depois.
- *
- * UPDATE separado, dentro do after(), e nao um campo a mais no INSERT: se a
- * coluna `rastreio` ainda nao existir no banco (schema.sql aplicado a mao), o
- * INSERT inteiro falharia e o formulario pararia de criar lead. Assim, o pior
- * caso e so perder a atribuicao.
+ * Helper legado de enriquecimento, preservado para chamadas existentes.
+ * O cadastro atual grava rastreio no proprio INSERT: a outbox precisa nascer
+ * com os identificadores originais, antes de um cron poder reivindica-la.
  */
 export async function guardarRastreio(leadId: string, rastreio: RastreioGuardado): Promise<void> {
   if (!rastreio.fbp && !rastreio.fbc && !rastreio.ua) return;
   try {
     const { error } = await supabaseAdmin().from("leads").update({ rastreio }).eq("id", leadId);
-    if (error) console.error("[meta] falha ao guardar rastreio (o lead NAO foi afetado)", error.message);
-  } catch (e) {
-    console.error("[meta] falha ao guardar rastreio (o lead NAO foi afetado)", e);
+    if (error) console.error("[meta] falha ao guardar rastreio (o lead NAO foi afetado)");
+  } catch {
+    console.error("[meta] falha ao guardar rastreio (o lead NAO foi afetado)");
   }
 }
 
@@ -76,7 +73,7 @@ export function montarEventoDeStatus(
  * transicao ja foi GRAVADA -- nunca antes, senao um 409/422 viraria conversao
  * que nao aconteceu.
  */
-export async function enviarEventoDeStatus(leadId: string, status: Status): Promise<void> {
+async function enviarEventoDeStatusLegado(leadId: string, status: Status): Promise<void> {
   // Status sem evento, ou Meta desligada: nem le o banco.
   if (!EVENTO_DO_STATUS[status] || !configCapi()) return;
 
@@ -91,13 +88,19 @@ export async function enviarEventoDeStatus(leadId: string, status: Status): Prom
       .maybeSingle();
 
     if (error || !lead) {
-      console.error(`[meta] nao consegui ler o lead para ${status}`, error?.message ?? "nao encontrado");
+      console.error(`[meta] nao consegui ler o lead para ${status}`);
       return;
     }
 
     const evento = montarEventoDeStatus(leadId, lead as LinhaLead, status);
     if (evento) await enviarConversao(evento);
-  } catch (e) {
-    console.error(`[meta] falha no evento de ${status} (o painel NAO foi afetado)`, e);
+  } catch {
+    console.error(`[meta] falha no evento de ${status} (o painel NAO foi afetado)`);
   }
+}
+
+/** Canal Site legado preserva as conversoes atuais; CRM tem nomes/IDs proprios. */
+export async function enviarEventoDeStatus(leadId: string, status: Status): Promise<void> {
+  if (!EVENTO_DO_STATUS[status]) return;
+  await Promise.all([enviarEventoDeStatusLegado(leadId, status), enviarEventosCrmDoLead(leadId)]);
 }

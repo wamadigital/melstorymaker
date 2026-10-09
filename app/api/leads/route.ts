@@ -7,8 +7,10 @@ import { colunasPromovidas, nomeContato } from "@/lib/leads";
 import { excedeuLimite, ipDaRequisicao, LIMITES } from "@/lib/rate-limit";
 import { EVENTO, idEvento } from "@/lib/meta/eventos";
 import { enviarConversao } from "@/lib/meta/conversoes";
-import { guardarRastreio } from "@/lib/meta/lead";
+import { enviarEventosCrmDoLead } from "@/lib/meta/crm";
 import { origemDaRequisicao, paraGuardar, rastreioDaRequisicao } from "@/lib/meta/rastreio";
+
+export const maxDuration = 60;
 
 // `respostas` e opcional no schema mas nao na pratica: o formulario so chama
 // esta rota no PRIMEIRO avanco, ja com o WhatsApp respondido. Opcional aqui
@@ -65,6 +67,11 @@ export async function POST(req: Request) {
     pedido && visiveis.some((p) => p.id === pedido) ? pedido : (visiveis[0]?.id ?? null);
 
   const promovidas = colunasPromovidas(categoria, respostas);
+  // O CRM registra o nascimento no mesmo INSERT. Guardar atribuicao aqui
+  // impede que o cron reivindique um snapshot sem cookies antes do after().
+  // O deploy CRM exige seu SQL previo; nao ha fallback de schema ausente.
+  const rastreio = rastreioDaRequisicao(req);
+  const origem = origemDaRequisicao(req);
   const { data, error } = await supabaseAdmin()
     .from("leads")
     .insert({
@@ -73,6 +80,7 @@ export async function POST(req: Request) {
       status: "incompleto",
       respostas,
       passo_atual,
+      rastreio: paraGuardar(rastreio, origem),
       // Promovidas ja na criacao: e o que faz o telefone aparecer na lista do
       // painel sem esperar o proximo autosave.
       ...promovidas,
@@ -92,7 +100,7 @@ export async function POST(req: Request) {
         .maybeSingle();
       if (existente && !erroRecuperacao) {
         // Recuperacao tem a mesma superficie do GET publico pelo UUID. Somente
-        // a criacao vencedora agenda rastreio e Lead; repeticao nao tem efeitos.
+        // a criacao vencedora grava rastreio e agenda Lead; repeticao nao tem efeitos.
         return NextResponse.json(existente);
       }
       console.error("[leads] falha ao recuperar tentativa de criacao", erroRecuperacao ?? error);
@@ -106,26 +114,26 @@ export async function POST(req: Request) {
   // lead, com o mesmo event_id que o navegador usa -- a Meta conta um so. Lido
   // do request AGORA, antes do after(): e o request do proprio lead, com os
   // cookies do Pixel, o ip e o navegador dele.
-  const rastreio = rastreioDaRequisicao(req);
-  const origem = origemDaRequisicao(req);
   after(async () => {
-    await guardarRastreio(data.id, paraGuardar(rastreio, origem));
-    await enviarConversao({
-      nome: EVENTO.lead,
-      id: idEvento("lead", data.id),
-      origem: "website",
-      url: origem.url,
-      categoria,
-      pessoa: {
-        leadId: data.id,
-        email: promovidas.email,
-        whatsapp: promovidas.whatsapp,
-        nome: nomeContato(respostas),
-        ...rastreio,
-        ip: origem.ip,
-        userAgent: origem.userAgent,
-      },
-    });
+    await Promise.all([
+      enviarEventosCrmDoLead(data.id),
+      enviarConversao({
+        nome: EVENTO.lead,
+        id: idEvento("lead", data.id),
+        origem: "website",
+        url: origem.url,
+        categoria,
+        pessoa: {
+          leadId: data.id,
+          email: promovidas.email,
+          whatsapp: promovidas.whatsapp,
+          nome: nomeContato(respostas),
+          ...rastreio,
+          ip: origem.ip,
+          userAgent: origem.userAgent,
+        },
+      }),
+    ]);
   });
 
   return NextResponse.json(data, { status: 201 });

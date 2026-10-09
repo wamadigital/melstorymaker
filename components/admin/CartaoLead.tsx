@@ -131,6 +131,12 @@ export function CartaoLead({
             {lead.data_evento && <> · {dataCurta(lead.data_evento)}</>}
           </p>
           {parouEm && <p className="truncate text-xs text-muted-foreground">Parou em: {parouEm}</p>}
+          {lead.qualificado_em && (
+            <p className="flex items-center gap-1 text-[0.6875rem] text-muted-foreground">
+              <Check aria-hidden="true" className="size-3 shrink-0" strokeWidth={3} />
+              Lead qualificado
+            </p>
+          )}
 
           <div className="flex items-center gap-2 pt-0.5">
             <span className="text-[0.6875rem] text-muted-foreground/80">

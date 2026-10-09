@@ -11,10 +11,13 @@ import { mensagemNovoLead } from "@/lib/notifica/mensagem";
 import { env } from "@/lib/env";
 import { EVENTO, idEvento } from "@/lib/meta/eventos";
 import { enviarConversao } from "@/lib/meta/conversoes";
+import { enviarEventosCrmDoLead } from "@/lib/meta/crm";
 import { origemDaRequisicao, rastreioDaRequisicao } from "@/lib/meta/rastreio";
 import { atualizarVersaoLead, CAMPOS_VERSAO_LEAD, corpoBaseLead, mesmaVersaoLead } from "@/lib/form/versao-lead";
 
 type Ctx = { params: Promise<{ id: string }> };
+
+export const maxDuration = 60;
 
 const uuid = z.string().uuid();
 const corpoSubmit = z.object({ base: corpoBaseLead.optional() });
@@ -136,22 +139,25 @@ export async function POST(req: Request, { params }: Ctx) {
   const rastreio = rastreioDaRequisicao(req);
   const origem = origemDaRequisicao(req);
   after(async () => {
-    await enviarConversao({
-      nome: EVENTO.submit,
-      id: idEvento("submit", id),
-      origem: "website",
-      url: origem.url,
-      categoria: lead.categoria,
-      pessoa: {
-        leadId: id,
-        email: promovidas.email,
-        whatsapp: promovidas.whatsapp,
-        nome: nomeContato(respostas),
-        ...rastreio,
-        ip: origem.ip,
-        userAgent: origem.userAgent,
-      },
-    });
+    await Promise.all([
+      enviarEventosCrmDoLead(id),
+      enviarConversao({
+        nome: EVENTO.submit,
+        id: idEvento("submit", id),
+        origem: "website",
+        url: origem.url,
+        categoria: lead.categoria,
+        pessoa: {
+          leadId: id,
+          email: promovidas.email,
+          whatsapp: promovidas.whatsapp,
+          nome: nomeContato(respostas),
+          ...rastreio,
+          ip: origem.ip,
+          userAgent: origem.userAgent,
+        },
+      }),
+    ]);
   });
 
   return NextResponse.json({ ok: true, status: "aguardando_revisao" });

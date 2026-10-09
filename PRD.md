@@ -244,6 +244,7 @@ Detalhe (`/admin/leads/[id]`):
 | Preview | Visualizador nativo em iframe no desktop; PDF paginado em canvas abaixo de 640px, com abertura em tela cheia |
 | Histórico | Datas de geração e envio, no fuso de São Paulo |
 | Status | Um botão de próximo passo e ação separada de Lead perdido; usam as mesmas regras de movimentação do quadro |
+| Qualificação | Marcação manual de Lead qualificado, independente das seis raias; confirma interesse real e compatibilidade do evento com o serviço. Exige WhatsApp válido; não depende de terminar o formulário nem de gerar proposta. Erro da marcação fica no próprio bloco e preserva respostas não salvas |
 | Contrato | Dados, texto, PDF e assinatura eletrônica, em seção própria; não altera o status do lead automaticamente. Ao terminar a assinatura, oferece mover para Virou cliente |
 | Exclusão | Confirmação informa proposta, contrato e arquivos que serão removidos; contrato desconhecido exige aviso conservador sobre assinado, trilha e envio ainda aberto |
 | Falha de leitura | Lead ilegível mostra erro e retentativa; lead realmente inexistente retorna 404. Contrato ilegível bloqueia sua seção e mantém lead/proposta acessíveis |
@@ -258,6 +259,25 @@ Estados do lead:
 | `virou_cliente` | Virou cliente | Decisão da Mel pelo quadro ou detalhe; permite registrar fechamento sem PDF |
 | `esfriou` | Esfriou | Passagem automática quando `enviado_em` e `updated_at` completam sete dias, somente a partir de Enviado; também aceita movimentação manual com PDF. Voltar para Enviado renova o prazo pelo último update |
 | `perdido` | Lead perdido | Somente decisão da Mel pelo quadro ou detalhe; nunca é marcado automaticamente |
+
+### Retorno do CRM para a Meta
+
+Pedido autorizado em 09/10/2026. `qualificado_em` é uma marca comercial da Mel, independente do status. Desmarcar limpa a marca sem classificar o lead como perdido; requalificar não cria uma segunda primeira ocorrência. A confirmação usa a versão dessa marca, sem comparar `updated_at` nem sobrescrever respostas, proposta ou raia.
+
+Os eventos de site existentes continuam alimentando as conversões e colunas já configuradas. O CRM usa eventos separados, enviados exclusivamente pelo servidor ao mesmo dataset, com `action_source: system_generated`, `custom_data.event_source: crm` e `custom_data.lead_event_source: Mel Storymaker`.
+
+| Fato confirmado no banco | Evento de CRM | Regra |
+|---|---|---|
+| Nascimento do lead | `CRMLeadCriado` | Primeiro INSERT; não confundir com o `Lead` de site |
+| Formulário concluído | `CRMFormularioCompleto` | Primeira passagem de Novo para Aguardando revisão |
+| Qualificação comercial | `CRMLeadQualificado` | Primeira marcação explícita da Mel |
+| Proposta enviada | `CRMPropostaEnviada` | Primeira entrada em Enviado |
+| Cliente fechado | `CRMVirouCliente` | Primeira entrada em Virou cliente; não representa pagamento confirmado |
+| Lead perdido | `CRMLeadPerdido` | Primeira entrada em Lead perdido por decisão da Mel |
+
+Cada fato é gravado em `meta_crm_outbox` na mesma transação da alteração do lead, sem importar histórico anterior à implantação. A fila preserva ID, horário do fato e snapshot mínimo de contato, usa lease para impedir envios concorrentes e confirma entrega apenas após ACK válido da Meta. O envio ocorre após a resposta HTTP; falhas aguardam novas tentativas, inclusive no cron diário protegido. São até cinco tentativas e 47 horas desde o fato; encerramento conserva o motivo, sem inventar novo horário. Sem credenciais Meta a fila não é consumida.
+
+E-mail, telefone, nome e ID interno vão com SHA-256; cookies de atribuição e dados de navegador são os do lead. O UUID interno não é `lead_id` de formulário nativo da Meta. A marcação não muda orçamento, campanha ou meta de desempenho. Ativar otimização por leads qualificados exige conferência no Gerenciador de Eventos após recebimento dos eventos reais.
 
 ## 9. Pipeline da proposta (PDF)
 

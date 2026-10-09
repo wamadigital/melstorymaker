@@ -178,3 +178,45 @@ test("enviarConversoes: o lote vai numa chamada só, na ordem", async () => {
   assert.equal(chamou, false);
   mock.restoreAll();
 });
+
+test("CAPI confirmado exige HTTP OK e ACK exato; erro/rede nao expõem corpo", async (t) => {
+  const { enviarConversoesConfirmadas } = await import("./conversoes");
+  const eventos = [{ nome: "CRMLeadQualificado", id: "crm_qualificado_abc", origem: "system_generated" as const, pessoa: { leadId: "abc" } }];
+  const casos = [
+    { status: 200, corpo: '{"events_received":1}', esperado: { tipo: "aceito", recebidos: 1 } },
+    { status: 200, corpo: '{"events_received":0}', esperado: { tipo: "falha", motivo: "ack_invalido", repetir: true } },
+    { status: 200, corpo: '{"events_received":2}', esperado: { tipo: "falha", motivo: "ack_invalido", repetir: true } },
+    { status: 200, corpo: 'invalido token-de-teste', esperado: { tipo: "falha", motivo: "ack_invalido", repetir: true } },
+    { status: 400, corpo: '{"error":{"message":"token-de-teste"}}', esperado: { tipo: "falha", motivo: "http_400", repetir: false } },
+    { status: 400, corpo: '{"error":{"is_transient":true}}', esperado: { tipo: "falha", motivo: "http_400", repetir: true } },
+    { status: 429, corpo: '{}', esperado: { tipo: "falha", motivo: "http_429", repetir: true } },
+    { status: 503, corpo: '{}', esperado: { tipo: "falha", motivo: "http_503", repetir: true } },
+  ];
+  let resposta = casos[0];
+  mock.method(globalThis, "fetch", async () => new Response(resposta.corpo, { status: resposta.status }));
+  t.after(() => mock.restoreAll());
+  for (const caso of casos) {
+    resposta = caso;
+    assert.deepEqual(await enviarConversoesConfirmadas(eventos), caso.esperado);
+  }
+});
+
+test("timestamp persistido CRM vence relogio atual; transporte preserva nome, ID e metadados", async (t) => {
+  let corpo: Record<string, unknown> = {};
+  mock.method(globalThis, "fetch", async (_url: string, init: RequestInit) => {
+    corpo = JSON.parse(String(init.body));
+    return new Response('{"events_received":1}');
+  });
+  t.after(() => mock.restoreAll());
+  const { enviarConversoesConfirmadas } = await import("./conversoes");
+  assert.deepEqual(await enviarConversoesConfirmadas([{
+    nome: "CRMVirouCliente", id: "crm_virou_cliente_abc", origem: "system_generated", ocorridoEm: 1_700_000_123,
+    dados: { event_source: "crm", lead_event_source: "Mel Storymaker" }, pessoa: { leadId: "abc" },
+  }]), { tipo: "aceito", recebidos: 1 });
+  const [evento] = corpo.data as Record<string, unknown>[];
+  assert.equal(evento.event_time, 1_700_000_123);
+  assert.equal(evento.event_id, "crm_virou_cliente_abc");
+  assert.equal(evento.event_name, "CRMVirouCliente");
+  assert.equal(evento.action_source, "system_generated");
+  assert.deepEqual(evento.custom_data, { event_source: "crm", lead_event_source: "Mel Storymaker" });
+});

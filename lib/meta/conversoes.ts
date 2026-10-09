@@ -42,18 +42,10 @@ export type Pessoa = Rastreio &
 export type EventoConversao = {
   nome: string;
   id: string;
-  /**
-   * `website` para tudo que nasce da visita do lead: os eventos do formulario E
-   * os do quadro, que levam o navegador, o ip, o `fbp` e o `fbc` DO LEAD
-   * guardados na criacao -- nunca os do request da Mel. O quadro vai como site
-   * porque a conversao personalizada da Meta so aceita as fontes "Site" e "Loja
-   * fisica" (ver `montarEventoDeStatus`, em `lib/meta/lead.ts`, e CLAUDE.md 8b).
-   *
-   * `system_generated` so como recurso para lead sem navegador guardado: a Meta
-   * recusa evento de site sem `client_user_agent`, e tambem exige
-   * `event_source_url` nele.
-   */
+  /** Website nas copias do navegador; system_generated nos fatos do CRM. */
   origem: "website" | "system_generated";
+  /** Segundos Unix do fato, preservados pela outbox nas retentativas do CRM. */
+  ocorridoEm?: number;
   url?: string;
   categoria?: string;
   /** Parametros do evento (`custom_data`), os mesmos que o Pixel mandou. */
@@ -103,7 +95,7 @@ export function montarEvento(e: EventoConversao, agoraMs: number) {
 
   return {
     event_name: e.nome,
-    event_time: Math.floor(agoraMs / 1000),
+    event_time: e.ocorridoEm ?? Math.floor(agoraMs / 1000),
     event_id: e.id,
     action_source: e.origem,
     ...(e.url && { event_source_url: e.url }),
@@ -139,12 +131,30 @@ export async function enviarConversao(e: EventoConversao): Promise<void> {
 export async function enviarConversoes(eventos: readonly EventoConversao[]): Promise<void> {
   if (!eventos.length) return;
   const nomes = eventos.map((e) => e.nome).join(", ");
+  const resultado = await enviarConversoesConfirmadas(eventos);
+  if (resultado.tipo === "desligada") {
+    console.log(`[meta] Conversions API desligada, ${nomes} nao enviado`);
+  } else if (resultado.tipo === "aceito") {
+    console.log(`[meta] ${nomes} enviado (${eventos.length} eventos)`);
+  } else {
+    // Nunca registrar corpo da Meta, token, URL completa ou erro bruto de rede.
+    console.error(`[meta] falha em ${nomes}: ${resultado.motivo}`);
+  }
+}
+
+export type ResultadoCapi =
+  | { tipo: "aceito"; recebidos: number }
+  | { tipo: "desligada" }
+  | { tipo: "falha"; motivo: string; repetir: boolean };
+
+/** O CRM so confirma entrega com HTTP OK e events_received do lote completo. */
+export async function enviarConversoesConfirmadas(
+  eventos: readonly EventoConversao[],
+): Promise<ResultadoCapi> {
+  if (!eventos.length) return { tipo: "aceito", recebidos: 0 };
   try {
     const config = configCapi();
-    if (!config) {
-      console.log(`[meta] Conversions API desligada, ${nomes} nao enviado`);
-      return;
-    }
+    if (!config) return { tipo: "desligada" };
 
     // `event_source_url` e obrigatorio em evento de site. Nos eventos do
     // formulario o Referer quase sempre existe; nos do quadro nunca (o request
@@ -173,14 +183,19 @@ export async function enviarConversoes(eventos: readonly EventoConversao[]): Pro
       signal: AbortSignal.timeout(10_000),
     });
 
+    const corpo: unknown = await r.json().catch(() => null);
     if (!r.ok) {
-      const corpo = await r.text().catch(() => "");
-      console.error(`[meta] Conversions API recusou ${nomes} (HTTP ${r.status}): ${corpo.slice(0, 300)}`);
-      return;
+      const transitorio = !!(corpo && typeof corpo === "object" && "error" in corpo &&
+        corpo.error && typeof corpo.error === "object" && "is_transient" in corpo.error &&
+        corpo.error.is_transient === true);
+      return { tipo: "falha", motivo: `http_${r.status}`, repetir: r.status === 429 || r.status >= 500 || transitorio };
     }
-    const ids = eventos.length === 1 ? ` (${eventos[0].id})` : ` (${eventos.length} eventos)`;
-    console.log(`[meta] ${nomes} enviado${ids}${config.teste ? " [teste]" : ""}`);
-  } catch (erro) {
-    console.error(`[meta] falha ao enviar ${nomes} (o fluxo do lead NAO foi afetado)`, erro);
+    if (!corpo || typeof corpo !== "object" || !("events_received" in corpo) ||
+      corpo.events_received !== eventos.length) {
+      return { tipo: "falha", motivo: "ack_invalido", repetir: true };
+    }
+    return { tipo: "aceito", recebidos: eventos.length };
+  } catch {
+    return { tipo: "falha", motivo: "rede", repetir: true };
   }
 }

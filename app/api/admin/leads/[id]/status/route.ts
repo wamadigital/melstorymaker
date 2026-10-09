@@ -6,6 +6,8 @@ import { STATUS, type Status } from "@/lib/form/types";
 import { MENSAGEM_RECUSA, recusarMovimento } from "@/lib/admin/status";
 import { enviarEventoDeStatus } from "@/lib/meta/lead";
 
+export const maxDuration = 60;
+
 type Ctx = { params: Promise<{ id: string }> };
 
 const uuid = z.string().uuid();

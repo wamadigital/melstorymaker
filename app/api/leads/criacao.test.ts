@@ -58,6 +58,7 @@ function bancoFalso(linhas: Linha[] = []) {
       return Response.json({ events_received: 1 });
     }
     assert.equal(url.hostname, "criacao-ficticia.invalid", "rede externa sem mock e proibida");
+    if (url.pathname === "/rest/v1/rpc/reivindicar_meta_crm") return Response.json([]);
     assert.equal(url.pathname, "/rest/v1/leads");
     const projetar = (l: Linha) => Object.fromEntries(
       (url.searchParams.get("select") ?? "").split(",").map((k) => [k, l[k]]),
@@ -105,7 +106,8 @@ function bancoFalso(linhas: Linha[] = []) {
 let ip = 0;
 const requisicao = (corpo: unknown) => new Request("https://melstorymaker.invalid/api/leads", {
   method: "POST", body: JSON.stringify(corpo),
-  headers: { "content-type": "application/json", "x-forwarded-for": `198.51.100.${++ip}`, "user-agent": "Navegador ficticio", referer: "https://melstorymaker.invalid/formulario" },
+  headers: { "content-type": "application/json", "x-forwarded-for": `198.51.100.${++ip}`, "user-agent": "Navegador ficticio", referer: "https://melstorymaker.invalid/formulario",
+    cookie: "_fbp=fb.1.1791580000000.123456789; _fbc=fb.1.1791580000000.clique-ficticio" },
 });
 
 async function comBanco(linhas: Linha[], verificar: (banco: ReturnType<typeof bancoFalso>, tarefas: (() => unknown)[]) => Promise<void>) {
@@ -128,8 +130,12 @@ test("POSTs concorrentes da mesma tentativa criam um lead e uma copia CAPI", asy
     assert.equal(banco.insercoes, 1);
     assert.equal(tarefas.length, 1);
     assert.equal(banco.consultas[0].get("id"), `eq.${ID}`);
+    const tracking = banco.salvas.get(ID)!.rastreio as Record<string, unknown>;
+    assert.equal(tracking.ua, "Navegador ficticio", "atribuicao nasce antes do after/cron");
+    assert.equal(tracking.fbp, "fb.1.1791580000000.123456789");
+    assert.equal(tracking.fbc, "fb.1.1791580000000.clique-ficticio");
     await tarefas[0]();
-    assert.equal(banco.rastreios, 1);
+    assert.equal(banco.rastreios, 0, "rastreio pertence ao INSERT, sem UPDATE pos-resposta");
     assert.equal(banco.conversoes.length, 1);
     assert.equal(banco.conversoes[0].event_name, "Lead");
     assert.equal(banco.conversoes[0].event_id, `lead_${ID}`);
@@ -155,10 +161,12 @@ test("ACK do banco perdido apos INSERT tambem recupera a identidade sem duplicar
     banco.perderProximoAckBanco();
     const perdido = await POST(requisicao(payload()));
     assert.equal(perdido.status, 500);
+    const trackingOriginal = structuredClone(banco.salvas.get(ID)!.rastreio);
     const recuperado = await POST(requisicao(payload()));
     assert.equal(recuperado.status, 200);
     assert.equal((await recuperado.json()).id, ID);
     assert.equal(banco.insercoes, 1);
+    assert.deepEqual(banco.salvas.get(ID)!.rastreio, trackingOriginal, "ACK perdido nao perde nem reescreve atribuicao");
     assert.equal(tarefas.length, 0, "resultado incerto nao agenda CAPI nem replay cria efeito");
   });
 });
