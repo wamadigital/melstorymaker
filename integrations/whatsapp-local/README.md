@@ -43,6 +43,31 @@ bash integrations/whatsapp-local/run-worker.sh
 O Mac precisa ficar ligado, acordado e conectado. Fechar o processo para os
 envios. A instalação não altera as configurações de energia do macOS.
 
+## Início automático no login
+
+Preparar os dois plists apenas no runtime, sem instalar ou iniciar serviços:
+
+```bash
+.whatsapp-local/app/whatsapp-mcp-server/.venv/bin/python integrations/whatsapp-local/service.py --prepare
+```
+
+Após parear e ativar a configuração local (`enabled:true`), instalar para o login
+da usuária deste Mac:
+
+```bash
+.whatsapp-local/app/whatsapp-mcp-server/.venv/bin/python integrations/whatsapp-local/service.py --install
+```
+
+O comando confirma a sessão autenticada e pede Enter depois de encerrar o bridge
+iniciado manualmente. O operador interrompe somente esse processo; o helper não
+mata processos. A comprovação do pareamento permanece na mesma invocação.
+Ele recusa plists ou rótulos já existentes e cria somente
+`com.melstorymaker.whatsapp.bridge` e `com.melstorymaker.whatsapp.worker` em
+`~/Library/LaunchAgents`. Falha durante a instalação reverte apenas seus próprios
+plists e serviços. Os serviços reutilizam a sessão, sem `--pair`, e os logs ficam
+privados em `.whatsapp-local/state/`. Entrar no Mac inicia os serviços; o Mac
+continua precisando estar ligado, acordado e conectado.
+
 ## Ativação
 
 1. Aplicar `supabase/whatsapp-outbox.sql` manualmente no SQL Editor da conta da Mel.
