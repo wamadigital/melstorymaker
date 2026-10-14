@@ -21,6 +21,7 @@ import { toast } from "sonner";
 import { CartaoLead, ColunaVazia } from "@/components/admin/CartaoLead";
 import { ColunaKanban } from "@/components/admin/ColunaKanban";
 import { FaixaDestinos } from "@/components/admin/FaixaDestinos";
+import { useQuadroAoVivo } from "@/components/admin/useQuadroAoVivo";
 import { maisNovoPrimeiro } from "@/lib/admin/ordem";
 import { ROTULO_STATUS } from "@/lib/admin/rotulos";
 import { MENSAGEM_RECUSA, recusarMovimento, mensagemConfirmacaoDeEnvio, pedeConfirmacaoDeEnvio } from "@/lib/admin/status";
@@ -63,6 +64,14 @@ export function QuadroLeads({
   const [aberta, setAberta] = useState<Record<string, boolean>>(() =>
     Object.fromEntries(STATUS.map((s) => [s, s !== "perdido"])),
   );
+
+  // Lead novo, formulario avancando, esfriar do cron, outra aba da Mel: o banco
+  // avisa e o quadro rele sozinho. Dentro da transition pelo mesmo motivo do
+  // refresh do `mover`: o quadro atual fica na tela ate o novo chegar.
+  useQuadroAoVivo({
+    pausado: !!arrastando || !!movendo,
+    atualizar: () => iniciar(() => router.refresh()),
+  });
 
   const porId = useMemo(() => {
     const m = new Map<string, LeadCartao>();
