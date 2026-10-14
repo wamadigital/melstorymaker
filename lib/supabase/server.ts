@@ -1,6 +1,7 @@
 import "server-only";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import { ehAdmin, lerListaAdmins } from "@/lib/admin/acesso";
 
 // Cliente de SESSAO do admin. Usa a anon key e existe apenas para autenticar a
 // Mel (Supabase Auth). Nao le nem escreve leads -- isso e exclusividade do
@@ -31,11 +32,19 @@ export async function criarClienteSessao() {
   );
 }
 
-/** Sessao da Mel, ou null. Usado pelas paginas e rotas do /admin. */
+/**
+ * Sessao da Mel, ou null. Usado pelas paginas e rotas do /admin.
+ *
+ * Confere `ADMIN_EMAILS` de novo, mesmo com o middleware na frente: se o
+ * matcher mudar um dia, a rota nao fica aberta para qualquer conta do Auth.
+ * Sem a lista, ninguem passa (falha fechada, como no middleware).
+ */
 export async function getSessaoAdmin() {
+  const admins = lerListaAdmins(process.env.ADMIN_EMAILS);
+  if (!admins) return null;
   const supabase = await criarClienteSessao();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  return user;
+  return user && ehAdmin(user.email, admins) ? user : null;
 }

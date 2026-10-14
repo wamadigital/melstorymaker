@@ -10,6 +10,7 @@
  * estoura no primeiro problema -- e a graca aqui e listar TODOS de uma vez.
  */
 import { createClient } from "@supabase/supabase-js";
+import { ehAdmin, lerListaAdmins } from "@/lib/admin/acesso";
 
 const ok = (m: string) => console.log(`  \x1b[32m✓\x1b[0m ${m}`);
 const falha = (m: string) => console.log(`  \x1b[31m✗\x1b[0m ${m}`);
@@ -47,6 +48,8 @@ async function main() {
   const dryRun = ler("MAIL_DRY_RUN");
   const whats = ler("MEL_WHATSAPP");
   const appUrl = ler("APP_URL");
+  const adminEmails = ler("ADMIN_EMAILS");
+  const admins = lerListaAdmins(adminEmails ?? undefined);
 
   // `segredo: true` mascara. URL do projeto, remetente e WhatsApp aparecem
   // inteiros de proposito: e olhando para eles que se percebe que o valor
@@ -69,6 +72,15 @@ async function main() {
   // parecidos, e o sintoma seria o painel vazio sem nenhuma mensagem de erro.
   if (anon && service && anon === service) {
     erro("SUPABASE_SERVICE_ROLE_KEY é idêntica à anon key — são chaves diferentes no painel");
+  }
+
+  // Sem lista valida o middleware fecha o /admin com 503, para a Mel inclusive.
+  if (!adminEmails) {
+    erro("ADMIN_EMAILS está vazia: o /admin responde 503 para todo mundo, a Mel inclusive");
+  } else if (!admins) {
+    erro(`ADMIN_EMAILS sem nenhum e-mail válido: o /admin responde 503. Recebi: "${adminEmails}"`);
+  } else {
+    ok(`ADMIN_EMAILS = ${adminEmails}`);
   }
 
   if (whats && !/^\d{12,13}$/.test(whats)) {
@@ -145,6 +157,44 @@ async function main() {
       ok(
         `${usuarios.users.length} usuária(s) no Auth: ${usuarios.users.map((u) => u.email).join(", ")}`,
       );
+      // Conta no Auth e fora da lista faz login e volta para a tela de login
+      // com "Esta conta não tem acesso ao painel".
+      if (admins) {
+        const fora = usuarios.users.filter((u) => !ehAdmin(u.email, admins));
+        if (fora.length === usuarios.users.length) {
+          erro("nenhuma conta do Auth está no ADMIN_EMAILS: o painel fica trancado para todo mundo");
+        }
+        for (const u of fora) {
+          alerta(`${u.email ?? u.id} existe no Auth mas está fora do ADMIN_EMAILS: não entra no painel`);
+        }
+      }
+    }
+
+    // Cadastro publico do Auth. Aberto, qualquer pessoa cria conta com o anon
+    // key (que esta no bundle do site). O ADMIN_EMAILS a barra no painel, mas a
+    // primeira tranca e esta, no dashboard -- estava aberta em 14/10/2026.
+    try {
+      const resp = await fetch(`${url}/auth/v1/settings`, { headers: { apikey: anon } });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const auth = (await resp.json()) as { disable_signup?: boolean; mailer_autoconfirm?: boolean };
+      if (auth.disable_signup === true) {
+        ok("cadastro público desligado no Supabase Auth");
+      } else {
+        erro(
+          "cadastro público ABERTO no Supabase Auth: desligue em Authentication > " +
+            "Sign In / Providers > Allow new users to sign up",
+        );
+      }
+      // Item de dominio (@wama.digital) confia que so o dono da caixa confirma
+      // a conta. Sem confirmacao, basta digitar um e-mail do dominio.
+      if (auth.mailer_autoconfirm === true && admins && admins.dominios.size > 0) {
+        erro(
+          "confirmação de e-mail desligada no Auth e ADMIN_EMAILS libera domínio inteiro: " +
+            "qualquer cadastro com esse domínio entraria no painel",
+        );
+      }
+    } catch (e) {
+      alerta(`não consegui ler as configurações do Auth: ${(e as Error).message}`);
     }
   }
 

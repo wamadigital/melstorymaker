@@ -469,8 +469,10 @@ create trigger leads_avisar_quadro
   after insert or update or delete on public.leads
   for each row execute function public.avisar_quadro();
 
--- Quem ouve: qualquer `authenticated`, que e exatamente quem o middleware deixa
--- entrar no /admin. Sem policy de INSERT: ninguem do navegador publica neste
+-- Quem ouve: qualquer `authenticated`. E mais largo que o painel, que tambem
+-- exige a conta no ADMIN_EMAILS (middleware): uma conta fora da lista ouviria
+-- a campainha, mas ela sai vazia e o refresh que ela pede passa pelo
+-- middleware. Sem policy de INSERT: ninguem do navegador publica neste
 -- topico, so o banco.
 drop policy if exists "painel ouve o aviso do quadro" on realtime.messages;
 create policy "painel ouve o aviso do quadro"

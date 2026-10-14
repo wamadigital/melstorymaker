@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,12 +9,20 @@ import { Label } from "@/components/ui/label";
 import { criarClienteNavegador } from "@/lib/supabase/client";
 
 export function LoginClient() {
-  const router = useRouter();
-  const proximo = useSearchParams().get("proximo") ?? "/admin";
+  const params = useSearchParams();
+  // So caminho do proprio painel: `?proximo=https://...` levaria a Mel, ja
+  // logada, para fora do site.
+  const pedido = params.get("proximo");
+  const proximo = pedido?.startsWith("/admin") ? pedido : "/admin";
 
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
-  const [erro, setErro] = useState<string | null>(null);
+  // `negado` vem do middleware: a senha estava certa, mas a conta nao esta em
+  // ADMIN_EMAILS e a sessao foi encerrada. Sem a frase, a Mel voltaria para
+  // esta tela sem saber por que (o caso real e a variavel faltando na Vercel).
+  const [erro, setErro] = useState<string | null>(
+    params.get("negado") ? "Esta conta não tem acesso ao painel." : null,
+  );
   const [ocupado, setOcupado] = useState(false);
 
   async function entrar(e: React.FormEvent) {
@@ -32,9 +40,11 @@ export function LoginClient() {
       return;
     }
 
-    // refresh() faz o middleware rodar de novo ja com o cookie de sessao.
-    router.replace(proximo);
-    router.refresh();
+    // Navegacao completa, e nao router.replace: se o middleware recusar a conta
+    // (fora do ADMIN_EMAILS), ele devolve para ESTA tela, e numa navegacao do
+    // cliente o componente nao remonta -- o botao ficaria girando para sempre
+    // e o aviso de `negado` nao apareceria.
+    window.location.replace(proximo);
   }
 
   return (
