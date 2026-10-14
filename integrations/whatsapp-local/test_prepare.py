@@ -138,6 +138,49 @@ class PreparationTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "divergente"):
                 prepare.verify_manifest(self.app)
 
+    def test_history_download_is_disabled_before_connect_and_certified(self):
+        self.copyApp()
+        go = '''package main
+
+func main() {
+\tclient := whatsmeow.NewClient(deviceStore, logger)
+\tif client == nil {
+\t\tlogger.Errorf("Failed to create WhatsApp client")
+\t\treturn
+\t}
+\terr := client.Connect()
+}
+'''
+        patched = prepare.patch_history_download(go)
+        assignment = "client.ManualHistorySyncDownload = true"
+        self.assertEqual(patched.count(assignment), 1)
+        self.assertLess(patched.index("if client == nil"), patched.index(assignment))
+        self.assertLess(patched.index(assignment), patched.index("client.Connect()"))
+        go_file = self.app / "whatsapp-bridge/main.go"
+        go_file.write_text(patched)
+        manifest = prepare.create_manifest(self.app)
+        self.assertEqual(
+            manifest["files"]["whatsapp-bridge/main.go"],
+            hashlib.sha256(patched.encode()).hexdigest(),
+        )
+        prepare.verify_manifest(self.app)
+        go_file.write_text(patched.replace(assignment, "client.ManualHistorySyncDownload = false"))
+        with self.assertRaisesRegex(RuntimeError, "divergente"):
+            prepare.verify_manifest(self.app)
+        self.assertPrivateStateUntouched()
+
+    def test_history_download_patch_refuses_missing_or_ambiguous_constructor(self):
+        with self.assertRaisesRegex(RuntimeError, "Upstream divergente"):
+            prepare.patch_history_download("func main() {}")
+        constructor = '''\tclient := whatsmeow.NewClient(deviceStore, logger)
+\tif client == nil {
+\t\tlogger.Errorf("Failed to create WhatsApp client")
+\t\treturn
+\t}
+'''
+        with self.assertRaisesRegex(RuntimeError, "Upstream divergente"):
+            prepare.patch_history_download(constructor + constructor)
+
     def test_unexpected_go_source_is_rejected(self):
         self.copyApp()
         prepare.create_manifest(self.app)

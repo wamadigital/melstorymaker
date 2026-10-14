@@ -45,27 +45,55 @@ envios. A instalação não altera as configurações de energia do macOS.
 
 ## Início automático no login
 
+O runtime canônico dos serviços fica em
+`~/Library/Application Support/MelStorymaker/WhatsApp`. LaunchAgents não usam o
+checkout em `Documents`: o macOS bloqueia esse acesso em segundo plano (TCC).
+Não é necessário conceder Acesso Total ao Disco.
+
 Preparar os dois plists apenas no runtime, sem instalar ou iniciar serviços:
 
 ```bash
 .whatsapp-local/app/whatsapp-mcp-server/.venv/bin/python integrations/whatsapp-local/service.py --prepare
 ```
 
-Após parear e ativar a configuração local (`enabled:true`), instalar para o login
-da usuária deste Mac:
+Para realocar esta instalação que já tem os dois plists próprios, depois de
+parear, validar o manifesto e parar seus dois serviços/bridge foreground:
 
 ```bash
-.whatsapp-local/app/whatsapp-mcp-server/.venv/bin/python integrations/whatsapp-local/service.py --install
+.whatsapp-local/app/whatsapp-mcp-server/.venv/bin/python integrations/whatsapp-local/service.py --relocate
 ```
 
-O comando confirma a sessão autenticada e pede Enter depois de encerrar o bridge
-iniciado manualmente. O operador interrompe somente esse processo; o helper não
-mata processos. A comprovação do pareamento permanece na mesma invocação.
-Ele recusa plists ou rótulos já existentes e cria somente
+`--relocate` exige `enabled:true`, os dois plists exatamente iguais aos desta
+instalação e rótulos parados. Recusa um destino já existente. Copia a sessão,
+tokens e recibos de forma privada, incluindo os arquivos WAL/SHM dos bancos,
+com o worker de origem travado e o bridge parado. Copia o CPython real e os
+pacotes instalados, refaz a venv sem links para `Documents` e testa os imports
+offline. Não copia logs, QR, histórico, caches, Go ou o upstream. O bridge novo
+precisa confirmar uma sessão autenticada antes de iniciar o worker.
+
+A origem permanece como backup. **Após sucesso, desativar `enabled` na
+configuração da origem e nunca iniciar o `connect.command`, bridge ou worker
+antigos**: a sessão e os recibos passarão a evoluir somente em Application
+Support. Manutenção e pareamentos futuros usam exclusivamente essa cópia:
+
+```bash
+cd "$HOME/Library/Application Support/MelStorymaker/WhatsApp"
+bash integrations/whatsapp-local/run-bridge.sh --pair  # somente com o serviço bridge parado
+```
+
+Se a migração falhar antes de iniciar serviços, os plists originais são
+restaurados. Se já iniciou algum serviço, a cópia nova da sessão é preservada
+para revisão; ela não é sobrescrita silenciosamente nem removida. Não repetir
+`--relocate` contra um destino existente.
+
+O modo `--install` permanece para uma instalação em diretório sem a proteção
+de `Documents`: confirma a sessão autenticada e pede Enter depois de encerrar
+o bridge foreground, sem matar processos automaticamente. Recusa plists e
+rótulos já existentes. Os modos de instalação usam somente
 `com.melstorymaker.whatsapp.bridge` e `com.melstorymaker.whatsapp.worker` em
-`~/Library/LaunchAgents`. Falha durante a instalação reverte apenas seus próprios
-plists e serviços. Os serviços reutilizam a sessão, sem `--pair`, e os logs ficam
-privados em `.whatsapp-local/state/`. Entrar no Mac inicia os serviços; o Mac
+`~/Library/LaunchAgents`. Rollback altera apenas seus próprios plists e serviços.
+Os serviços reutilizam a sessão, sem `--pair`, e os logs ficam privados em
+`.whatsapp-local/state/` da cópia canônica. Entrar no Mac inicia os serviços; o Mac
 continua precisando estar ligado, acordado e conectado.
 
 ## Ativação

@@ -2,6 +2,7 @@
 
 import io
 import json
+import os
 from pathlib import Path
 import plistlib
 import tempfile
@@ -192,6 +193,218 @@ class ServiceTests(unittest.TestCase):
         opener.open.return_value = response
         with patch.object(service.urllib.request, "build_opener", return_value=opener):
             self.assertFalse(service.paired(self.root))
+
+    def relocation_fixture(self):
+        scripts = self.root / "integrations/whatsapp-local"
+        for name in ("run-mcp.sh", "worker.py", "service.py", "prepare.py", "compat.py", "local_server.go", "local_server_test.go"):
+            (scripts / name).write_text("código fictício para cópia")
+        (scripts / "dependencies").mkdir()
+        (scripts / "dependencies/uv.lock").write_text("lock fictício")
+        runtime = self.root / ".whatsapp-local"
+        for name in (*service.preparation.APP_FILES, service.preparation.MANIFEST_NAME):
+            file = runtime / "app" / name
+            file.parent.mkdir(parents=True, exist_ok=True)
+            file.write_text("arquivo fictício do app")
+        (runtime / "bin").mkdir()
+        (runtime / "bin/whatsapp-bridge").write_bytes(b"binario-ficticio")
+        python = runtime / "toolchain/python/cpython-ficticio"
+        (python / "bin").mkdir(parents=True)
+        (python / "bin/python3.12").write_bytes(b"python-ficticio-nao-executar")
+        (python / "lib").mkdir()
+        (python / "lib/stdlib-fixture.py").write_text("# stdlib fictícia")
+        venv = runtime / "app/whatsapp-mcp-server/.venv"
+        (venv / "bin").mkdir(parents=True)
+        (venv / "bin/python").symlink_to(python / "bin/python3.12")
+        (venv / "bin/mcp").write_text("#!" + str(venv / "bin/python") + "\n")
+        packages = venv / "lib/python3.12/site-packages"
+        packages.mkdir(parents=True)
+        (packages / "_virtualenv.pth").write_text("import _virtualenv\n")
+        (packages / "fixture.py").write_text("# pacote fictício")
+        (packages / "__pycache__").mkdir()
+        (packages / "__pycache__/fixture.pyc").write_bytes(b"cache-ficticio")
+        (self.state / "bridge-token").write_text("token-ficticio-do-bridge-para-copia-sem-conta")
+        (self.state / "worker-token").write_text("token-ficticio-do-worker-para-copia-sem-conta")
+        (self.state / "store").mkdir()
+        for name, data in {
+            "store/whatsapp.db": b"sessao-ficticia-nao-e-um-banco-real",
+            "store/whatsapp.db-wal": b"wal-ficticio",
+            "store/whatsapp.db-shm": b"shm-ficticio",
+            "worker-ledger.db": b"ledger-ficticio",
+            "worker-ledger.db-wal": b"wal-ledger-ficticio",
+            "pairing.png": b"nao-copiar-qr",
+            "bridge-service.stdout.log": b"nao-copiar-logs",
+            "store/messages.db": b"nao-copiar-historico",
+        }.items():
+            (self.state / name).write_bytes(data)
+        self.directory.mkdir(parents=True)
+        for label, value in service.plans(self.root).items():
+            (self.directory / f"{label}.plist").write_bytes(plistlib.dumps(value))
+
+    def relocate(self, **kwargs):
+        options = {"runner": self.runner, "source_verifier": Mock(), "probe": Mock(),
+                   "free_port": lambda: True, "readiness": lambda target: True}
+        options.update(kwargs)
+        return service.relocate(self.root, self.home, **options)
+
+    def test_relocation_is_self_contained_and_preserves_original_session(self):
+        self.relocation_fixture()
+        original = (self.state / "store/whatsapp.db").read_bytes()
+        checked = Mock()
+        target = self.relocate(source_verifier=checked)
+        checked.assert_called_with(self.root)
+        self.assertEqual(checked.call_count, 2)
+        self.assertEqual(target, self.home / "Library/Application Support/MelStorymaker/WhatsApp")
+        self.assertEqual(target.stat().st_mode & 0o777, 0o700)
+        new_state = target / ".whatsapp-local/state"
+        for name in ("store/whatsapp.db", "store/whatsapp.db-wal", "store/whatsapp.db-shm", "worker-ledger.db", "worker-ledger.db-wal", "bridge-token", "worker-token"):
+            self.assertEqual((new_state / name).read_bytes(), (self.state / name).read_bytes())
+            self.assertEqual((new_state / name).stat().st_mode & 0o777, 0o600)
+        self.assertEqual((self.state / "store/whatsapp.db").read_bytes(), original)
+        self.assertFalse((new_state / "store/messages.db").exists())
+        self.assertFalse((new_state / "pairing.png").exists())
+        self.assertFalse((new_state / "bridge-service.stdout.log").exists())
+        venv = target / ".whatsapp-local/app/whatsapp-mcp-server/.venv"
+        self.assertFalse((venv / "bin/mcp").exists())
+        self.assertFalse((venv / "lib/python3.12/site-packages/__pycache__").exists())
+        self.assertNotIn(str(self.root), (venv / "pyvenv.cfg").read_text())
+        self.assertTrue((venv / "bin/python").resolve().is_relative_to(target))
+        for file in target.rglob("*"):
+            if file.is_symlink():
+                self.assertFalse(file.readlink().is_absolute())
+                self.assertTrue(file.resolve().is_relative_to(target))
+        for label in service.LABELS:
+            value = plistlib.loads((self.directory / f"{label}.plist").read_bytes())
+            self.assertEqual(value, service.plans(target)[label])
+            self.assertNotIn(str(self.root), json.dumps(value))
+
+    def test_relocation_does_not_bootstrap_worker_before_paired_status(self):
+        self.relocation_fixture()
+
+        def ready(target):
+            boots = [command for command in self.commands if command[0] == "bootstrap"]
+            self.assertEqual(len(boots), 1)
+            self.assertIn(service.LABELS[0], boots[0][2])
+            return True
+
+        self.relocate(readiness=ready)
+        self.assertEqual(sum(command[0] == "bootstrap" for command in self.commands), 2)
+
+    def test_relocation_refuses_existing_destination(self):
+        self.relocation_fixture()
+        target = service.canonical_root(self.home)
+        target.mkdir(parents=True)
+        (target / "preservar").write_text("outra sessão fictícia")
+        with self.assertRaisesRegex(service.ServiceError, "Destino"):
+            self.relocate()
+        self.assertEqual((target / "preservar").read_text(), "outra sessão fictícia")
+        self.assertEqual(self.commands, [])
+
+    def test_relocation_refuses_unowned_plist_and_loaded_service(self):
+        self.relocation_fixture()
+        first = self.directory / f"{service.LABELS[0]}.plist"
+        original = first.read_bytes()
+        first.write_bytes(plistlib.dumps({"Label": service.LABELS[0], "ProgramArguments": ["/bin/false"]}))
+        with self.assertRaisesRegex(service.ServiceError, "outra configuração"):
+            self.relocate()
+        self.assertFalse(service.canonical_root(self.home).exists())
+        first.write_bytes(original)
+        with self.assertRaisesRegex(service.ServiceError, "Pare somente"):
+            self.relocate(runner=lambda arguments: SimpleNamespace(returncode=0))
+        self.assertFalse(service.canonical_root(self.home).exists())
+
+    def test_relocation_refuses_bad_source_manifest_before_writes(self):
+        self.relocation_fixture()
+        with self.assertRaisesRegex(RuntimeError, "manifesto fictício"):
+            self.relocate(source_verifier=Mock(side_effect=RuntimeError("manifesto fictício inválido")))
+        self.assertFalse(service.canonical_root(self.home).parent.exists())
+        self.assertEqual(self.commands, [])
+
+    def test_relocation_refuses_active_foreground_worker(self):
+        self.relocation_fixture()
+        with service.source_quiet(self.root):
+            with self.assertRaisesRegex(service.ServiceError, "origem preservada"):
+                self.relocate()
+        self.assertFalse(service.canonical_root(self.home).exists())
+        self.assertEqual((self.state / "worker.lock").stat().st_mode & 0o777, 0o600)
+        self.assertFalse(any(command[0] == "bootstrap" for command in self.commands))
+
+    def test_relocation_probe_failure_restores_plists_without_starting_services(self):
+        self.relocation_fixture()
+        originals = {label: (self.directory / f"{label}.plist").read_bytes() for label in service.LABELS}
+        with self.assertRaisesRegex(service.ServiceError, "origem preservada"):
+            self.relocate(probe=Mock(side_effect=service.ServiceError("Python fictício inválido")))
+        self.assertFalse(service.canonical_root(self.home).exists())
+        for label, data in originals.items():
+            self.assertEqual((self.directory / f"{label}.plist").read_bytes(), data)
+        self.assertFalse(any(command[0] == "bootstrap" for command in self.commands))
+
+    def test_relocation_failed_pairing_stops_only_new_bridge_preserves_session_copy(self):
+        self.relocation_fixture()
+        originals = {label: (self.directory / f"{label}.plist").read_bytes() for label in service.LABELS}
+        with self.assertRaisesRegex(service.ServiceError, "origem preservada"):
+            self.relocate(readiness=lambda target: False)
+        target = service.canonical_root(self.home)
+        self.assertTrue((target / ".whatsapp-local/state/store/whatsapp.db").exists())
+        self.assertTrue((self.state / "store/whatsapp.db").exists())
+        boots = [command for command in self.commands if command[0] == "bootstrap"]
+        stops = [command for command in self.commands if command[0] == "bootout"]
+        self.assertEqual(len(boots), 1)
+        self.assertEqual(len(stops), 1)
+        self.assertIn(service.LABELS[0], stops[0][1])
+        for label, data in originals.items():
+            self.assertEqual((self.directory / f"{label}.plist").read_bytes(), data)
+
+    def test_relocation_interrupt_after_first_plist_restores_originals(self):
+        self.relocation_fixture()
+        originals = {label: (self.directory / f"{label}.plist").read_bytes() for label in service.LABELS}
+        replace = service.replace_owned
+        calls = []
+
+        def interrupted(file, expected, data):
+            calls.append(file)
+            if len(calls) == 2:
+                raise KeyboardInterrupt()
+            return replace(file, expected, data)
+
+        with patch.object(service, "replace_owned", side_effect=interrupted):
+            with self.assertRaisesRegex(service.ServiceError, "origem preservada"):
+                self.relocate()
+        self.assertFalse(service.canonical_root(self.home).exists())
+        self.assertFalse(any(command[0] == "bootstrap" for command in self.commands))
+        for label, data in originals.items():
+            self.assertEqual((self.directory / f"{label}.plist").read_bytes(), data)
+
+    def test_relocation_interrupt_after_bridge_bootstrap_stops_it(self):
+        self.relocation_fixture()
+        originals = {label: (self.directory / f"{label}.plist").read_bytes() for label in service.LABELS}
+        with self.assertRaisesRegex(service.ServiceError, "origem preservada"):
+            self.relocate(readiness=Mock(side_effect=KeyboardInterrupt))
+        stops = [command for command in self.commands if command[0] == "bootout"]
+        self.assertEqual(len(stops), 1)
+        self.assertIn(service.LABELS[0], stops[0][1])
+        self.assertTrue((service.canonical_root(self.home) / ".whatsapp-local/state/store/whatsapp.db").exists())
+        for label, data in originals.items():
+            self.assertEqual((self.directory / f"{label}.plist").read_bytes(), data)
+
+    def test_relocation_interrupt_inside_successful_replace_restores_originals(self):
+        self.relocation_fixture()
+        originals = {label: (self.directory / f"{label}.plist").read_bytes() for label in service.LABELS}
+        replace = service.replace_owned
+        calls = []
+
+        def interrupted(file, expected, data):
+            calls.append(file)
+            replace(file, expected, data)
+            if len(calls) == 1:
+                raise KeyboardInterrupt()
+
+        with patch.object(service, "replace_owned", side_effect=interrupted):
+            with self.assertRaisesRegex(service.ServiceError, "origem preservada"):
+                self.relocate()
+        self.assertFalse(service.canonical_root(self.home).exists())
+        self.assertFalse(any(command[0] == "bootstrap" for command in self.commands))
+        for label, data in originals.items():
+            self.assertEqual((self.directory / f"{label}.plist").read_bytes(), data)
 
 
 if __name__ == "__main__":

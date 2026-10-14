@@ -125,6 +125,19 @@ def _local_post(url, payload):
     return text.replace('requests.post(url, json=payload)', '_local_post(url, payload)')
 
 
+def patch_history_download(text: str) -> str:
+    constructor = '''\tclient := whatsmeow.NewClient(deviceStore, logger)
+\tif client == nil {
+\t\tlogger.Errorf("Failed to create WhatsApp client")
+\t\treturn
+\t}
+'''
+    return replace_once(text, constructor, constructor + '''
+\t// Confirmações de texto não precisam importar o histórico pessoal.
+\tclient.ManualHistorySyncDownload = true
+''')
+
+
 def _patch_app(app: Path) -> None:
     go_file = app / "whatsapp-bridge/main.go"
     go = go_file.read_text()
@@ -166,7 +179,7 @@ def _patch_app(app: Path) -> None:
 				}''')
     go = replace_once(go, '\t"github.com/mdp/qrterminal"', '\t"github.com/mdp/qrterminal"\n\t"rsc.io/qr"')
     go = replace_once(go, '\t// Wait a moment for connection to stabilize', '\t_ = os.Remove("pairing.png")\n\n\t// Wait a moment for connection to stabilize')
-    go_file.write_text(aplicar_compatibilidade_go(go))
+    go_file.write_text(aplicar_compatibilidade_go(patch_history_download(go)))
     for name in ("local_server.go", "local_server_test.go"):
         shutil.copyfile(Path(__file__).parent / name, app / "whatsapp-bridge" / name)
     for name in ("go.mod", "go.sum"):
