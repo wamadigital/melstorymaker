@@ -1,0 +1,82 @@
+# Exclusões existentes do projeto, mais a instalação local do WhatsApp.
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env files (can opt-in for committing if needed)
+.env*
+!.env.example
+
+# PDFs base placeholder gerados por script (a arte real do Figma e versionada)
+/assets/templates/*.placeholder.pdf
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# saida do npm run pdf:verificar
+/.pdf-verificacao
+
+# arte bruta exportada do Figma (o PDF final é que vai versionado)
+/.arte-bruta
+# Páginas novas exportadas do Figma ao derivar uma tabela de preço (ver arte:derivar)
+/.arte-2027
+.arte-vetor
+
+
+# vinculo local do projeto Vercel
+.vercel
+
+# Contratos reais da Mel (CPF, endereço e e-mail de clientes). Servem só de
+# referência local para o modelo de contrato e NUNCA vão para o repositório.
+/contratos-passados/
+
+# saida do npm run contrato:verificar (contratos de exemplo, dados ficticios)
+/.contrato-verificacao
+/.arte-2028
+
+# Reels brutos baixados do Instagram para o npm run lp:reels (o que vai versionado
+# e a saida transcodificada em public/midia/)
+/.lp-bruto
+
+# Runtime local do WhatsApp: sessão, bancos, ferramentas e logs privados.
+/.whatsapp-local/
+# Configuração desta instalação no Mac; não contém credenciais.
+/.codex/config.toml
+
+# Ferramentas locais não fazem parte do deploy.
+/.codex/
+/.claude/
+/.agents/
+/integrations/whatsapp-local/

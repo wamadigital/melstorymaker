@@ -30,7 +30,7 @@ Estas decisões já foram tomadas e não devem ser reabertas durante o desenvolv
 
 1. **Figma é fonte de arte, não runtime.** A arte de cada categoria é exportada do Figma como PDF base. O texto dinâmico é aplicado por cima via `pdf-lib` usando coordenadas fixas. Fidelidade 1:1 com o design original, zero dependência de API do Figma.
 2. **Human-in-the-loop obrigatório.** Nenhuma proposta sai sem a Mel aprovar no painel admin.
-3. **Envio ao lead por e-mail.** Complementado por botão `wa.me` no painel para a Mel encaminhar o link do PDF pelo WhatsApp dela (canal onde o lead já está). Sem API de WhatsApp, custo zero.
+3. **Envio da proposta por e-mail e WhatsApp manual.** O botão `wa.me` no painel encaminha o link do PDF pelo WhatsApp da Mel. Exceção autorizada pelo owner em 14/10/2026: confirmação de recebimento após concluir o formulário, enviada pelo WhatsApp MCP no Mac do Henrique. O sistema mantém uma fila privada; o Mac busca os trabalhos por HTTPS. Esta confirmação não envia nem aprova a proposta.
 4. **E-mail pelo Gmail da Mel, via SMTP.** Nodemailer + App Password, atrás da interface `MailAdapter`. Sem serviço transacional: a conta Google Workspace entrega 2.000 destinatários/dia, muito acima do volume da Mel, e não custa nada. O Google reescreve o remetente para a conta autenticada, então a proposta chega do endereço configurado em `GMAIL_USER`.
 5. **Form engine próprio com árvore declarativa em JSON.** Uma pergunta por tela, estilo Typeform, mobile-first. Sem Typeform/mensalidade.
 6. **Contato em duas etapas obrigatórias.** WhatsApp com DDD é a primeira pergunta de todo fluxo, para permitir contato mesmo em caso de abandono. O e-mail validado é a última pergunta, necessário para enviar a proposta por e-mail.
@@ -50,6 +50,7 @@ Estas decisões já foram tomadas e não devem ser reabertas durante o desenvolv
 7. Botão de envio via WhatsApp (`wa.me` com mensagem pronta e link do PDF)
 8. Edição das respostas do lead pelo painel antes de gerar/regerar o PDF
 9. Landing page de venda de casamento em `/casamento` (pedido do owner em 01/10/2026), destino dos anúncios do Instagram: os Reels de casamento da Mel como prova, pacotes sem preço, FAQ e CTA para o formulário em modo casamento (`/formulario?evento=casamento`). Regras em "LP de venda" no CLAUDE.md
+10. Confirmação de recebimento pelo WhatsApp após a primeira conclusão do formulário (pedido do owner em 14/10/2026). Uma confirmação por lead, expiração em 24 horas, sem importar conclusões anteriores à ativação. Proposta, lembretes e disparos a grupos continuam fora desta automação. Requer Mac acordado, internet e WhatsApp conectado; resultado incerto fica para reconciliação e não autoriza reenviar.
 
 ### Fora do MVP (v2)
 

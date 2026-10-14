@@ -68,3 +68,9 @@ next-env.d.ts
 # Reels brutos baixados do Instagram para o npm run lp:reels (o que vai versionado
 # e a saida transcodificada em public/midia/)
 /.lp-bruto
+
+# Runtime local do WhatsApp: sessão, bancos, ferramentas e logs privados.
+/.whatsapp-local/
+# Configuração desta instalação no Mac; não contém credenciais.
+/.codex/config.toml
+/integrations/whatsapp-local/__pycache__/

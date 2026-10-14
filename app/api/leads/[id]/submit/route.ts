@@ -14,6 +14,7 @@ import { enviarConversao } from "@/lib/meta/conversoes";
 import { enviarEventosCrmDoLead } from "@/lib/meta/crm";
 import { origemDaRequisicao, rastreioDaRequisicao } from "@/lib/meta/rastreio";
 import { atualizarVersaoLead, CAMPOS_VERSAO_LEAD, corpoBaseLead, mesmaVersaoLead } from "@/lib/form/versao-lead";
+import { enfileirarConfirmacaoWhatsApp } from "@/lib/whatsapp-automacao";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -122,6 +123,12 @@ export async function POST(req: Request, { params }: Ctx) {
       { status: 409 },
     );
   }
+
+  // Somente o CAS vencedor registra a confirmacao auxiliar. INSERT aguardado,
+  // idempotente por lead; falha nao desfaz o submit. Nao e atomico com o CAS.
+  await enfileirarConfirmacaoWhatsApp({
+    leadId: id, whatsapp: promovidas.whatsapp, ocorridoEm: escrita.lead.updated_at,
+  });
 
   // Avisa a Mel DEPOIS de responder ao lead: after() roda pos-resposta, entao
   // gateway lento ou fora do ar nao atrasa nem quebra o submit. Dispara so

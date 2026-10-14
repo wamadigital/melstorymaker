@@ -15,6 +15,8 @@ const eslintConfig = [
     ignores: [
       "node_modules/**",
       ".next/**",
+      ".whatsapp-local/**",
+      ".claude/worktrees/**",
       "out/**",
       "build/**",
       "next-env.d.ts",
