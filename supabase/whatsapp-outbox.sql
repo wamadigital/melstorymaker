@@ -2,6 +2,8 @@
 -- deploy, em transacao. Nao habilita envios nem importa conclusoes historicas.
 -- Nao ha trigger: o submit vencedor aguarda um INSERT auxiliar idempotente.
 -- Uma falha/crash entre CAS e INSERT pode perder este aviso; nunca o formulario.
+-- Para lembretes de Novo >24h, aplicar whatsapp-lembrete-formulario.sql depois
+-- deste arquivo, na mesma transacao. schema.sql ja encerra com os dois blocos.
 
 create table if not exists public.whatsapp_outbox (
   id uuid primary key default gen_random_uuid(),

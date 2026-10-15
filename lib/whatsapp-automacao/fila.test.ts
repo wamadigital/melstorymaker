@@ -80,7 +80,7 @@ test("SDK chama RPC dedicada com identidade/tempo fixos e mapeia envelope sem PI
     if (nome === "resultado_whatsapp") return Response.json("enviando");
     return Response.json([{ id: ID, lease_token: TOKEN, destinatario: "5519988887777",
       mensagem: MENSAGEM_CONFIRMACAO, expira_em: "2026-10-15T18:00:00Z", lead_id: "privado" }]);
-  }));
+  }), { ambiente: {}, agora: () => AGORA });
   const registro = { leadId: ID, recipient: "5519988887777", message: MENSAGEM_CONFIRMACAO, ocorridoEm: confirmacao.ocorridoEm };
   await repositorio.registrar(registro);
   await repositorio.registrar(registro);
@@ -92,10 +92,10 @@ test("SDK chama RPC dedicada com identidade/tempo fixos e mapeia envelope sem PI
 });
 
 test("SDK distingue claim vazio, CAS recusado e erro de banco", async () => {
-  const vazio = criarRepositorioWhatsApp(sdkFicticio((nome) => Response.json(nome === "reivindicar_whatsapp" ? [] : null)));
+  const vazio = criarRepositorioWhatsApp(sdkFicticio((nome) => Response.json(nome === "reivindicar_whatsapp" ? [] : null)), { ambiente: {}, agora: () => AGORA });
   assert.equal(await vazio.reivindicar(), null);
   assert.equal(await vazio.resultado(ID, { leaseToken: TOKEN, outcome: "started" }), null);
-  const erro = criarRepositorioWhatsApp(sdkFicticio(() => Response.json({ message: "privado", code: "XX000" }, { status: 500 })));
+  const erro = criarRepositorioWhatsApp(sdkFicticio(() => Response.json({ message: "privado", code: "XX000" }, { status: 500 })), { ambiente: {}, agora: () => AGORA });
   await assert.rejects(erro.reivindicar(), /claim_whatsapp/);
   await assert.rejects(erro.resultado(ID, { leaseToken: TOKEN, outcome: "sent" }), /resultado_whatsapp/);
 });

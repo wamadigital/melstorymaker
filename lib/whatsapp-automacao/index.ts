@@ -5,8 +5,12 @@ import {
   destinatarioConfirmacao, envelopeJob, MENSAGEM_CONFIRMACAO, PRAZO_CONFIRMACAO_MS,
   type JobWhatsApp, type ResultadoWorker,
 } from "./contrato";
+import {
+  configuracaoLembreteFormulario, PREFIXO_LEMBRETE_FORMULARIO,
+  type AmbienteLembreteFormulario,
+} from "./lembrete-formulario";
 
-export type AmbienteWhatsApp = {
+export type AmbienteWhatsApp = AmbienteLembreteFormulario & {
   [chave: string]: string | undefined;
   WHATSAPP_AUTOMACAO_ATIVA?: string;
   WHATSAPP_WORKER_TOKEN?: string;
@@ -59,8 +63,19 @@ export async function enfileirarConfirmacaoWhatsApp(confirmacao: NovaConfirmacao
   });
 }
 
-/** SDK real pode receber transporte isolado nos testes, sem env ou rede real. */
-export function criarRepositorioWhatsApp(db: SupabaseClient) {
+type ContextoRepositorioWhatsApp = {
+  ambiente?: AmbienteWhatsApp;
+  agora?: () => number;
+  falhaLembretes?: () => void;
+};
+
+/** SDK real pode receber transporte, ambiente e relógio isolados nos testes. */
+export function criarRepositorioWhatsApp(db: SupabaseClient, contexto: ContextoRepositorioWhatsApp = {}) {
+  const ambiente: AmbienteWhatsApp = contexto.ambiente ?? process.env;
+  const agora = contexto.agora ?? Date.now;
+  const configAtual = () => configuracaoLembreteFormulario(ambiente, agora());
+  const falhaLembretes = contexto.falhaLembretes ??
+    (() => console.error("[whatsapp] nao consegui registrar lembretes do formulario; confirmacoes preservadas"));
   return {
     registrar: async ({ leadId, recipient, message, ocorridoEm }: RegistroConfirmacao): Promise<void> => {
       const { error } = await db.rpc("registrar_confirmacao_whatsapp", {
@@ -69,15 +84,32 @@ export function criarRepositorioWhatsApp(db: SupabaseClient) {
       if (error) throw new Error("registro_whatsapp");
     },
     reivindicar: async (): Promise<JobWhatsApp | null> => {
-      const { data, error } = await db.rpc("reivindicar_whatsapp")
+      const config = configAtual();
+      if (config) {
+        try {
+          const { error } = await db.rpc("enfileirar_lembretes_formulario_whatsapp", {
+            p_inicio_em: config.inicioEm, p_mensagem_prefixo: PREFIXO_LEMBRETE_FORMULARIO,
+            p_app_url: config.appUrl,
+          }).abortSignal(AbortSignal.timeout(5_000));
+          if (error) throw new Error("registro_lembretes_whatsapp");
+        } catch {
+          falhaLembretes();
+        }
+      }
+      // V1 permanece suficiente quando desativado, inclusive antes de aplicar o SQL novo.
+      const { data, error } = await db.rpc(config ? "reivindicar_whatsapp_v2" : "reivindicar_whatsapp", config ? {
+        p_lembrete_ativo: true, p_inicio_em: config.inicioEm,
+      } : undefined)
         .abortSignal(AbortSignal.timeout(5_000));
       if (error) throw new Error("claim_whatsapp");
       return data?.[0] ? envelopeJob(data[0]) : null;
     },
     resultado: async (id: string, resultado: ResultadoWorker): Promise<string | null> => {
-      const { data, error } = await db.rpc("resultado_whatsapp", {
+      const config = configAtual();
+      const { data, error } = await db.rpc(config ? "resultado_whatsapp_v2" : "resultado_whatsapp", {
         p_id: id, p_lease_token: resultado.leaseToken, p_outcome: resultado.outcome,
         p_code: resultado.code ?? null,
+        ...(config ? { p_lembrete_ativo: true, p_inicio_em: config.inicioEm } : {}),
       }).abortSignal(AbortSignal.timeout(5_000));
       if (error) throw new Error("resultado_whatsapp");
       return typeof data === "string" ? data : null;

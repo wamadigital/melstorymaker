@@ -110,6 +110,40 @@ A flag desativada bloqueia novas confirmações e novos inícios de envio.
 Resultados de trabalhos já iniciados ainda podem ser reconciliados.
 Leads antigos não são importados, e não há backfill.
 
+## Lembrete de formulário incompleto (preparado, desativado)
+
+Pedido do owner em 14/10/2026; o texto abaixo ainda depende de aprovação:
+
+> Oi! Aqui é a Mel 💛
+>
+> Ficou alguma dúvida para finalizar o formulário do seu evento? Se precisar de ajuda, pode me chamar por aqui 😊
+>
+> Suas respostas estão salvas. Para continuar de onde parou:
+> [link individual para continuar]
+
+O prazo conta da criação do lead, quando ele deixa o WhatsApp e avança na
+primeira pergunta. A primeira coluna é `Novo` (`incompleto`); nenhum status
+volta para ela. Salvar mais respostas não reinicia o prazo. A fila só aceita o
+lembrete após **mais de** 24 horas e confere novamente coluna, idade e telefone
+antes de autorizar o envio. Concluir o formulário ou mover o card impede o
+início do lembrete. Envio já iniciado tem resultado registrado, sem repetição
+automática em caso de dúvida.
+
+Há um único lembrete por lead, separado da confirmação de conclusão. Não muda
+o status nem os carimbos manuais de “já chamei”, e não exige e-mail ou nome.
+O worker existente busca essa fila a cada 60 segundos, com prioridade para as
+confirmações de conclusão. O Mac continua precisando estar acordado e conectado.
+
+Antes de ativar, aprovar o texto, aplicar manualmente
+`supabase/whatsapp-lembrete-formulario.sql` no SQL Editor e publicar o backend.
+Só então configurar `WHATSAPP_LEMBRETE_FORMULARIO_ATIVO=true` e
+`WHATSAPP_LEMBRETE_FORMULARIO_INICIO_EM` com o instante de ativação em ISO com
+fuso; `APP_URL` precisa ser HTTPS. O corte inclui apenas leads criados a partir
+desse instante, evitando mensagens retroativas. O interruptor geral
+`WHATSAPP_AUTOMACAO_ATIVA` continua valendo. Flag ausente/falsa, corte ausente ou
+inválido e URL inválida mantêm os lembretes desligados. Sem cron, serviço novo
+ou alteração no MCP do Mac.
+
 ## Falhas e recibos
 
 A fila tem RLS e acesso exclusivo ao backend. O worker reserva um item e precisa
