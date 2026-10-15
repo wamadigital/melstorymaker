@@ -3,7 +3,7 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import {
-  automacaoAtiva, reivindicarWhatsApp, registrarResultadoWhatsApp,
+  reivindicarWhatsApp, registrarResultadoWhatsApp,
   type AmbienteWhatsApp,
 } from "./index";
 import {
@@ -43,11 +43,13 @@ export async function tratarReivindicacao(req: Request, deps = reais()): Promise
   const recusa = autenticar(req, deps.ambiente);
   if (recusa) return recusa;
   const protocolo = protocoloWorker(req);
+  const config = protocolo === 2
+    ? configuracaoLembreteFormulario(deps.ambiente, (deps.agora ?? Date.now)()) : null;
   const detalhes = protocolo === 2 ? {
     protocolVersion: 2,
-    reminderActive: configuracaoLembreteFormulario(deps.ambiente, (deps.agora ?? Date.now)()) !== null,
+    reminderActive: config !== null,
   } : {};
-  if (!automacaoAtiva(deps.ambiente)) return resposta({ active: false, job: null, ...detalhes });
+  if (!config) return resposta({ active: false, job: null, ...detalhes });
   try {
     const job = await deps.reivindicar(protocolo);
     return resposta({ active: true, job: job ? validarJobWorker(job, protocolo) : null, ...detalhes });
@@ -71,11 +73,13 @@ export async function tratarResultado(
   const parsed = resultadoSchema.safeParse(corpo);
   if (!parsed.success) return resposta({ erro: "Resultado invalido" }, 400);
   // Desligar bloqueia novos envios, mas aceita ACK/indeterminado dos ja iniciados.
-  if (parsed.data.outcome === "started" && !automacaoAtiva(deps.ambiente)) {
+  const protocolo = protocoloWorker(req);
+  if (parsed.data.outcome === "started" && (protocolo !== 2 ||
+    !configuracaoLembreteFormulario(deps.ambiente, (deps.agora ?? Date.now)()))) {
     return resposta({ erro: "Automacao desativada" }, 409);
   }
   try {
-    const state = await deps.resultado(id, parsed.data, protocoloWorker(req));
+    const state = await deps.resultado(id, parsed.data, protocolo);
     const esperados = {
       started: ["enviando"], sent: ["enviado"], indeterminate: ["indeterminado"],
       failed: ["pendente", "expirado", "indeterminado"],

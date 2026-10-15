@@ -2,19 +2,27 @@ import assert from "node:assert/strict";
 import { mock, test } from "node:test";
 import { tratarReivindicacao, tratarResultado, type DependenciasHttpWhatsApp } from "./http";
 import { envelopeJob, type ProtocoloWorker } from "./contrato";
+import { MENSAGENS_LEMBRETE_FORMULARIO } from "./lembrete-formulario";
 
 const TOKEN = "token-ficticio-whatsapp-com-32-caracteres";
 const ID = "c350bc94-24f1-4359-9e92-eac5f1a76e44";
 const LEASE = "a8c7f5bc-66f3-41ba-9f2c-93d5e0d94369";
-const job = { id: ID, leaseToken: LEASE, recipient: "5519988887777", message: "Mensagem ficticia", expiresAt: "2026-10-15T18:00:00Z" };
-const req = (body: unknown = {}, authorization = `Bearer ${TOKEN}`, protocolo?: string) => new Request("https://crm.invalid/api/integracoes/whatsapp", {
+const sequenciaAprovada = [...MENSAGENS_LEMBRETE_FORMULARIO,
+  { message: `https://crm.invalid/continuar/${ID}`, delayBeforeSeconds: 2 as const }];
+const job = { id: ID, leaseToken: LEASE, recipient: "5519988887777",
+  message: sequenciaAprovada.map((p) => p.message).join("\n\n"),
+  expiresAt: "2026-10-15T18:00:00Z", messagesSequence: sequenciaAprovada };
+const req = (body: unknown = {}, authorization = `Bearer ${TOKEN}`, protocolo: string | null = "2") => new Request("https://crm.invalid/api/integracoes/whatsapp", {
   method: "POST", headers: { authorization, "content-type": "application/json",
-    ...(protocolo === undefined ? {} : { "X-Mel-Worker-Protocol": protocolo }) }, body: JSON.stringify(body),
+    ...(protocolo === null ? {} : { "X-Mel-Worker-Protocol": protocolo }) }, body: JSON.stringify(body),
 });
 function dependencias(ativa = "1") {
   let claims = 0, resultados = 0;
   const deps: DependenciasHttpWhatsApp = {
-    ambiente: { WHATSAPP_WORKER_TOKEN: TOKEN, WHATSAPP_AUTOMACAO_ATIVA: ativa },
+    ambiente: { WHATSAPP_WORKER_TOKEN: TOKEN, WHATSAPP_AUTOMACAO_ATIVA: ativa,
+      WHATSAPP_LEMBRETE_FORMULARIO_ATIVO: "true", APP_URL: "https://crm.invalid",
+      WHATSAPP_LEMBRETE_FORMULARIO_INICIO_EM: "2026-10-14T18:00:00Z" },
+    agora: () => Date.parse("2026-10-15T18:00:00Z"),
     reivindicar: async () => { claims++; return job; },
     resultado: async (_id, resultado) => { resultados++; return resultado.outcome === "sent" ? "enviado" : "enviando"; },
   };
@@ -35,7 +43,7 @@ test("auth falha fechado e nao toca fila; nunca aceita token em cookie/query", a
 test("desativada impede claim e started, mas aceita resultado de envio anterior", async () => {
   const { deps, contagem } = dependencias("0");
   const r = await tratarReivindicacao(req(), deps);
-  assert.deepEqual(await r.json(), { active: false, job: null });
+  assert.deepEqual(await r.json(), { active: false, job: null, protocolVersion: 2, reminderActive: false });
   assert.equal((await tratarResultado(req({ leaseToken: LEASE, outcome: "started" }), ID, deps)).status, 409);
   assert.deepEqual(await (await tratarResultado(req({ leaseToken: LEASE, outcome: "sent" }), ID, deps)).json(), { accepted: true, state: "enviado" });
   assert.deepEqual(contagem(), { claims: 0, resultados: 1 });
@@ -45,7 +53,7 @@ test("contrato de claim e started bem sucedidos devolve ACK explicito no-store",
   const { deps } = dependencias();
   const r = await tratarReivindicacao(req({ recipient: "nao-controla-destinatario" }), deps);
   assert.equal(r.headers.get("cache-control"), "no-store");
-  assert.deepEqual(await r.json(), { active: true, job });
+  assert.deepEqual(await r.json(), { active: true, job, protocolVersion: 2, reminderActive: true });
   const inicio = await tratarResultado(req({ leaseToken: LEASE, outcome: "started" }), ID, deps);
   assert.equal(inicio.status, 200);
   assert.equal((await inicio.json()).accepted, true);
@@ -95,28 +103,26 @@ test("falhas nao vazam erro/credenciais; ACK inexistente nao autoriza WhatsApp",
   } finally { log.mock.restore(); }
 });
 
-test("header negocia protocolo em claim e resultado; ausente/1/invalido continua V1", async () => {
-  for (const [header, esperado] of [[undefined, 1], ["1", 1], ["", 1], ["02", 1],
-    ["2,1", 1], ["3", 1], ["true", 1], ["2", 2]] as const) {
+test("somente header2 permite claim/started; protocolos antigos só reconciliam ACK", async () => {
+  for (const header of [null, "1", "", "02", "2,1", "3", "true", "2"]) {
     const { deps } = dependencias();
     const protocolos: (ProtocoloWorker | undefined)[] = [];
     deps.reivindicar = async (protocolo) => { protocolos.push(protocolo); return job; };
-    deps.resultado = async (_id, _resultado, protocolo) => { protocolos.push(protocolo); return "enviando"; };
-    assert.equal((await tratarReivindicacao(req({ protocol: 2 }, `Bearer ${TOKEN}`, header), deps)).status, 200);
-    assert.equal((await tratarResultado(req({ leaseToken: LEASE, outcome: "started" }, `Bearer ${TOKEN}`, header), ID, deps)).status, 200);
-    assert.deepEqual(protocolos, [esperado, esperado]);
-    const extras = await tratarResultado(req({ leaseToken: LEASE, outcome: "started", protocol: 2 }, `Bearer ${TOKEN}`, header), ID, deps);
-    assert.equal(extras.status, 400, "corpo de resultado antigo continua estrito");
-    assert.equal(protocolos.length, 2);
+    deps.resultado = async (_id, resultado, protocolo) => { protocolos.push(protocolo); return resultado.outcome === "sent" ? "enviado" : "enviando"; };
+    const claim = await tratarReivindicacao(req({ protocol: 2 }, `Bearer ${TOKEN}`, header), deps);
+    assert.equal(claim.status, 200);
+    assert.equal((await claim.json()).active, header === "2");
+    assert.equal((await tratarResultado(req({ leaseToken: LEASE, outcome: "started" }, `Bearer ${TOKEN}`, header), ID, deps)).status, header === "2" ? 200 : 409);
+    assert.deepEqual(protocolos, header === "2" ? [2, 2] : []);
+    assert.equal((await tratarResultado(req({ leaseToken: LEASE, outcome: "sent" }, `Bearer ${TOKEN}`, header), ID, deps)).status, 200);
+    assert.equal((await tratarResultado(req({ leaseToken: LEASE, outcome: "started", protocol: 2 }, `Bearer ${TOKEN}`, header), ID, deps)).status, 400);
   }
 });
 
 test("fronteira HTTP nao entrega sequencia para worker antigo nem faz fallback concatenado", async () => {
   const { deps } = dependencias();
   const sequencia = [
-    { message: "Primeira mensagem salva", delayBeforeSeconds: 0 },
-    { message: "Segunda mensagem salva", delayBeforeSeconds: 2 },
-    { message: "Terceira mensagem salva", delayBeforeSeconds: 3 },
+    ...MENSAGENS_LEMBRETE_FORMULARIO,
     { message: `https://crm.invalid/continuar/${ID}`, delayBeforeSeconds: 2 },
   ];
   const lembrete = envelopeJob({ id: ID, lease_token: LEASE, destinatario: job.recipient,
@@ -125,9 +131,9 @@ test("fronteira HTTP nao entrega sequencia para worker antigo nem faz fallback c
   deps.reivindicar = async () => lembrete;
   const log = mock.method(console, "error", () => {});
   try {
-    const antigo = await tratarReivindicacao(req(), deps);
-    assert.equal(antigo.status, 503);
-    assert.equal((await antigo.json()).job, undefined);
+    const antigo = await tratarReivindicacao(req({}, `Bearer ${TOKEN}`, null), deps);
+    assert.equal(antigo.status, 200);
+    assert.deepEqual(await antigo.json(), { active: false, job: null });
     const novo = await tratarReivindicacao(req({}, `Bearer ${TOKEN}`, "2"), deps);
     assert.equal(novo.status, 200);
     assert.deepEqual((await novo.json()).job.messagesSequence, sequencia);
@@ -153,10 +159,26 @@ test("somente claim protocolo2 autenticado publica capacidade e configuracao efe
     assert.equal(corpo.protocolVersion, 2); assert.equal(corpo.reminderActive, esperado);
     assert.deepEqual(Object.keys(corpo), ["active", "job", "protocolVersion", "reminderActive"]);
     assert.ok(!JSON.stringify(corpo).includes(TOKEN));
-    const legado = await tratarReivindicacao(req(), deps);
+    const legado = await tratarReivindicacao(req({}, `Bearer ${TOKEN}`, null), deps);
     assert.deepEqual(Object.keys(await legado.json()), ["active", "job"]);
     const negado = await tratarReivindicacao(req({}, "Bearer errado", "2"), deps);
     assert.equal(negado.status, 401);
     assert.deepEqual(await negado.json(), { erro: "Nao autorizado" });
   }
+});
+
+test("API bloqueia mensagem única e alteração da copy mesmo se a dependência entregar o job", async () => {
+  const log = mock.method(console, "error", () => {});
+  try {
+    for (const mensagem of [
+      { ...job, messagesSequence: undefined },
+      { ...job, messagesSequence: job.messagesSequence.map((p, i) => i === 0 ? { ...p, message: "Texto não aprovado" } : p) },
+    ]) {
+      const { deps } = dependencias();
+      deps.reivindicar = async () => mensagem as typeof job;
+      const r = await tratarReivindicacao(req(), deps);
+      assert.equal(r.status, 503);
+      assert.equal((await r.json()).job, undefined);
+    }
+  } finally { log.mock.restore(); }
 });

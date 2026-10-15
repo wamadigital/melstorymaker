@@ -11,13 +11,14 @@ Instalação no Mac Apple Silicon do Henrique, autorizada em 14/10/2026.
 O sistema continua na Vercel; o Mac busca a fila privada por HTTPS e envia pelo
 MCP. Não existe túnel, porta pública ou credencial de banco entregue ao worker.
 
-O fluxo anterior de confirmação utilizava este texto, agora retirado de operação:
-
-> Oi! Recebi as informações do seu evento 💛
->
-> Vou analisar os detalhes e te chamar por aqui para conversar sobre a sua proposta.
->
-> Mel Simão | Storymaker
+A única automação aos leads permitida é o lembrete de formulário incompleto:
+três textos exatos de `MENSAGENS_LEMBRETE_FORMULARIO`, pausas 2/3/2 segundos e
+link individual sozinho na quarta mensagem. A confirmação antiga foi excluída
+do código de envio. Aplicar manualmente `supabase/whatsapp-somente-lembrete.sql`
+depois dos SQLs anteriores: a RPC antiga não registra nada e outros tipos não
+podem ficar pendentes/reservados/enviando. Registros históricos permanecem.
+A API não usa fallback para confirmação nem aceita texto diferente do aprovado.
+Os envios continuam pausados até ordem explícita para retomar.
 
 Proposta exige aprovação da Mel e permanece no fluxo atual do painel.
 

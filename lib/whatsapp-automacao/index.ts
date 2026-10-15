@@ -2,7 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import {
-  destinatarioConfirmacao, envelopeJob, MENSAGEM_CONFIRMACAO, PRAZO_CONFIRMACAO_MS,
+  envelopeJob,
   type JobWhatsApp, type ResultadoWorker, type ProtocoloWorker,
 } from "./contrato";
 import {
@@ -20,40 +20,6 @@ export function automacaoAtiva(ambiente: AmbienteWhatsApp = process.env): boolea
   return valor === "1" || valor === "true";
 }
 
-export type NovaConfirmacao = { leadId: string; whatsapp: string | null; ocorridoEm: string };
-export type RegistroConfirmacao = { leadId: string; recipient: string; message: string; ocorridoEm: string };
-export type DependenciasRegistro = {
-  ativo: () => boolean;
-  agora: () => number;
-  registrar: (confirmacao: RegistroConfirmacao) => Promise<void>;
-  falha: () => void;
-};
-
-/**
- * Auxiliar: aguarda o INSERT idempotente, mas a falha nao desfaz o formulario.
- * Existe uma janela entre o CAS do submit e este INSERT. Nao e um trigger nem
- * uma transacao atomica com o submit; nao recupera conclusoes historicas.
- */
-export async function enfileirarComDependencias(
-  confirmacao: NovaConfirmacao,
-  deps: DependenciasRegistro,
-): Promise<void> {
-  try {
-    if (!deps.ativo()) return;
-    const recipient = destinatarioConfirmacao(confirmacao.whatsapp);
-    const ocorrido = Date.parse(confirmacao.ocorridoEm);
-    const agora = deps.agora();
-    if (!recipient || !Number.isFinite(ocorrido) || ocorrido > agora + 60_000 ||
-      agora >= ocorrido + PRAZO_CONFIRMACAO_MS) return;
-    await deps.registrar({
-      leadId: confirmacao.leadId, recipient, message: MENSAGEM_CONFIRMACAO,
-      ocorridoEm: confirmacao.ocorridoEm,
-    });
-  } catch {
-    deps.falha();
-  }
-}
-
 type ContextoRepositorioWhatsApp = {
   ambiente?: AmbienteWhatsApp;
   agora?: () => number;
@@ -69,16 +35,13 @@ export function criarRepositorioWhatsApp(db: SupabaseClient, contexto: ContextoR
   const configAtual = (protocolo: ProtocoloWorker) => protocolo === 2
     ? configuracaoLembreteFormulario(ambiente, agora()) : null;
   const falhaLembretes = contexto.falhaLembretes ??
-    (() => console.error("[whatsapp] nao consegui registrar lembretes do formulario; confirmacoes preservadas"));
+    (() => console.error("[whatsapp] nao consegui registrar lembretes do formulario"));
   return {
-    registrar: async ({ leadId, recipient, message, ocorridoEm }: RegistroConfirmacao): Promise<void> => {
-      const { error } = await db.rpc("registrar_confirmacao_whatsapp", {
-        p_lead_id: leadId, p_destinatario: recipient, p_mensagem: message, p_ocorrido_em: ocorridoEm,
-      }).abortSignal(AbortSignal.timeout(5_000));
-      if (error) throw new Error("registro_whatsapp");
-    },
     reivindicar: async (protocolo = protocoloPadrao): Promise<JobWhatsApp | null> => {
       const config = configAtual(protocolo);
+      // Existe uma única automação aprovada. Nunca cair no claim legado de
+      // confirmações quando faltar capacidade, flag ou configuração do lembrete.
+      if (!config) return null;
       if (config) {
         try {
           const { error } = await db.rpc("enfileirar_lembretes_formulario_whatsapp_v3", {
@@ -90,16 +53,16 @@ export function criarRepositorioWhatsApp(db: SupabaseClient, contexto: ContextoR
           falhaLembretes();
         }
       }
-      // V1 permanece suficiente quando desativado, inclusive antes de aplicar o SQL novo.
-      const { data, error } = await db.rpc(config ? "reivindicar_whatsapp_v3" : "reivindicar_whatsapp", config ? {
+      const { data, error } = await db.rpc("reivindicar_whatsapp_v3", {
         p_lembrete_ativo: true, p_inicio_em: config.inicioEm,
-      } : undefined)
+      })
         .abortSignal(AbortSignal.timeout(5_000));
       if (error) throw new Error("claim_whatsapp");
       return data?.[0] ? envelopeJob(data[0], protocolo) : null;
     },
     resultado: async (id: string, resultado: ResultadoWorker, protocolo = protocoloPadrao): Promise<string | null> => {
       const config = configAtual(protocolo);
+      if (resultado.outcome === "started" && !config) return null;
       const { data, error } = await db.rpc(config ? "resultado_whatsapp_v3" : "resultado_whatsapp", {
         p_id: id, p_lease_token: resultado.leaseToken, p_outcome: resultado.outcome,
         p_code: resultado.code ?? null,

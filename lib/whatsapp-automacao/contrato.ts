@@ -1,19 +1,7 @@
 import { z } from "zod";
-import { validarTelefoneBr } from "@/lib/form/validacao";
-import { normalizarNumero } from "@/lib/whatsapp";
-
-export const MENSAGEM_CONFIRMACAO =
-  "Oi! Recebi as informações do seu evento 💛\n\n" +
-  "Vou analisar os detalhes e te chamar por aqui para conversar sobre a sua proposta.\n\n" +
-  "Mel Simão | Storymaker";
-export const PRAZO_CONFIRMACAO_MS = 24 * 60 * 60 * 1000;
+import { MENSAGENS_LEMBRETE_FORMULARIO } from "./lembrete-formulario";
 export type ProtocoloWorker = 1 | 2;
 export const HEADER_PROTOCOLO_WORKER = "X-Mel-Worker-Protocol";
-
-export function destinatarioConfirmacao(whatsapp: string | null | undefined): string | null {
-  if (!whatsapp || validarTelefoneBr(whatsapp)) return null;
-  return normalizarNumero(whatsapp);
-}
 
 export const jobSchema = z.object({
   id: z.string().uuid(),
@@ -21,7 +9,7 @@ export const jobSchema = z.object({
   destinatario: z.string().regex(/^55\d{10,11}$/),
   mensagem: z.string().min(1).max(2000),
   expira_em: z.string().datetime({ offset: true }),
-  tipo: z.enum(["confirmacao_recebimento", "lembrete_formulario_24h"]).optional(),
+  tipo: z.literal("lembrete_formulario_24h"),
   sequencia: z.unknown().optional(),
 });
 const textoSequencia = z.string().min(1).max(2000).refine((texto) => texto.trim().length > 0);
@@ -52,7 +40,8 @@ function linkIndividual(texto: string): boolean {
 /** Valida o snapshot sem substituir texto, URL ou pausas pela copy atual. */
 export function validarSequenciaMensagens(sequencia: unknown, mensagem: string): SequenciaMensagens {
   const partes = sequenciaSchema.parse(sequencia);
-  if (!linkIndividual(partes[3].message) || partes.map((p) => p.message).join("\n\n") !== mensagem) {
+  if (!MENSAGENS_LEMBRETE_FORMULARIO.every((aprovada, i) => partes[i].message === aprovada.message) ||
+    !linkIndividual(partes[3].message) || partes.map((p) => p.message).join("\n\n") !== mensagem) {
     throw new Error("snapshot_sequencia_invalido");
   }
   return partes;
@@ -60,7 +49,7 @@ export function validarSequenciaMensagens(sequencia: unknown, mensagem: string):
 
 /** Tambem usado na fronteira HTTP para nunca liberar sequencia a worker V1. */
 export function validarJobWorker(job: JobWhatsApp, protocolo: ProtocoloWorker): JobWhatsApp {
-  if (job.messagesSequence === undefined) return job;
+  if (job.messagesSequence === undefined) throw new Error("mensagem_nao_autorizada");
   if (protocolo !== 2) throw new Error("worker_sem_protocolo_sequencia");
   return { ...job, messagesSequence: validarSequenciaMensagens(job.messagesSequence, job.message) };
 }
@@ -71,12 +60,8 @@ export function envelopeJob(linha: unknown, protocolo: ProtocoloWorker = 1): Job
     id: job.id, leaseToken: job.lease_token, recipient: job.destinatario,
     message: job.mensagem, expiresAt: job.expira_em,
   };
-  if (job.tipo === "lembrete_formulario_24h") {
-    if (protocolo !== 2) throw new Error("worker_sem_protocolo_sequencia");
-    envelope.messagesSequence = validarSequenciaMensagens(job.sequencia, job.mensagem);
-  } else if (job.sequencia !== undefined && job.sequencia !== null) {
-    throw new Error("sequencia_fora_lembrete");
-  }
+  if (protocolo !== 2) throw new Error("worker_sem_protocolo_sequencia");
+  envelope.messagesSequence = validarSequenciaMensagens(job.sequencia, job.mensagem);
   return envelope;
 }
 

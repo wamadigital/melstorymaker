@@ -1,41 +1,26 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { destinatarioConfirmacao, envelopeJob, MENSAGEM_CONFIRMACAO, resultadoSchema } from "./contrato";
+import { envelopeJob, resultadoSchema } from "./contrato";
+import { MENSAGENS_LEMBRETE_FORMULARIO } from "./lembrete-formulario";
 
 const base = {
   id: "c350bc94-24f1-4359-9e92-eac5f1a76e44", lease_token: "a8c7f5bc-66f3-41ba-9f2c-93d5e0d94369",
-  destinatario: "5519988887777", mensagem: MENSAGEM_CONFIRMACAO, expira_em: "2026-10-15T18:00:00+00:00",
+  destinatario: "5519988887777", mensagem: "Texto não autorizado", expira_em: "2026-10-15T18:00:00+00:00",
 };
 const snapshot = () => [
-  { message: "Saudacao congelada anterior", delayBeforeSeconds: 0 },
-  { message: "Pergunta congelada anterior", delayBeforeSeconds: 2 },
-  { message: "Convite congelado anterior:", delayBeforeSeconds: 3 },
+  ...MENSAGENS_LEMBRETE_FORMULARIO,
   { message: `https://origem-anterior.invalid/continuar/${base.id}`, delayBeforeSeconds: 2 },
 ];
 const lembrete = (sequencia = snapshot()) => ({
   ...base, tipo: "lembrete_formulario_24h", sequencia, mensagem: sequencia.map((p) => p.message).join("\n\n"),
 });
 
-test("destinatario valida DDD e celular antes de normalizar DDI", () => {
-  assert.equal(destinatarioConfirmacao("(19) 98888-7777"), "5519988887777");
-  assert.equal(destinatarioConfirmacao("+55 19 98888-7777"), "5519988887777");
-  assert.equal(destinatarioConfirmacao("(19) 3333-4444"), "551933334444");
-  for (const invalido of [null, "", "00000000000", "19888887777", "551998888777700"]) {
-    assert.equal(destinatarioConfirmacao(invalido), null);
-  }
-});
-
-test("envelope entrega somente o necessario ao worker, sem respostas/email/rastreio", () => {
-  const job = envelopeJob({
-    id: "c350bc94-24f1-4359-9e92-eac5f1a76e44", lease_token: "a8c7f5bc-66f3-41ba-9f2c-93d5e0d94369",
-    destinatario: "5519988887777", mensagem: MENSAGEM_CONFIRMACAO,
-    expira_em: "2026-10-15T18:00:00+00:00", lead_id: "privado", email: "nao@example.invalid",
-    respostas: { nome: "privado" }, rastreio: { ip: "privado" },
-  });
-  assert.deepEqual(Object.keys(job), ["id", "leaseToken", "recipient", "message", "expiresAt"]);
+test("envelope só entrega a sequência aprovada e remove dados privados", () => {
+  const job = envelopeJob({ ...lembrete(), lead_id: "privado", email: "nao@example.invalid",
+    respostas: { nome: "privado" }, rastreio: { ip: "privado" } }, 2);
+  assert.deepEqual(Object.keys(job), ["id", "leaseToken", "recipient", "message", "expiresAt", "messagesSequence"]);
   assert.ok(!JSON.stringify(job).includes("privado"));
-  assert.match(job.message, /Recebi as informações do seu evento/);
-  assert.ok(!/\b(dias|horas|minutos)\b/.test(job.message), "nao promete prazo");
+  assert.deepEqual(job.messagesSequence, snapshot());
 });
 
 test("resultado rejeita comandos/campos livres e erro bruto com telefone/token", () => {
@@ -48,12 +33,14 @@ test("resultado rejeita comandos/campos livres e erro bruto com telefone/token",
   assert.equal(resultadoSchema.safeParse({ leaseToken, outcome: "started", protocol: 2 }).success, false);
 });
 
-test("confirmacao com protocolo2 conserva exatamente cinco campos mesmo apos coluna sequencia", () => {
-  const job = envelopeJob({ ...base, tipo: "confirmacao_recebimento", sequencia: null, respostas: { privado: true } }, 2);
-  assert.deepEqual(Object.keys(job), ["id", "leaseToken", "recipient", "message", "expiresAt"]);
+test("confirmação, tipo ausente ou desconhecido nunca são entregues, mesmo no protocolo2", () => {
+  for (const tipo of [undefined, "confirmacao_recebimento", "lembrete_7_dias", "lembrete_30_dias", "outro"]) {
+    assert.throws(() => envelopeJob({ ...lembrete(), tipo }, 2));
+    assert.throws(() => envelopeJob({ ...base, tipo, sequencia: null }, 2));
+  }
 });
 
-test("protocolo2 entrega snapshot congelado sem derivar copy atual e remove atributos privados", () => {
+test("protocolo2 entrega somente snapshot aprovado e remove atributos privados", () => {
   const antiga = snapshot().map((p) => ({ ...p, dado_privado: "nao-vazar" }));
   const job = envelopeJob({ ...lembrete(antiga), telefone_privado: "nao-vazar", rastreio: { ip: "nao-vazar" } }, 2);
   assert.deepEqual(job.messagesSequence, snapshot());
@@ -73,6 +60,7 @@ test("sequencia recusa cardinalidade/pausas/textos invalidos e mensagem legado d
   for (const sequencia of [null, [], snapshot().slice(0, 3), [...snapshot(), snapshot()[0]],
     snapshot().map((p, i) => i === 1 ? { ...p, delayBeforeSeconds: 0 } : p),
     snapshot().map((p, i) => i === 2 ? { ...p, message: " \n " } : p),
+    snapshot().map((p, i) => i === 0 ? { ...p, message: "Mensagem não aprovada" } : p),
     snapshot().map((p, i) => i === 3 ? { ...p, delayBeforeSeconds: "2" } : p)]) {
     assert.throws(() => envelopeJob({ ...lembrete(), sequencia }, 2));
   }
