@@ -15,6 +15,17 @@ type CamposHistorico = Pick<LeadCartao,
   "lembrete_7_em" | "lembrete_30_em" | "chamado_whatsapp_em" | "disparos_whatsapp"
 >;
 
+type TipoResumoWhatsApp = Exclude<DisparoWhatsApp["tipo"], "confirmacao_recebimento">;
+export type ResumoEnvioWhatsApp = {
+  tipo: TipoResumoWhatsApp;
+  rotulo: string;
+  enviado: boolean;
+};
+
+const TIPOS_RESUMO: readonly TipoResumoWhatsApp[] = [
+  "lembrete_formulario_24h", "lembrete_proposta_7d", "lembrete_proposta_30d",
+];
+
 const ROTULOS: Record<TipoHistoricoWhatsApp, string> = {
   confirmacao_recebimento: "Confirmação de recebimento",
   lembrete_formulario_24h: "Finalize o formulário",
@@ -33,6 +44,20 @@ export function ehDataEnvioWhatsApp(valor: unknown): valor is string {
 export function ehTipoDisparoWhatsApp(valor: unknown): valor is DisparoWhatsApp["tipo"] {
   return valor === "confirmacao_recebimento" || valor === "lembrete_formulario_24h" ||
     valor === "lembrete_proposta_7d" || valor === "lembrete_proposta_30d";
+}
+
+/**
+ * Os três disparos atuais, sempre na mesma ordem. Somente ACKs do worker
+ * marcam envio; contatos manuais e a confirmação retirada não acendem o ícone.
+ * O resumo conserva envios de propostas anteriores, sem decidir elegibilidade.
+ */
+export function resumoEnviosWhatsApp(lead: Pick<LeadCartao, "disparos_whatsapp">): ResumoEnvioWhatsApp[] {
+  return TIPOS_RESUMO.map((tipo) => ({
+    tipo,
+    rotulo: ROTULOS[tipo],
+    enviado: (lead.disparos_whatsapp ?? []).some((disparo) =>
+      disparo && disparo.tipo === tipo && ehDataEnvioWhatsApp(disparo.enviado_em)),
+  }));
 }
 
 /**

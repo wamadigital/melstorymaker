@@ -2,11 +2,10 @@
 
 import { Popover } from "@base-ui/react/popover";
 import { MessageCircleCheck } from "lucide-react";
-import { historicoWhatsApp } from "@/lib/admin/disparos-whatsapp";
+import { resumoEnviosWhatsApp } from "@/lib/admin/disparos-whatsapp";
 import type { LeadCartao } from "@/lib/admin/tipos";
-import { dataHoraLocal } from "@/lib/pdf/formatadores";
 
-/** Só o histórico de envio/contato acende este sinal; ter telefone não basta. */
+/** Só um dos três disparos atuais confirmado pelo worker acende este sinal. */
 export function IndicadorWhatsApp({
   lead,
   somenteLeitura = false,
@@ -15,14 +14,14 @@ export function IndicadorWhatsApp({
   /** A cópia durante o arraste é só visual, sem outro botão ou popup. */
   somenteLeitura?: boolean;
 }) {
-  const historico = historicoWhatsApp(lead);
-  if (!historico.length) return null;
+  const resumo = resumoEnviosWhatsApp(lead);
+  if (!resumo.some((envio) => envio.enviado)) return null;
 
   const icone = <MessageCircleCheck aria-hidden="true" className="size-3.5" />;
 
   if (somenteLeitura) {
     return (
-      <span aria-label="Tem histórico de mensagens no WhatsApp" className="flex size-6 items-center justify-center text-foreground/80">
+      <span aria-label="Tem mensagens enviadas no WhatsApp" className="flex size-6 items-center justify-center text-green-700 dark:text-green-400">
         {icone}
       </span>
     );
@@ -35,8 +34,8 @@ export function IndicadorWhatsApp({
         openOnHover
         delay={200}
         closeDelay={100}
-        aria-label="Ver histórico de mensagens no WhatsApp"
-        className="flex size-6 shrink-0 items-center justify-center rounded-md bg-foreground/5 text-foreground/80 transition-colors outline-none hover:bg-foreground/10 focus-visible:ring-2 focus-visible:ring-ring"
+        aria-label="Ver mensagens enviadas no WhatsApp"
+        className="flex size-6 shrink-0 items-center justify-center rounded-md bg-green-700/5 text-green-700 transition-colors outline-none hover:bg-green-700/10 focus-visible:ring-2 focus-visible:ring-ring dark:text-green-400"
       >
         {icone}
       </Popover.Trigger>
@@ -45,18 +44,16 @@ export function IndicadorWhatsApp({
       <Popover.Portal>
         <Popover.Positioner side="top" align="end" sideOffset={6} className="z-50">
           <Popover.Popup className="max-h-(--available-height) w-72 max-w-[calc(100vw-1.5rem)] overflow-y-auto rounded-md border bg-popover p-3 text-popover-foreground shadow-md outline-none">
-            <Popover.Title className="mb-2 text-xs font-semibold">
+            <Popover.Title className="sr-only">
               Mensagens no WhatsApp
             </Popover.Title>
-            <ul className="space-y-2.5">
-              {historico.map((envio) => (
-                <li key={envio.tipo} className="space-y-0.5 text-xs">
-                  <p className="font-medium">{envio.rotulo}</p>
-                  <p className="text-[0.6875rem] text-muted-foreground">
-                    {envio.origem === "automatico" ? "Envio automático" : envio.origem === "sistema" ? "Enviado pelo sistema" : "Marcado pela Mel"}
-                    {" · "}
-                    <time dateTime={envio.enviadoEm}>{dataHoraLocal(envio.enviadoEm)}</time>
-                  </p>
+            <ul className="space-y-2">
+              {resumo.map((envio) => (
+                <li key={envio.tipo} className={`flex items-center gap-2 text-xs ${envio.enviado
+                  ? "text-green-700 dark:text-green-400" : "text-muted-foreground"}`}>
+                  <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-current" />
+                  <span className={envio.enviado ? "line-through" : undefined}>{envio.rotulo}</span>
+                  <span className="sr-only">{envio.enviado ? "Enviado" : "Não enviado"}</span>
                 </li>
               ))}
             </ul>

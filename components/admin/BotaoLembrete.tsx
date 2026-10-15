@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Check, Clock3, Loader2, MessageCircle } from "lucide-react";
+import { MessageCircle } from "lucide-react";
 import { toast } from "sonner";
 import { ROTULO_LEMBRETE, type Marco } from "@/lib/admin/lembretes";
 import type { SolicitacaoWhatsApp } from "@/lib/admin/tipos";
@@ -12,6 +12,8 @@ type Props = {
   id: string;
   nome: string;
   marco: Marco;
+  /** Revisão exata da proposta, sem truncar os microssegundos do banco. */
+  propostaEnviadoEm: string | null;
   /** Tinta do texto, a mesma do cartao (`temaCobranca`): azul em Enviado, cinza em Esfriou. */
   classeTexto?: string;
   solicitacao?: SolicitacaoWhatsApp;
@@ -23,27 +25,28 @@ type Props = {
  * O clique solicita o envio ao worker local. Enfileirar não confirma envio:
  * somente o ACK do WhatsApp atualiza os carimbos e o histórico do cartão.
  */
-export function BotaoLembrete({ id, nome, marco, classeTexto, solicitacao, confirmado = false }: Props) {
+export function BotaoLembrete({ id, nome, marco, propostaEnviadoEm, classeTexto, solicitacao, confirmado = false }: Props) {
   const router = useRouter();
   const [ocupado, setOcupado] = useState(false);
   const cliqueEmCurso = useRef(false);
-  const chaveServidor = `${id}:${marco}:${solicitacao?.estado ?? ""}:${solicitacao?.ocorrido_em ?? ""}:${solicitacao?.motivo ?? ""}`;
+  const chaveServidor = `${id}:${marco}:${propostaEnviadoEm ?? ""}:${solicitacao?.estado ?? ""}:${solicitacao?.ocorrido_em ?? ""}:${solicitacao?.motivo ?? ""}:${solicitacao?.reenvioPermitido === true}`;
   type EstadoEnvio = "fila" | "enviando" | "enviado";
   const [local, setLocal] = useState<{ estado: EstadoEnvio; chaveServidor: string } | null>(null);
   const estadoServidor = solicitacao?.estado === "pendente" || solicitacao?.estado === "reservado" ? "fila"
     : solicitacao?.estado === "enviando" ? "enviando" : solicitacao?.estado === "enviado" ? "enviado" : null;
   // Uma atualização do servidor substitui o feedback otimista do POST. Assim
-  // um cancelamento do worker não deixa o botão preso em "Na fila".
+  // um cancelamento do worker permite que a ação reapareça. Outra proposta
+  // ou outro marco também não herdam o estado otimista do envio anterior.
   const estado = confirmado ? "enviado" : local?.chaveServidor === chaveServidor ? local.estado : estadoServidor;
   const indeterminado = !confirmado && solicitacao?.estado === "indeterminado";
-  const motivo = solicitacao?.motivo ?? (indeterminado
-    ? "O resultado deste envio precisa ser conferido no WhatsApp antes de outra tentativa."
-    : solicitacao?.estado === "expirado" ? "O prazo deste envio expirou."
-      : solicitacao?.estado === "cancelado" ? "Este envio foi cancelado antes de concluir." : null);
+  const encerrado = solicitacao?.estado === "expirado" ||
+    (solicitacao?.estado === "cancelado" && solicitacao.reenvioPermitido !== true);
+  const motivo = solicitacao?.estado === "cancelado" && solicitacao.reenvioPermitido === true
+    ? solicitacao.motivo ?? "Este envio foi cancelado antes de concluir." : null;
   const setEstado = (novo: EstadoEnvio) => setLocal({ estado: novo, chaveServidor });
 
   async function cobrar() {
-    if (cliqueEmCurso.current || ocupado || estado || indeterminado) return;
+    if (cliqueEmCurso.current || ocupado || estado || indeterminado || encerrado) return;
     cliqueEmCurso.current = true;
     setOcupado(true);
     try {
@@ -75,6 +78,11 @@ export function BotaoLembrete({ id, nome, marco, classeTexto, solicitacao, confi
     }
   }
 
+  // O histórico no ícone do cartão é o único resumo dos envios. Esconder a
+  // ação já no clique evita outro disparo enquanto o POST/worker responde;
+  // nenhum texto ou botão desabilitado ocupa o lugar dela.
+  if (ocupado || estado || indeterminado || encerrado) return null;
+
   // Com seis colunas, em 1280px o cartao tem ~121px de linha e "Relembrar
   // cliente" com o icone pede ~137px: quebraria em duas linhas. Abaixo de 140px
   // de largura o botao fica so com o texto, como o "WhatsApp" do `ChamarWhatsApp`
@@ -82,32 +90,21 @@ export function BotaoLembrete({ id, nome, marco, classeTexto, solicitacao, confi
   const icone = "hidden size-3.5 shrink-0 @min-[8.75rem]:block";
 
   return (
-    <div className="@container">
+    <div className="@container px-3 pb-3">
       <button
         type="button"
-        disabled={ocupado || estado !== null || indeterminado}
-        aria-busy={ocupado || estado === "enviando"}
-        aria-label={estado === "enviado" ? `Lembrete de ${marco} dias enviado para ${nome || "o lead"}` : undefined}
         onClick={cobrar}
         className={cn(
           "flex w-full items-center justify-center gap-1.5 rounded-md border px-2 py-1.5",
-          "text-xs font-semibold whitespace-nowrap transition-colors disabled:opacity-60",
+          "text-xs font-semibold whitespace-nowrap transition-colors",
           "border-current/25 bg-white/60 hover:bg-white",
           classeTexto,
         )}
       >
-        {ocupado || estado === "enviando" ? (
-          <Loader2 className={cn(icone, "animate-spin")} />
-        ) : estado === "enviado" ? (
-          <Check className={icone} />
-        ) : estado === "fila" ? (
-          <Clock3 className={icone} />
-        ) : (
-          <MessageCircle className={icone} />
-        )}
-        {indeterminado ? "Conferir envio" : estado === "fila" ? "Na fila" : estado === "enviando" ? "Enviando" : estado === "enviado" ? "Enviado" : ROTULO_LEMBRETE[marco]}
+        <MessageCircle className={icone} />
+        {ROTULO_LEMBRETE[marco]}
       </button>
-      {motivo && !estado && <p className="mt-1 text-[0.6875rem] leading-snug text-muted-foreground" role="status">{motivo}</p>}
+      {motivo && <p className="mt-1 text-[0.6875rem] leading-snug text-muted-foreground" role="status">{motivo}</p>}
     </div>
   );
 }

@@ -8,6 +8,7 @@ import { BotaoLembreteEmail } from "@/components/admin/BotaoLembreteEmail";
 import { ChamarWhatsApp } from "@/components/admin/ChamarWhatsApp";
 import { IndicadorWhatsApp } from "@/components/admin/IndicadorWhatsApp";
 import { estadoLembrete, temaCobranca } from "@/lib/admin/lembretes";
+import { prioridadeEsfriou } from "@/lib/admin/ordem";
 import { estadoLembreteEmail } from "@/lib/admin/lembrete-email";
 import { linkContatoInicial } from "@/lib/admin/acoes";
 import { DESCRICAO_COLUNA, TEMA_COLUNA, rotuloCategoria, rotuloPasso } from "@/lib/admin/rotulos";
@@ -68,7 +69,10 @@ export function CartaoLead({
     solicitacao.tipo === `lembrete_proposta_${marcoLembrete}d` &&
     solicitacao.proposta_enviado_em === lead.enviado_em)
     .sort((a, b) => Date.parse(b.ocorrido_em) - Date.parse(a.ocorrido_em))[0];
-  const alerta = temaCobranca(coluna, lembrete);
+  // A tinta acompanha a fila de ações da coluna: uma solicitação já feita
+  // não continua vermelha no grupo de cartões sem ação disponível.
+  const alerta = coluna === "esfriou" && prioridadeEsfriou(lead, agoraMs) === 2
+    ? null : temaCobranca(coluna, lembrete);
 
   // Quem parou no meio do formulario mas deixou telefone: da para puxar a
   // conversa. So em "Novo" -- de `aguardando_revisao` em diante a acao certa e
@@ -151,9 +155,8 @@ export function CartaoLead({
 
         </Link>
 
-        {/* Fora do link: consultar o histórico não navega nem inicia arraste.
-            O sinal de WhatsApp agora significa contato/envio registrado, e
-            não apenas que existe um número cadastrado. */}
+        {/* Fora do link: consultar os três tipos de envio não navega nem
+            inicia arraste. O ícone exige pelo menos um envio confirmado. */}
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-3 pt-0.5 pb-3">
           <span className="text-[0.6875rem] text-muted-foreground/80">
             {dataHoraLocal(lead.created_at)}
@@ -180,16 +183,16 @@ export function CartaoLead({
         )}
 
         {!sobreposto && marcoLembrete && (
-          <div className="@container px-3 pb-3">
-            <BotaoLembrete
-              id={lead.id}
-              nome={nome}
-              marco={marcoLembrete}
-              classeTexto={alerta?.texto}
-              solicitacao={solicitacaoLembrete}
-              confirmado={!lembrete.pendente && lembrete.cobrado !== null}
-            />
-          </div>
+          <BotaoLembrete
+            key={`${lead.id}:${marcoLembrete}:${lead.enviado_em ?? ""}`}
+            id={lead.id}
+            nome={nome}
+            marco={marcoLembrete}
+            propostaEnviadoEm={lead.enviado_em}
+            classeTexto={alerta?.texto}
+            solicitacao={solicitacaoLembrete}
+            confirmado={!lembrete.pendente && lembrete.cobrado !== null}
+          />
         )}
       </div>
 

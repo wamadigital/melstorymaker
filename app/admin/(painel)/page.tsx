@@ -7,6 +7,7 @@ import { lerComRetentativa } from "@/lib/supabase/consulta";
 import { esfriarParados } from "@/lib/supabase/esfriar";
 import { lerDisparosWhatsApp } from "@/lib/supabase/disparos-whatsapp";
 import { lerTestesWhatsApp } from "@/lib/supabase/testes-whatsapp";
+import { lerEsfriouPrioritario } from "@/lib/supabase/esfriou-prioritario";
 import { FRASE_PERIODO, ehPeriodo, inicioDoPeriodo } from "@/lib/admin/periodo";
 
 type Busca = { q?: string; categoria?: string; periodo?: string };
@@ -48,14 +49,8 @@ export default async function PaginaLeads({ searchParams }: { searchParams: Prom
       .eq("status", status)
       .limit(LIMITE_COLUNA);
 
-    // Toda raia na mesma ordem: pela CHEGADA do lead, a data que o cartao
-    // mostra, do mais novo (em cima) para o mais antigo (embaixo). Pedido do
-    // owner em 07/10/2026 -- antes "Enviado" e "Esfriou" vinham do mais antigo
-    // para o mais novo, com a cobranca vencida no topo.
-    //
-    // O preco: passando de LIMITE_COLUNA, o corte cai nos mais ANTIGOS. Em
-    // "Esfriou" sao eles que tem a "Ultima tentativa" (vermelha); a coluna avisa
-    // "Mostrando 50 de N", e o caminho e a Mel dar os antigos por perdidos.
+    // As demais raias mantêm a chegada. Esfriou é consultada separadamente:
+    // primeiro escolhe pendências por prioridade, depois aplica o teto visual.
     c = c.order("created_at", { ascending: false });
 
     if (termo) c = c.ilike("nome_display", `%${termo}%`);
@@ -69,14 +64,18 @@ export default async function PaginaLeads({ searchParams }: { searchParams: Prom
   // Com retentativa porque uma falha transitoria do Supabase em UMA consulta
   // apagava a coluna inteira, enquanto as outras carregavam normalmente.
   const respostas = await Promise.all(
-    STATUS.map((status) => lerComRetentativa(`coluna ${status}`, () => consultar(status))),
+    STATUS.map((status) => status === "esfriou"
+      ? lerEsfriouPrioritario({ termo, categoria: ehCategoria(categoria) ? categoria : undefined,
+        desde, agoraMs, limite: LIMITE_COLUNA })
+      : lerComRetentativa(`coluna ${status}`, () => consultar(status))),
   );
 
-  const idsVisiveis = respostas.flatMap(({ data }) =>
-    ((data ?? []) as unknown as LeadCartao[]).map(({ id }) => id));
+  const demaisCartoes = respostas.flatMap(({ data }, i) => STATUS[i] === "esfriou"
+    ? [] : (data ?? []) as unknown as LeadCartao[]);
+  const idsVisiveis = demaisCartoes.map(({ id }) => id);
   const [disparos, testes] = await Promise.all([
     lerDisparosWhatsApp(idsVisiveis),
-    lerTestesWhatsApp(respostas.flatMap(({ data }) => (data ?? []) as unknown as LeadCartao[]), agoraMs),
+    lerTestesWhatsApp(demaisCartoes, agoraMs),
   ]);
 
   const colunas = Object.fromEntries(
@@ -85,7 +84,7 @@ export default async function PaginaLeads({ searchParams }: { searchParams: Prom
       return [
         status,
         {
-          cartoes: ((data ?? []) as unknown as LeadCartao[]).map((lead) => ({
+          cartoes: ((data ?? []) as unknown as LeadCartao[]).map((lead) => status === "esfriou" ? lead : ({
             ...lead, disparos_whatsapp: disparos.porLead.get(lead.id) ?? [],
             solicitacoes_whatsapp: disparos.solicitacoesPorLead.get(lead.id) ?? [],
             teste_whatsapp: testes.get(lead.id),
@@ -123,7 +122,7 @@ export default async function PaginaLeads({ searchParams }: { searchParams: Prom
         periodoAtual={periodo}
       />
 
-      {disparos.erro && (
+      {(disparos.erro || respostas.some(r => "erroDisparos" in r && r.erroDisparos)) && (
         <p role="status" className="text-xs text-muted-foreground">
           Não consegui carregar os envios automáticos do WhatsApp. Atualize a página para conferir o histórico.
         </p>

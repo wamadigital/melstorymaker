@@ -197,8 +197,9 @@ O primeiro lembrete conta como interação para o segundo. Se for enviado no dia
 25, a última tentativa aguarda pelo menos até o dia 40. Nenhum relógio dispara
 essas cobranças por conta própria: cada tentativa exige o clique no card. O botão
 faz a solicitação somente após o prazo de 7/30 dias e fica bloqueado durante
-a fila/envio. Depois do ACK completo, permanece visível como `Enviado`,
-desabilitado. O bloqueio também existe no banco para o mesmo lembrete da mesma
+a fila/envio. Desde o clique, o botão fica oculto, inclusive depois do ACK
+completo; o ícone resume as três mensagens com estados verde/cinza. Não há
+botão desabilitado substituto. O bloqueio também existe no banco para o mesmo lembrete da mesma
 proposta: outra aba, clique duplo e POST direto não criam um segundo disparo.
 
 O bridge antigo não registra conversas. O novo observador guarda somente hashes

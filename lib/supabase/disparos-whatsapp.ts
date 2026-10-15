@@ -20,9 +20,12 @@ const MOTIVOS: Readonly<Record<string, string>> = {
   teste_owner_expirado: "O período autorizado para este teste terminou ou os dados do teste mudaram.",
 };
 const ESTADOS = ["pendente", "reservado", "enviando", "enviado", "indeterminado", "expirado", "cancelado"] as const;
+// Mesma lista da RPC enfileirar_lembrete_proposta_whatsapp. O navegador recebe
+// só a decisão, sem os metadados privados que a determinaram.
+const CODIGOS_REENVIO = new Set(["inactivity_recent", "inactivity_unverified", "proposta_condicao_alterada"]);
 
 /**
- * Uma leitura para todos os cartões visíveis (até 300 IDs).
+ * Lotes pequenos para os cartões visíveis e a seleção prioritária de Esfriou.
  * Fila segue privada: não seleciona texto, telefone, sequência ou credenciais.
  */
 export async function lerDisparosWhatsApp(
@@ -37,15 +40,25 @@ export async function lerDisparosWhatsApp(
 
   try {
     const db = cliente ?? supabaseAdmin();
-    const { data, error } = await lerComRetentativa("histórico de WhatsApp", () => db
+    const lotes = Array.from({ length: Math.ceil(visiveis.length / 100) }, (_, i) => visiveis.slice(i * 100, (i + 1) * 100));
+    const consultar = (ids: string[], inicio: number) => lerComRetentativa("histórico de WhatsApp", () => db
       .from("whatsapp_outbox")
-      .select("lead_id,tipo,enviado_em,estado,ocorrido_em,proposta_enviado_em,ultimo_codigo")
-      .in("lead_id", visiveis)
+      .select("lead_id,tipo,enviado_em,estado,ocorrido_em,proposta_enviado_em,ultimo_codigo,iniciado_em")
+      .in("lead_id", ids)
       .in("tipo", ["confirmacao_recebimento", "lembrete_formulario_24h", "lembrete_proposta_7d", "lembrete_proposta_30d"])
-      .in("estado", ESTADOS)
+      .in("estado", ESTADOS).order("id", { ascending: true }).range(inicio, inicio + 999)
       .abortSignal(AbortSignal.timeout(5_000)));
-
-    if (error) return { porLead, solicitacoesPorLead, erro: true };
+    const respostas = await Promise.all(lotes.map(async ids => {
+      let resposta = await consultar(ids, 0);
+      const linhas = [...(resposta.data ?? [])];
+      for (let inicio = 1000; !resposta.error && resposta.data?.length === 1000; inicio += 1000) {
+        resposta = await consultar(ids, inicio);
+        linhas.push(...(resposta.data ?? []));
+      }
+      return { data: linhas, error: resposta.error };
+    }));
+    if (respostas.some(r => r.error)) return { porLead, solicitacoesPorLead, erro: true };
+    const data = respostas.flatMap(r => r.data);
     for (const linha of data ?? []) {
       if (!linha || !idsPermitidos.has(linha.lead_id) || !ehTipoDisparoWhatsApp(linha.tipo)) continue;
       if (linha.estado === "enviado" && ehDataEnvioWhatsApp(linha.enviado_em)) {
@@ -62,6 +75,8 @@ export async function lerDisparosWhatsApp(
         const solicitacoes = solicitacoesPorLead.get(linha.lead_id) ?? [];
         solicitacoes.push({ tipo: linha.tipo, estado: linha.estado, ocorrido_em: linha.ocorrido_em,
           proposta_enviado_em: linha.proposta_enviado_em,
+          reenvioPermitido: linha.estado === "cancelado" && linha.iniciado_em === null &&
+            CODIGOS_REENVIO.has(linha.ultimo_codigo),
           motivo: typeof linha.ultimo_codigo === "string" && Object.hasOwn(MOTIVOS, linha.ultimo_codigo)
             ? MOTIVOS[linha.ultimo_codigo] : null });
         solicitacoesPorLead.set(linha.lead_id, solicitacoes);

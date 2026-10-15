@@ -15,7 +15,12 @@ import { AUSENCIA_MAX_MS, EVENTO_QUADRO, JANELA_AVISO_MS, TOPICO_QUADRO } from "
  * Falhar aqui so deixa o quadro como era antes: sem o SQL aplicado, sem rede ou
  * com a sessao vencida, a pagina continua funcionando com o refresh manual.
  */
-export function useQuadroAoVivo({ pausado, atualizar }: { pausado: boolean; atualizar: () => void }) {
+export function useQuadroAoVivo({ pausado, atualizar, atrasoMs }: {
+  pausado: boolean;
+  atualizar: () => void;
+  /** Próximo marco, contado pelo snapshot do servidor; null = nenhum futuro. */
+  atrasoMs?: number | null;
+}) {
   const atualizarRef = useRef(atualizar);
   const pausadoRef = useRef(pausado);
   const pendenteRef = useRef(false);
@@ -26,11 +31,38 @@ export function useQuadroAoVivo({ pausado, atualizar }: { pausado: boolean; atua
 
   useEffect(() => {
     pausadoRef.current = pausado;
-    if (!pausado && pendenteRef.current) {
+    if (!pausado && pendenteRef.current && document.visibilityState !== "hidden") {
       pendenteRef.current = false;
       atualizarRef.current();
     }
   }, [pausado]);
+
+  useEffect(() => {
+    if (atrasoMs === null || atrasoMs === undefined || !Number.isFinite(atrasoMs) || atrasoMs < 0) return;
+    let encerrado = false;
+    let prazo: ReturnType<typeof setTimeout>;
+    // setTimeout estoura acima de 2^31-1 e executaria imediatamente. Segmentos
+    // longos aguardam o restante, sem fazer consultas intermediárias.
+    const maximo = 2_147_483_647;
+    const inicio = Date.now();
+    const agendar = () => {
+      const restante = Math.max(0, atrasoMs - (Date.now() - inicio));
+      prazo = setTimeout(() => {
+        if (encerrado) return;
+        if (atrasoMs - (Date.now() - inicio) > 0) {
+          agendar();
+          return;
+        }
+        if (pausadoRef.current || document.visibilityState === "hidden") pendenteRef.current = true;
+        else atualizarRef.current();
+      }, Math.min(restante, maximo));
+    };
+    agendar();
+    return () => {
+      encerrado = true;
+      clearTimeout(prazo);
+    };
+  }, [atrasoMs]);
 
   useEffect(() => {
     const supabase = criarClienteNavegador();
@@ -46,7 +78,7 @@ export function useQuadroAoVivo({ pausado, atualizar }: { pausado: boolean; atua
       if (janela) return;
       janela = setTimeout(() => {
         janela = null;
-        if (pausadoRef.current) pendenteRef.current = true;
+        if (pausadoRef.current || document.visibilityState === "hidden") pendenteRef.current = true;
         else atualizarRef.current();
       }, JANELA_AVISO_MS);
     };
@@ -87,7 +119,10 @@ export function useQuadroAoVivo({ pausado, atualizar }: { pausado: boolean; atua
         escondidoEm = Date.now();
         return;
       }
-      if (escondidoEm !== null && Date.now() - escondidoEm > AUSENCIA_MAX_MS) pedirRefresh();
+      if (pendenteRef.current && !pausadoRef.current) {
+        pendenteRef.current = false;
+        atualizarRef.current();
+      } else if (escondidoEm !== null && Date.now() - escondidoEm > AUSENCIA_MAX_MS) pedirRefresh();
       escondidoEm = null;
     };
     document.addEventListener("visibilitychange", aoMudarVisibilidade);

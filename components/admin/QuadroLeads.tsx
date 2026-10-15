@@ -22,7 +22,8 @@ import { CartaoLead, ColunaVazia } from "@/components/admin/CartaoLead";
 import { ColunaKanban } from "@/components/admin/ColunaKanban";
 import { FaixaDestinos } from "@/components/admin/FaixaDestinos";
 import { useQuadroAoVivo } from "@/components/admin/useQuadroAoVivo";
-import { maisNovoPrimeiro } from "@/lib/admin/ordem";
+import { compararCartoesNaColuna } from "@/lib/admin/ordem";
+import { atrasoProximaMudancaLembrete } from "@/lib/admin/prazos-lembretes";
 import { ROTULO_STATUS } from "@/lib/admin/rotulos";
 import { MENSAGEM_RECUSA, recusarMovimento, mensagemConfirmacaoDeEnvio, pedeConfirmacaoDeEnvio } from "@/lib/admin/status";
 import { FRASE_PERIODO, type Periodo } from "@/lib/admin/periodo";
@@ -65,12 +66,17 @@ export function QuadroLeads({
     Object.fromEntries(STATUS.map((s) => [s, s !== "perdido"])),
   );
 
+  const atrasoLembreteMs = useMemo(() => atrasoProximaMudancaLembrete(
+    STATUS.flatMap((status) => colunas[status].cartoes), agoraMs,
+  ), [colunas, agoraMs]);
+
   // Lead novo, formulario avancando, esfriar do cron, outra aba da Mel: o banco
   // avisa e o quadro rele sozinho. Dentro da transition pelo mesmo motivo do
   // refresh do `mover`: o quadro atual fica na tela ate o novo chegar.
   useQuadroAoVivo({
     pausado: !!arrastando || !!movendo,
     atualizar: () => iniciar(() => router.refresh()),
+    atrasoMs: atrasoLembreteMs,
   });
 
   const porId = useMemo(() => {
@@ -105,12 +111,12 @@ export function QuadroLeads({
     >;
     for (const s of STATUS) for (const c of colunas[s].cartoes) saida[colunaDe(c)].push(c);
 
-    // A mesma ordem do servidor -- chegada do lead, mais novo em cima --
-    // refeita aqui para valer tambem no cartao movido no otimismo, que senao
-    // cairia no fim da coluna nova ate o refresh chegar.
-    for (const s of STATUS) saida[s].sort((a, b) => maisNovoPrimeiro(a, b));
+    // Refaz a ordem do servidor também no destino otimista. Só Esfriou sobe
+    // ações disponíveis: última tentativa, primeiro lembrete, depois demais.
+    // O instante vem do servidor para preservar a ordem na hidratação.
+    for (const s of STATUS) saida[s].sort((a, b) => compararCartoesNaColuna(a, b, s, agoraMs));
     return saida;
-  }, [colunas, colunaDe]);
+  }, [colunas, colunaDe, agoraMs]);
 
   const leadArrastado = arrastando ? (porId.get(arrastando) ?? null) : null;
 

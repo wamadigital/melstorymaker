@@ -15,6 +15,8 @@ export type SolicitacaoWhatsApp = {
   proposta_enviado_em: string;
   /** Texto de uma lista fixa; nunca publica erro bruto do worker. */
   motivo: string | null;
+  /** Calculado no servidor: cancelamento antes de iniciar, com código reativável. */
+  reenvioPermitido?: boolean;
 };
 
 /**

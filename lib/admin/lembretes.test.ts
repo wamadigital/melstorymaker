@@ -293,8 +293,7 @@ test("a faixa de destinos do celular cabe seis chips: rótulo curto de uma palav
   }
 });
 
-test("toda coluna ordena pela chegada do lead: o mais novo em cima, o mais antigo embaixo", () => {
-  // Pedido do owner em 07/10/2026, "sempre": nem o cartão vermelho sobe.
+test("o desempate pela chegada do lead mantém o mais novo em cima", () => {
   const fila = [
     { id: "agosto", created_at: "2026-08-19T14:00:00Z" },
     { id: "outubro", created_at: "2026-10-07T09:00:00Z" },

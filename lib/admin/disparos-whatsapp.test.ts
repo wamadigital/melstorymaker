@@ -139,7 +139,7 @@ test("lê somente metadados dos envios confirmados em uma consulta para todos os
   const { url, metodo } = pedidos[0];
   assert.equal(metodo, "GET");
   assert.equal(url.pathname, "/rest/v1/whatsapp_outbox");
-  assert.equal(url.searchParams.get("select"), "lead_id,tipo,enviado_em,estado,ocorrido_em,proposta_enviado_em,ultimo_codigo");
+  assert.equal(url.searchParams.get("select"), "lead_id,tipo,enviado_em,estado,ocorrido_em,proposta_enviado_em,ultimo_codigo,iniciado_em");
   assert.equal(url.searchParams.get("estado"), "in.(pendente,reservado,enviando,enviado,indeterminado,expirado,cancelado)");
   assert.equal(url.searchParams.get("lead_id"), `in.(${ID},${OUTRO})`);
   assert.equal(url.searchParams.get("tipo"), "in.(confirmacao_recebimento,lembrete_formulario_24h,lembrete_proposta_7d,lembrete_proposta_30d)");
@@ -167,7 +167,7 @@ test("resposta auxiliar não publica conteúdo nem registros de outros leads ou 
 
 test("status da solicitação não inventa envio e só publica motivo de lista fixa", async () => {
   const base = { lead_id: ID, tipo: "lembrete_proposta_7d", enviado_em: null,
-    ocorrido_em: RECENTE, proposta_enviado_em: ANTIGO };
+    ocorrido_em: RECENTE, proposta_enviado_em: ANTIGO, iniciado_em: null };
   const { db, pedidos } = bancoFicticio(() => json([
     { ...base, estado: "pendente", ultimo_codigo: null, mensagem: "privado", destinatario: "privado" },
     { ...base, tipo: "lembrete_proposta_30d", estado: "cancelado", ultimo_codigo: "inactivity_recent" },
@@ -179,12 +179,37 @@ test("status da solicitação não inventa envio e só publica motivo de lista f
   assert.equal(pedidos.length, 1);
   assert.equal(resultado.porLead.size, 0, "fila e cancelamento não são histórico de envio");
   assert.deepEqual(resultado.solicitacoesPorLead.get(ID), [
-    { tipo: "lembrete_proposta_7d", estado: "pendente", ocorrido_em: RECENTE, proposta_enviado_em: ANTIGO, motivo: null },
+    { tipo: "lembrete_proposta_7d", estado: "pendente", ocorrido_em: RECENTE, proposta_enviado_em: ANTIGO,
+      motivo: null, reenvioPermitido: false },
     { tipo: "lembrete_proposta_30d", estado: "cancelado", ocorrido_em: RECENTE, proposta_enviado_em: ANTIGO,
-      motivo: "Houve interação recente com este contato no WhatsApp." },
-    { tipo: "lembrete_proposta_7d", estado: "indeterminado", ocorrido_em: RECENTE, proposta_enviado_em: ANTIGO, motivo: null },
+      motivo: "Houve interação recente com este contato no WhatsApp.", reenvioPermitido: true },
+    { tipo: "lembrete_proposta_7d", estado: "indeterminado", ocorrido_em: RECENTE, proposta_enviado_em: ANTIGO,
+      motivo: null, reenvioPermitido: false },
   ]);
   assert.ok(!JSON.stringify([...resultado.solicitacoesPorLead]).includes("privado"));
+});
+
+test("nova tentativa só é liberada para os três cancelamentos seguros antes do início", async () => {
+  const codigosPermitidos = ["inactivity_recent", "inactivity_unverified", "proposta_condicao_alterada"];
+  const casos = ["pendente", "reservado", "enviando", "enviado", "indeterminado", "expirado", "cancelado"]
+    .flatMap((estado) => [...codigosPermitidos, "teste_owner_expirado", "codigo-privado", null]
+      .flatMap((ultimo_codigo) => [null, RECENTE, undefined].map((iniciado_em) => ({ estado, ultimo_codigo, iniciado_em }))));
+  const { db } = bancoFicticio(() => json(casos.map((caso) => ({
+    lead_id: ID, tipo: "lembrete_proposta_7d", enviado_em: null,
+    ocorrido_em: RECENTE, proposta_enviado_em: ANTIGO, ...caso,
+  }))));
+  const resultado = await lerDisparosWhatsApp([ID], db);
+  assert.equal(resultado.erro, false);
+  const solicitacoes = resultado.solicitacoesPorLead.get(ID)!;
+  assert.equal(solicitacoes.length, casos.length);
+  casos.forEach((caso, indice) => {
+    assert.equal(solicitacoes[indice].reenvioPermitido,
+      caso.estado === "cancelado" && caso.iniciado_em === null &&
+      caso.ultimo_codigo !== null && codigosPermitidos.includes(caso.ultimo_codigo), JSON.stringify(caso));
+    assert.equal(Object.hasOwn(solicitacoes[indice], "iniciado_em"), false);
+    assert.equal(Object.hasOwn(solicitacoes[indice], "ultimo_codigo"), false);
+  });
+  assert.ok(!JSON.stringify([...resultado.solicitacoesPorLead]).includes("codigo-privado"));
 });
 
 test("quadro sem cartões não consulta a fila", async () => {
