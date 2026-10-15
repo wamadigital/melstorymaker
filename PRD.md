@@ -209,6 +209,7 @@ Regras do engine:
 | RF-23 | Botão "Lembrar por e-mail" no lead de "Novo" que deixou e-mail | Fica no cartão do quadro, embaixo do "Chamar no WhatsApp". O clique da Mel envia na hora um e-mail com o link para continuar o formulário de onde o lead parou (e o WhatsApp da Mel), e o botão trava por 7 dias com "Lembrete enviado · Libera de novo em N dias" — a trava também é conferida no servidor. Nunca sai sem o clique. Some sem e-mail e fora de "Novo" |
 | RF-24 | Coluna "Esfriou" (cinza) entre "Virou cliente" e "Lead perdido" | O lead fica no máximo 7 dias em "Enviado": passou disso sem update, vai sozinho para "Esfriou", com "Relembrar cliente"; aos 30 dias do envio o cartão fica vermelho com "Última tentativa". A Mel pode trazê-lo de volta para "Enviado" (ganha mais 7 dias), fechar ou marcar como perdido |
 | RF-25 | Lembrete automático de formulário incompleto após mais de 24 horas em Novo | Um único WhatsApp por lead elegível, com link `/continuar/{id}`; `status = incompleto`, `created_at < agora − 24h` e telefone conferidos na reserva e novamente antes do envio. Quatro mensagens com pausas de 2/3/2 segundos, conforme texto do owner em 15/10/2026; flag exclusiva desativada por padrão e corte de ativação obrigatório. Worker com protocolo 2, RPCs V3 e revalidação antes de cada parte; interrupção não reenvia a sequência. Nenhuma mudança de status, `enviado_em` ou “já chamei” |
+| RF-26 | Indicador de mensagens no WhatsApp no cartão do Kanban | Ícone pequeno somente com histórico de envio automático confirmado ou contato marcado pela Mel. Hover, clique ou teclado mostram tipo e data em São Paulo; inclui Finalize o formulário, confirmação de recebimento, lembretes de 7/30 dias e contato inicial. Registros manuais aparecem como “Marcado pela Mel”; ter telefone, proposta ou e-mail enviado não acende o ícone. Histórico permanece em qualquer coluna; conclusão da automação atualiza o quadro ao vivo sem expor conteúdo da fila |
 
 ## 8. Painel admin
 
@@ -225,7 +226,7 @@ Quadro (`/admin`):
 | Elemento | Comportamento |
 |---|---|
 | Raias | Novo, Aguardando revisão, Enviado, Virou cliente, Esfriou e Lead perdido, nessa ordem |
-| Cartão | Sujeito do evento, categoria, data do evento, data de chegada e sinais de PDF/e-mail/WhatsApp; em Novo, mostra onde o preenchimento parou |
+| Cartão | Sujeito do evento, categoria, data do evento, data de chegada e sinais de PDF/e-mail; ícone de histórico WhatsApp somente com envio/contato registrado, com tipo e data no hover. Em Novo, mostra onde o preenchimento parou |
 | Busca e filtros | Busca pelo nome do sujeito do evento, categoria e período de chegada (Todo o período, Hoje, Esta semana, Este mês), mantidos na URL. A semana começa na segunda-feira e os cortes usam São Paulo |
 | Ordem e limite | Mais novos primeiro em todas as raias; até 50 cartões por raia, com contagem total e aviso quando existem outros resultados |
 | Movimentação | Arraste ou menu do cartão; não permite voltar para Novo. Enviado e Esfriou exigem PDF; Cliente e Perdido não exigem. Uma tela desatualizada recebe aviso e recarrega o estado real |

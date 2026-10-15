@@ -5,6 +5,7 @@ import { FiltrosLeads } from "@/components/admin/FiltrosLeads";
 import { QuadroLeads, type Coluna } from "@/components/admin/QuadroLeads";
 import { lerComRetentativa } from "@/lib/supabase/consulta";
 import { esfriarParados } from "@/lib/supabase/esfriar";
+import { lerDisparosWhatsApp } from "@/lib/supabase/disparos-whatsapp";
 import { FRASE_PERIODO, ehPeriodo, inicioDoPeriodo } from "@/lib/admin/periodo";
 
 type Busca = { q?: string; categoria?: string; periodo?: string };
@@ -70,13 +71,19 @@ export default async function PaginaLeads({ searchParams }: { searchParams: Prom
     STATUS.map((status) => lerComRetentativa(`coluna ${status}`, () => consultar(status))),
   );
 
+  const idsVisiveis = respostas.flatMap(({ data }) =>
+    ((data ?? []) as unknown as LeadCartao[]).map(({ id }) => id));
+  const disparos = await lerDisparosWhatsApp(idsVisiveis);
+
   const colunas = Object.fromEntries(
     STATUS.map((status, i) => {
       const { data, count, error } = respostas[i];
       return [
         status,
         {
-          cartoes: (data ?? []) as unknown as LeadCartao[],
+          cartoes: ((data ?? []) as unknown as LeadCartao[]).map((lead) => ({
+            ...lead, disparos_whatsapp: disparos.porLead.get(lead.id) ?? [],
+          })),
           total: count ?? 0,
           // Erro por coluna, e nao da pagina inteira: uma raia que falhou nao
           // pode derrubar as outras. A mensagem tecnica fica no log do
@@ -109,6 +116,12 @@ export default async function PaginaLeads({ searchParams }: { searchParams: Prom
         termoAtual={termo}
         periodoAtual={periodo}
       />
+
+      {disparos.erro && (
+        <p role="status" className="text-xs text-muted-foreground">
+          Não consegui carregar os envios automáticos do WhatsApp. Atualize a página para conferir o histórico.
+        </p>
+      )}
 
       {/* `Date.now()` do SERVIDOR, descido como prop: a contagem de cobranca
           precisa dar o mesmo numero no HTML e na hidratacao, senao o cartao

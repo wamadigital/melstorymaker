@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { Check, FileText, GripVertical, Mail, MessageCircle } from "lucide-react";
+import { Check, FileText, GripVertical, Mail } from "lucide-react";
 import { AcoesLead } from "@/components/admin/AcoesLead";
 import { BotaoLembrete } from "@/components/admin/BotaoLembrete";
 import { BotaoLembreteEmail } from "@/components/admin/BotaoLembreteEmail";
 import { ChamarWhatsApp } from "@/components/admin/ChamarWhatsApp";
+import { IndicadorWhatsApp } from "@/components/admin/IndicadorWhatsApp";
 import { estadoLembrete, SELO_LEMBRETE, temaCobranca } from "@/lib/admin/lembretes";
 import { estadoLembreteEmail } from "@/lib/admin/lembrete-email";
 import { linkContatoInicial } from "@/lib/admin/acoes";
@@ -119,7 +120,7 @@ export function CartaoLead({
       <div className="min-w-0 flex-1">
         <Link
           href={`/admin/leads/${lead.id}`}
-          className="block min-w-0 space-y-1 py-3 pr-9 pl-3"
+          className="block min-w-0 space-y-1 pt-3 pr-9 pb-1 pl-3"
           // No overlay o cartao e so pintura: navegar dali nao faz sentido.
           tabIndex={sobreposto ? -1 : undefined}
         >
@@ -138,18 +139,21 @@ export function CartaoLead({
             </p>
           )}
 
-          <div className="flex items-center gap-2 pt-0.5">
-            <span className="text-[0.6875rem] text-muted-foreground/80">
-              {dataHoraLocal(lead.created_at)}
-            </span>
-            {/* Sinais do que da para fazer sem abrir o lead. */}
-            <span className="ml-auto flex items-center gap-1 text-muted-foreground/60">
-              {lead.pdf_url && <FileText className="size-3" aria-label="Tem proposta" />}
-              {lead.email && <Mail className="size-3" aria-label="Tem e-mail" />}
-              {lead.whatsapp && <MessageCircle className="size-3" aria-label="Tem WhatsApp" />}
-            </span>
-          </div>
         </Link>
+
+        {/* Fora do link: consultar o histórico não navega nem inicia arraste.
+            O sinal de WhatsApp agora significa contato/envio registrado, e
+            não apenas que existe um número cadastrado. */}
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-3 pt-0.5 pb-3">
+          <span className="text-[0.6875rem] text-muted-foreground/80">
+            {dataHoraLocal(lead.created_at)}
+          </span>
+          <span className="ml-auto flex shrink-0 items-center gap-1 text-muted-foreground/60">
+            {lead.pdf_url && <FileText className="size-3" aria-label="Tem proposta" />}
+            {lead.email && <Mail className="size-3" aria-label="Tem e-mail" />}
+            <IndicadorWhatsApp lead={lead} somenteLeitura={sobreposto} />
+          </span>
+        </div>
 
         {/* Rodape de cobranca. Fora do <Link> pelo mesmo motivo do menu: botao
             dentro de <a> e HTML invalido. So aparece quando ha o que dizer --

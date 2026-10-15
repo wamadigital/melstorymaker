@@ -29,3 +29,7 @@ test("a unica policy e de leitura em realtime.messages; leads continua sem nenhu
 test("schema.sql traz o mesmo bloco, byte a byte", () => {
   assert.ok(ler("supabase/schema.sql").includes(bloco.trim()));
 });
+
+test("schema.sql traz o incremento de atualizacao WhatsApp, byte a byte", () => {
+  assert.ok(ler("supabase/schema.sql").includes(ler("supabase/quadro-whatsapp.sql").trim()));
+});

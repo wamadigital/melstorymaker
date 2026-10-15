@@ -1,5 +1,11 @@
 import type { Lead } from "@/lib/form/types";
 
+/** Metadados de um envio confirmado pelo worker; nunca leva conteúdo ou contato. */
+export type DisparoWhatsApp = {
+  tipo: "confirmacao_recebimento" | "lembrete_formulario_24h";
+  enviado_em: string;
+};
+
 /**
  * Colunas que o quadro precisa de cada lead. Existe como constante para o
  * `select` do Supabase e o `Pick` do TypeScript nao divergirem: antes a lista
@@ -30,4 +36,7 @@ export type LeadCartao = Pick<
   | "pdf_url"
   | "whatsapp"
   | "email"
->;
+> & {
+  /** Resumo da fila privada, enriquecido no servidor depois da leitura das raias. */
+  disparos_whatsapp?: DisparoWhatsApp[];
+};
