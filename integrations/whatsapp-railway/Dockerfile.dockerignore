@@ -1,0 +1,24 @@
+# Allow only audited integration sources. Never upload local WhatsApp state.
+**
+!integrations/
+!integrations/whatsapp-local/
+!integrations/whatsapp-local/prepare.py
+!integrations/whatsapp-local/compat.py
+!integrations/whatsapp-local/local_server.go
+!integrations/whatsapp-local/local_server_test.go
+!integrations/whatsapp-local/local_activity.go
+!integrations/whatsapp-local/local_activity_test.go
+!integrations/whatsapp-local/worker.py
+!integrations/whatsapp-local/run-mcp.sh
+!integrations/whatsapp-local/run-bridge.sh
+!integrations/whatsapp-local/run-worker.sh
+!integrations/whatsapp-local/dependencies/
+!integrations/whatsapp-local/dependencies/go.mod
+!integrations/whatsapp-local/dependencies/go.sum
+!integrations/whatsapp-local/dependencies/pyproject.toml
+!integrations/whatsapp-local/dependencies/uv.lock
+!integrations/whatsapp-railway/
+!integrations/whatsapp-railway/Dockerfile
+!integrations/whatsapp-railway/Dockerfile.dockerignore
+!integrations/whatsapp-railway/prepare_build.py
+!integrations/whatsapp-railway/cloud.py
