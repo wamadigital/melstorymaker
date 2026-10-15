@@ -1,6 +1,6 @@
 import { arvore, normalizarOpcoes } from "@/lib/form/engine";
 import { nomeContato, sujeitoDoEvento } from "@/lib/leads";
-import { dataCurta } from "@/lib/pdf/formatadores";
+import { dataEvento } from "@/lib/pdf/formatadores";
 import type { Categoria, Respostas } from "@/lib/form/types";
 
 /**
@@ -25,7 +25,7 @@ export function mensagemNovoLead(
 
   const sujeito = sujeitoDoEvento(categoria, respostas);
   const contato = nomeContato(respostas);
-  const data = respostas.data ? dataCurta(respostas.data) : null;
+  const data = respostas.data ? dataEvento(respostas.data) : null;
 
   const linhas = [
     "✨ Novo lead no formulário!",

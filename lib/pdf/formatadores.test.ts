@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { dataCurta, dataExtenso, diaMesLocal, horaBr, nomeProprio } from "./formatadores";
+import { dataCurta, dataEvento, FORMATADORES, dataExtenso, diaMesLocal, horaBr, nomeProprio } from "./formatadores";
 
 test("data por extenso em pt-BR (RF-15)", () => {
   assert.equal(dataExtenso("2026-03-14"), "14 de março de 2026");
@@ -44,6 +44,12 @@ test("hora invalida vira string vazia", () => {
 test("data curta para o painel", () => {
   assert.equal(dataCurta("2026-03-14"), "14/03/2026");
   assert.equal(dataCurta(null), "");
+});
+
+test("data do evento e formato de todas as propostas usam pontos sem fuso", () => {
+  assert.equal(dataEvento("2028-01-01"), "01.01.2028");
+  assert.equal(FORMATADORES.data_curta("2027-03-14"), "14.03.2027");
+  assert.equal(dataEvento(null), "");
 });
 
 // ------------------------------------------------------------- nome proprio

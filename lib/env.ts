@@ -56,10 +56,10 @@ const schema = z
     META_CAPI_TOKEN: z.string().optional(),
     META_CAPI_TEST_CODE: z.string().optional(),
 
-    // --- Contrato: IA (Anthropic) --------------------------------------------
+    // --- IA (Anthropic): contrato e padronizacao de nomes ---------------------
     // Opcional: sem ela o painel monta o contrato do mesmo jeito (o nucleo e
-    // deterministico) e so desliga as tres ajudas da IA -- preencher quem assina
-    // a partir de um texto colado, redigir as condicoes especiais e revisar.
+    // deterministico). Sem ela, a padronizacao pos-submit preserva as respostas
+    // originais; os recursos do contrato tambem ficam indisponiveis.
     // Sem `.min(1)` de proposito, como as da Meta: o .env.example traz a linha
     // vazia, e "" aqui precisa significar "desligado", nao derrubar a validacao
     // inteira e levar junto o PDF da proposta e o e-mail.

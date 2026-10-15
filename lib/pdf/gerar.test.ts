@@ -136,7 +136,7 @@ test("campo composto junta as respostas e formata cada uma", () => {
 
   assert.equal(
     textoDoCampo(campo, { noivos: "Ana & João", data: "2027-08-31" }),
-    "Ana & João | 31/08/2027",
+    "Ana & João | 31.08.2027",
   );
 });
 
@@ -189,7 +189,7 @@ test("o cabeçalho do debutante compõe o texto fixo da arte", () => {
 
   assert.equal(
     textoDoCampo(campo, { debutante: "Maria Eduarda", data: "2027-03-14" }),
-    "15 ANOS DA Maria Eduarda | 14/03/2027",
+    "15 ANOS DA Maria Eduarda | 14.03.2027",
   );
 });
 
@@ -246,7 +246,7 @@ test("o cabeçalho do aniversário infantil traz o nome do aniversariante", () =
 
   assert.equal(
     textoDoCampo(campo, { aniversariante: "João Vitor", data: "2027-12-01" }),
-    "ANIVERSÁRIO João Vitor | 01/12/2027",
+    "ANIVERSÁRIO João Vitor | 01.12.2027",
   );
 });
 

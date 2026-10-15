@@ -21,6 +21,7 @@ import { A_DEFINIR, ehADefinir, type Lead, type Respostas, type Status } from "@
 import { sujeitoDoEvento } from "@/lib/leads";
 import { BotaoPerdido, ProximoPasso } from "@/components/admin/AtalhosStatus";
 import { CaixaMarcacao } from "@/components/form/CaixaMarcacao";
+import { EntradaData } from "@/components/form/EntradaData";
 import { PreviaProposta } from "@/components/admin/PreviaProposta";
 import { SecaoContrato } from "@/components/admin/contrato/SecaoContrato";
 import { QualificacaoLead } from "@/components/admin/QualificacaoLead";
@@ -368,13 +369,13 @@ export function DetalheLead({
                       </option>
                     ))}
                   </select>
+                ) : passo.tipo === "data" ? (
+                  <EntradaData id={passo.id} valor={valor} onChange={atualizar} rotulo={passo.pergunta} className="h-9" />
                 ) : (
                   <Input
                     id={passo.id}
                     type={
-                      passo.tipo === "data"
-                        ? "date"
-                        : passo.tipo === "hora"
+                      passo.tipo === "hora"
                           ? "time"
                           : passo.tipo === "email"
                             ? "email"

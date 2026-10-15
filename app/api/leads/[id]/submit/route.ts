@@ -14,6 +14,7 @@ import { enviarConversao } from "@/lib/meta/conversoes";
 import { enviarEventosCrmDoLead } from "@/lib/meta/crm";
 import { origemDaRequisicao, rastreioDaRequisicao } from "@/lib/meta/rastreio";
 import { atualizarVersaoLead, CAMPOS_VERSAO_LEAD, corpoBaseLead, mesmaVersaoLead } from "@/lib/form/versao-lead";
+import { padronizarRespostasEnviadas } from "@/lib/form/padronizar-envio";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -125,6 +126,10 @@ export async function POST(req: Request, { params }: Ctx) {
 
   // Concluir o formulário não envia nem enfileira confirmação ao cliente.
   // Gatilho removido por determinação do owner em 15/10/2026.
+
+  // Corrige as respostas salvas e o nome do card sem atrasar a confirmação.
+  // Só o vencedor agenda IA; o CAS protege qualquer edição posterior da Mel.
+  after(async () => { await padronizarRespostasEnviadas(escrita.lead); });
 
   // Avisa a Mel DEPOIS de responder ao lead: after() roda pos-resposta, entao
   // gateway lento ou fora do ar nao atrasa nem quebra o submit. Dispara so

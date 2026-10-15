@@ -19,6 +19,7 @@ Object.assign(process.env, {
   META_PIXEL_ID: "1234567890123456",
   META_CAPI_TOKEN: "token-ficticio",
   META_CAPI_TEST_CODE: "TEST_FICTICIO",
+  ANTHROPIC_API_KEY: "chave-ia-ficticia",
 });
 
 const require = createRequire(import.meta.url);
@@ -45,7 +46,8 @@ function trava() {
 function bancoFalso(inicial: Linha) {
   let atual = structuredClone(inicial);
   let revisao = 0;
-  const efeitos = { notificacoes: 0, conversoes: [] as Record<string, unknown>[] };
+  const efeitos = { notificacoes: 0, conversoes: [] as Record<string, unknown>[], ia: 0 };
+  let respostaIa: unknown;
   let antesDaEscrita: ((patch: Record<string, unknown>) => Promise<void> | void) | undefined;
   let antesDaLeitura: (() => Promise<void> | void) | undefined;
   let erroEscrita = false;
@@ -54,6 +56,19 @@ function bancoFalso(inicial: Linha) {
   const filtros: URLSearchParams[] = [];
   const fetchFalso = async (entrada: string | URL | Request, init?: RequestInit) => {
     const url = new URL(entrada instanceof Request ? entrada.url : String(entrada));
+    if (url.hostname === "api.anthropic.com") {
+      efeitos.ia++;
+      const pedido = JSON.parse(String(init?.body));
+      const entradaIa = JSON.parse(pedido.messages[0].content);
+      return Response.json({
+        id: "msg_ficticia", type: "message", role: "assistant", model: pedido.model,
+        content: [{ type: "text", text: JSON.stringify(respostaIa ?? {
+          nome: entradaIa.nome ? { valor: entradaIa.nome, confiavel: false } : null,
+          noivos: entradaIa.noivos ? { valor: entradaIa.noivos, confiavel: false } : null,
+        }) }], stop_reason: "end_turn", stop_sequence: null,
+        usage: { input_tokens: 1, output_tokens: 1 },
+      });
+    }
     if (url.hostname === "api.callmebot.com") {
       efeitos.notificacoes += 1;
       return new Response("Message queued");
@@ -103,6 +118,7 @@ function bancoFalso(inicial: Linha) {
     falharEscrita() { erroEscrita = true; },
     falharLeitura() { erroLeitura = true; },
     perderProximaRespostaEscrita() { perderRespostaEscrita = true; },
+    responderIa(valor: unknown) { respostaIa = valor; },
   };
 }
 
@@ -133,15 +149,16 @@ test("dois POSTs lendo incompleto juntos: so o UPDATE vencedor notifica e envia 
     const respostas = await Promise.all([POST(requisicao("POST"), ctx), POST(requisicao("POST"), ctx)]);
     assert.deepEqual(respostas.map((r) => r.status), [200, 200]);
     assert.equal(banco.linha.status, "aguardando_revisao");
-    assert.equal(depois.length, 2, "apenas vencedor agenda notificacao e CAPI");
+    assert.equal(depois.length, 3, "apenas vencedor agenda padronizacao, notificacao e CAPI");
     await Promise.all(depois.map((executar) => executar()));
+    assert.equal(banco.efeitos.ia, 1, "só o submit vencedor consome a API de IA");
     assert.equal(banco.efeitos.notificacoes, 1);
     assert.equal(banco.efeitos.conversoes.length, 1);
     assert.equal(banco.efeitos.conversoes[0].event_name, "SubmitApplication");
     assert.equal(banco.efeitos.conversoes[0].event_id, `submit_${ID}`);
     const repetido = await POST(requisicao("POST"), ctx);
     assert.equal(repetido.status, 200);
-    assert.equal(depois.length, 2, "repeticao nao agenda efeito nenhum");
+    assert.equal(depois.length, 3, "repeticao nao agenda efeito nenhum");
   });
 });
 
@@ -314,7 +331,7 @@ test("submit vence enquanto PATCH esta em voo: PATCH nao altera formulario fecha
     assert.equal((await atrasado).status, 409);
     assert.equal(banco.linha.status, "aguardando_revisao");
     assert.equal(banco.linha.respostas?.contato_email, completas.contato_email);
-    assert.equal(depois.length, 2);
+    assert.equal(depois.length, 3);
   });
 });
 
@@ -362,7 +379,7 @@ test("submit repete somente zero linhas por rastreio e agenda efeitos uma vez", 
     assert.equal(r.status, 200);
     assert.equal(banco.filtros.length, 2);
     assert.equal(banco.linha.status, "aguardando_revisao");
-    assert.equal(depois.length, 2);
+    assert.equal(depois.length, 3);
   });
 });
 
@@ -417,7 +434,7 @@ test("baseline com 64 mil caracteres salva e conclui sem respostas na URL", asyn
     assert.equal((await leitura.json()).updated_at, undefined);
     const enviado = await POST(requisicao("POST", { base: base(banco.linha) }), ctx);
     assert.equal(enviado.status, 200);
-    assert.equal(depois.length, 2);
+    assert.equal(depois.length, 3);
     assert.ok(banco.filtros.every((f) => !f.has("respostas")));
   });
 });
@@ -493,5 +510,56 @@ test("PATCH em formulario fechado ou com erro de escrita nao mente que salvou", 
     const r = await PATCH(requisicao("PATCH", { respostas: { nome: "Novo" } }), ctx);
     assert.equal(r.status, 500);
     assert.equal(banco.linha.respostas?.nome, completas.nome);
+  });
+});
+
+
+test("padronização depois do submit altera respostas e nome do card, sem novo envio", async () => {
+  const original = { ...completas, nome: "Gabriela Alves Vieira", noivos: "Moacir Santanda e Flor de Souza" };
+  await comBanco(linha(original), async (banco, depois) => {
+    banco.responderIa({ nome: { valor: "Gabriela", confiavel: true }, noivos: { valor: "Flor & Moacir", confiavel: true } });
+    const { POST } = await import("./submit/route");
+    assert.equal((await POST(requisicao("POST", { base: base(banco.linha) }), ctx)).status, 200);
+    assert.equal(banco.linha.respostas?.nome, original.nome, "confirmação não espera a IA");
+    assert.equal(banco.efeitos.ia, 0);
+    await depois[0]();
+    assert.equal(banco.efeitos.ia, 1);
+    assert.deepEqual(banco.linha.respostas, { ...original, nome: "Gabriela", noivos: "Flor & Moacir" });
+    assert.equal((banco.linha as unknown as Record<string, unknown>).nome_display, "Flor & Moacir");
+    assert.equal(banco.linha.status, "aguardando_revisao");
+    assert.equal(banco.efeitos.notificacoes, 0, "correção não dispara mensagens");
+    assert.equal(banco.efeitos.conversoes.length, 0);
+  });
+});
+
+test("IA atrasada nunca sobrescreve correção da Mel ou card movido", async () => {
+  const { padronizarRespostasEnviadas } = await import("@/lib/form/padronizar-envio");
+  for (const mudou of [{ respostas: { ...completas, nome: "Mel corrigiu" } }, { status: "enviado" as const }]) {
+    const enviado = { ...linha(), status: "aguardando_revisao" as const };
+    await comBanco(enviado, async (banco) => {
+      const barreira = trava();
+      const tarefa = padronizarRespostasEnviadas(enviado, async (_categoria, respostas) => {
+        await barreira.espera;
+        return { ...respostas, nome: "Ana" };
+      });
+      banco.mudar(mudou);
+      barreira.abrir();
+      assert.equal(await tarefa, "mudou");
+      assert.equal(banco.linha.respostas?.nome, mudou.respostas?.nome ?? completas.nome);
+      assert.equal(banco.linha.status, mudou.status ?? enviado.status);
+    });
+  }
+});
+
+test("falha da IA preserva formulário concluído e nomes originais sem logar conteúdo", async () => {
+  const { padronizarRespostasEnviadas } = await import("@/lib/form/padronizar-envio");
+  const enviado = { ...linha(), status: "aguardando_revisao" as const };
+  await comBanco(enviado, async (banco) => {
+    const avisos = mock.method(console, "warn", () => {});
+    assert.equal(await padronizarRespostasEnviadas(enviado, async () => { throw new Error("dados privados e token"); }), "falhou");
+    assert.deepEqual(banco.linha.respostas, completas);
+    assert.equal(banco.linha.status, enviado.status);
+    assert.equal(banco.filtros.length, 0);
+    assert.equal(JSON.stringify(avisos.mock.calls.map((c) => c.arguments)).includes("dados privados"), false);
   });
 });

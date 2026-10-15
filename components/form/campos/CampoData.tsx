@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { Input } from "@/components/ui/input";
+import { EntradaData } from "../EntradaData";
 import { dataMinima } from "@/lib/form/engine";
 import { devoFocarSozinho, type CampoProps } from "../tipos";
 
@@ -13,16 +13,13 @@ export function CampoData({ passo, valor, onChange, onAvancar, erro }: CampoProp
   }, [passo.id]);
 
   return (
-    <Input
-      ref={ref}
-      // O date picker nativo e o melhor caminho no mobile: sem lib, sem bundle,
-      // e ja vem localizado pelo proprio sistema do lead.
-      type="date"
+    <EntradaData
+      inputRef={ref}
       min={dataMinima(passo)}
-      value={valor}
-      aria-invalid={!!erro}
-      aria-label={passo.pergunta}
-      onChange={(e) => onChange(e.target.value)}
+      valor={valor}
+      invalida={!!erro}
+      rotulo={passo.pergunta}
+      onChange={onChange}
       onKeyDown={(e) => {
         if (e.key === "Enter") {
           e.preventDefault();

@@ -7,6 +7,7 @@ import type { Respostas } from "@/lib/form/types";
 import { colunasPromovidas } from "@/lib/leads";
 import { lerRegistroInterno, removerArquivosDoLead } from "@/lib/supabase/contratos";
 import { AssinaturaError, provedorDoToken } from "@/lib/assinatura/adapter";
+import { dataISOValida } from "@/lib/form/data";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -47,6 +48,9 @@ export async function PATCH(req: Request, { params }: Ctx) {
   }
 
   const respostas = limparRespostasOrfas(lead.categoria, mescladas);
+  if (respostas.data && !dataISOValida(respostas.data)) {
+    return NextResponse.json({ erro: "Informe uma data válida no formato dd.mm.aaaa." }, { status: 422 });
+  }
 
   const { error } = await supabaseAdmin()
     .from("leads")

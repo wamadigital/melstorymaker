@@ -4,13 +4,13 @@ import { mensagemNovoLead } from "./mensagem";
 
 const ADMIN = "https://melstorymaker.com.br/admin";
 
-test("casamento: sujeito, rótulo do arvore.json e data DD/MM/AAAA", () => {
+test("casamento: sujeito, rótulo do arvore.json e data DD.MM.AAAA", () => {
   const m = mensagemNovoLead(
     "casamento",
     { nome: "Lúcia", noivos: "Ana & João", data: "2027-02-21", contato_email: "x@y.com" },
     ADMIN,
   );
-  assert.ok(m.includes("Ana & João — Casamento, 21/02/2027"));
+  assert.ok(m.includes("Ana & João — Casamento, 21.02.2027"));
   assert.ok(m.includes("Preenchido por Lúcia"));
   assert.ok(m.endsWith(ADMIN));
 });

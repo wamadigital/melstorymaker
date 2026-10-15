@@ -14,7 +14,7 @@ import { linkContatoInicial } from "@/lib/admin/acoes";
 import { DESCRICAO_COLUNA, TEMA_COLUNA, rotuloCategoria, rotuloPasso } from "@/lib/admin/rotulos";
 import type { LeadCartao } from "@/lib/admin/tipos";
 import type { Status } from "@/lib/form/types";
-import { dataCurta, dataHoraLocal } from "@/lib/pdf/formatadores";
+import { dataEvento, dataHoraLocal } from "@/lib/pdf/formatadores";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -143,7 +143,7 @@ export function CartaoLead({
           )}
           <p className="truncate text-xs text-muted-foreground">
             {rotuloCategoria(lead.categoria)}
-            {lead.data_evento && <> · {dataCurta(lead.data_evento)}</>}
+            {lead.data_evento && <> · {dataEvento(lead.data_evento)}</>}
           </p>
           {parouEm && <p className="truncate text-xs text-muted-foreground">Parou em: {parouEm}</p>}
           {lead.qualificado_em && (

@@ -42,7 +42,7 @@ export function colunasPromovidas(categoria: Categoria, respostas: Respostas) {
 
   return {
     nome_display: sujeitoDoEvento(categoria, respostas) || null,
-    // Ja vem em ISO do <input type="date">; a coluna e `date`.
+    // O campo exibe pontos, mas entrega ISO; a coluna continua sendo `date`.
     data_evento: respostas.data || null,
     email: email || null,
     whatsapp: whatsapp || null,

@@ -1,11 +1,11 @@
 import { dataMinima, normalizarOpcoes } from "./engine";
 import { ehADefinir, type Passo, type Respostas } from "./types";
+import { dataISOValida } from "./data";
 
 // Validacao compartilhada entre o formulario (client) e os route handlers
 // (server). Mensagens sempre em pt-BR -- elas aparecem pro lead.
 
 const RE_EMAIL = /^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i;
-const RE_DATA_ISO = /^(\d{4})-(\d{2})-(\d{2})$/;
 const RE_HORA = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
 export function somenteDigitos(v: string): string {
@@ -92,7 +92,7 @@ export function validarResposta(passo: Passo, valor: string, hoje = new Date()):
       return validarTelefoneBr(v);
 
     case "data": {
-      if (!RE_DATA_ISO.test(v)) return "Escolhe uma data válida.";
+      if (!dataISOValida(v)) return "Escolhe uma data válida.";
       const min = dataMinima(passo, hoje);
       // Comparacao lexicografica de ISO evita fuso horario por completo.
       if (min && v < min) return "A data precisa ser de hoje em diante.";

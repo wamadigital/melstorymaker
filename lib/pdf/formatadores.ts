@@ -58,6 +58,11 @@ export function dataCurta(iso: string | null | undefined): string {
   return `${dia}/${mes}/${ano}`;
 }
 
+/** Data do evento em toda modalidade: "14.03.2026" (owner, 15/10/2026). */
+export function dataEvento(iso: string | null | undefined): string {
+  return dataCurta(iso).replaceAll("/", ".");
+}
+
 /** Timestamp do banco para "14/03/2026 às 19h30", no fuso de quem le. */
 const FUSO_MEL = "America/Sao_Paulo";
 
@@ -105,7 +110,7 @@ export function diaMesLocal(iso: string | null | undefined): string {
 /**
  * Formatadores disponiveis no templates.config.ts.
  *
- * `data_curta` (DD/MM/AAAA) e o padrao das propostas, por decisao do owner.
+ * `data_curta` (DD.MM.AAAA) e o padrao das propostas, por decisao do owner.
  * `data_extenso` continua aqui por ser a forma que o PRD descrevia antes e por
  * seguir valendo para qualquer arte que peca a data escrita.
  */
@@ -147,7 +152,7 @@ export function nomeProprio(valor: string | null | undefined): string {
 }
 
 export const FORMATADORES = {
-  data_curta: dataCurta,
+  data_curta: dataEvento,
   data_extenso: dataExtenso,
   hora_br: horaBr,
   nome_proprio: nomeProprio,
