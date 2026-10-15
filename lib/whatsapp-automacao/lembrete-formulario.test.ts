@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import { mock, test } from "node:test";
 import { createClient } from "@supabase/supabase-js";
 import { criarRepositorioWhatsApp, type AmbienteWhatsApp } from "./index";
-import { tratarResultado } from "./http";
+import { tratarReivindicacao, tratarResultado } from "./http";
 import { MENSAGEM_CONFIRMACAO } from "./contrato";
-import { configuracaoLembreteFormulario, PREFIXO_LEMBRETE_FORMULARIO } from "./lembrete-formulario";
+import { configuracaoLembreteFormulario, MENSAGENS_LEMBRETE_FORMULARIO } from "./lembrete-formulario";
 
 const AGORA = Date.parse("2026-10-14T18:00:00Z");
 const INICIO = "2026-10-14T15:00:00-03:00";
@@ -21,6 +21,10 @@ const linha = {
   id: ID, lease_token: LEASE, destinatario: "5519988887777", mensagem: MENSAGEM_CONFIRMACAO,
   expira_em: "2026-10-15T18:00:00+00:00", tipo: "confirmacao_recebimento", lead_id: "privado",
 };
+const sequencia = [
+  ...MENSAGENS_LEMBRETE_FORMULARIO,
+  { message: `https://crm.invalid/continuar/${ID}`, delayBeforeSeconds: 2 },
+];
 type Chamada = { nome: string; corpo: Record<string, unknown> };
 function transporte(responder: (chamada: Chamada) => Response | Promise<Response>) {
   const chamadas: Chamada[] = [];
@@ -81,7 +85,7 @@ test("flag desligada ou config invalida usa somente V1 antes de aplicar o SQL no
       assert.ok(["reivindicar_whatsapp", "resultado_whatsapp"].includes(nome), "SQL V2 indisponivel neste cenario");
       return Response.json(nome === "reivindicar_whatsapp" ? [linha] : "enviado");
     });
-    const repositorio = criarRepositorioWhatsApp(db, { ambiente, agora: () => AGORA, falhaLembretes: () => assert.fail() });
+    const repositorio = criarRepositorioWhatsApp(db, { ambiente, agora: () => AGORA, protocolo: 2, falhaLembretes: () => assert.fail() });
     assert.equal((await repositorio.reivindicar())?.id, ID);
     assert.equal(await repositorio.resultado(ID, { leaseToken: LEASE, outcome: "sent" }), "enviado");
     assert.deepEqual(chamadas.map((c) => c.nome), ["reivindicar_whatsapp", "resultado_whatsapp"]);
@@ -90,27 +94,40 @@ test("flag desligada ou config invalida usa somente V1 antes de aplicar o SQL no
   }
 });
 
-test("claim ativo aguarda batch com prefixo e origem normalizada, depois chama V2 sem mudar envelope", async () => {
+test("sem capacidade V2 explicita usa V1 mesmo com flags validas e nao prepara lembretes", async () => {
+  const { db, chamadas } = transporte(({ nome }) => {
+    assert.ok(["reivindicar_whatsapp", "resultado_whatsapp"].includes(nome));
+    return Response.json(nome === "reivindicar_whatsapp" ? [linha] : "enviado");
+  });
+  const repositorio = criarRepositorioWhatsApp(db, { ambiente: ambienteValido(), agora: () => AGORA });
+  assert.equal((await repositorio.reivindicar())?.id, ID);
+  await repositorio.resultado(ID, { leaseToken: LEASE, outcome: "sent" });
+  assert.deepEqual(chamadas.map((c) => c.nome), ["reivindicar_whatsapp", "resultado_whatsapp"]);
+});
+
+test("protocolo2 aguarda batch com tres partes e origem normalizada, depois chama RPC V3", async () => {
   let liberar!: () => void;
   const espera = new Promise<void>((resolve) => { liberar = resolve; });
   const { db, chamadas } = transporte(async ({ nome }) => {
-    if (nome === "enfileirar_lembretes_formulario_whatsapp") { await espera; return Response.json(2); }
-    assert.equal(nome, "reivindicar_whatsapp_v2");
-    return Response.json([{ ...linha, tipo: "lembrete_formulario_24h", mensagem: PREFIXO_LEMBRETE_FORMULARIO + `https://crm.invalid/continuar/${ID}` }]);
+    if (nome === "enfileirar_lembretes_formulario_whatsapp_v3") { await espera; return Response.json(2); }
+    assert.equal(nome, "reivindicar_whatsapp_v3");
+    return Response.json([{ ...linha, tipo: "lembrete_formulario_24h", sequencia,
+      mensagem: sequencia.map((p) => p.message).join("\n\n") }]);
   });
-  const repositorio = criarRepositorioWhatsApp(db, { ambiente: ambienteValido(), agora: () => AGORA });
+  const repositorio = criarRepositorioWhatsApp(db, { ambiente: ambienteValido(), agora: () => AGORA, protocolo: 2 });
   const claim = repositorio.reivindicar();
   await new Promise<void>((resolve) => setImmediate(resolve));
   assert.equal(chamadas.length, 1, "claim nao ultrapassa batch pendente");
-  assert.deepEqual(chamadas[0], { nome: "enfileirar_lembretes_formulario_whatsapp", corpo: {
-    p_inicio_em: INICIO_NORMALIZADO, p_mensagem_prefixo: PREFIXO_LEMBRETE_FORMULARIO, p_app_url: "https://crm.invalid",
+  assert.deepEqual(chamadas[0], { nome: "enfileirar_lembretes_formulario_whatsapp_v3", corpo: {
+    p_inicio_em: INICIO_NORMALIZADO, p_mensagens: MENSAGENS_LEMBRETE_FORMULARIO, p_app_url: "https://crm.invalid",
   } });
   liberar();
   const job = await claim;
-  assert.deepEqual(Object.keys(job!), ["id", "leaseToken", "recipient", "message", "expiresAt"]);
+  assert.deepEqual(Object.keys(job!), ["id", "leaseToken", "recipient", "message", "expiresAt", "messagesSequence"]);
   assert.ok(!JSON.stringify(job).includes("privado"));
   assert.ok(job?.message.endsWith(`/continuar/${ID}`));
-  assert.deepEqual(chamadas[1], { nome: "reivindicar_whatsapp_v2", corpo: {
+  assert.deepEqual(job?.messagesSequence, sequencia);
+  assert.deepEqual(chamadas[1], { nome: "reivindicar_whatsapp_v3", corpo: {
     p_lembrete_ativo: true, p_inicio_em: INICIO_NORMALIZADO,
   } });
 });
@@ -120,27 +137,64 @@ test("erro HTTP ou de transporte no batch preserva claim de confirmacao sem loga
   try {
     for (const falhaTransporte of [false, true]) {
       const { db, chamadas } = transporte(({ nome }) => {
-        if (nome === "enfileirar_lembretes_formulario_whatsapp") {
+        if (nome === "enfileirar_lembretes_formulario_whatsapp_v3") {
           if (falhaTransporte) throw new Error("telefone/token/texto privados");
           return Response.json({ code: "XX000", message: "telefone/token/texto privados" }, { status: 500 });
         }
         return Response.json([linha]);
       });
-      const repositorio = criarRepositorioWhatsApp(db, { ambiente: ambienteValido(), agora: () => AGORA });
+      const repositorio = criarRepositorioWhatsApp(db, { ambiente: ambienteValido(), agora: () => AGORA, protocolo: 2 });
       assert.equal((await repositorio.reivindicar())?.message, MENSAGEM_CONFIRMACAO);
-      assert.equal(chamadas.at(-1)?.nome, "reivindicar_whatsapp_v2");
+      assert.equal(chamadas.at(-1)?.nome, "reivindicar_whatsapp_v3");
     }
     assert.equal(log.mock.calls.length, 2);
     assert.ok(log.mock.calls.every((c) => c.arguments.length === 1 && !String(c.arguments[0]).includes("privados")));
   } finally { log.mock.restore(); }
 });
 
-test("resultado consulta configuracao atual: V2 quando valido e V1 apos desativar sem repetir batch", async () => {
+test("capacidade do request sobrescreve default do repositorio e pode voltar a V1", async () => {
+  const { db, chamadas } = transporte(({ nome }) => {
+    assert.ok(["reivindicar_whatsapp", "resultado_whatsapp"].includes(nome));
+    return Response.json(nome === "reivindicar_whatsapp" ? [linha] : "enviado");
+  });
+  const repositorio = criarRepositorioWhatsApp(db, { ambiente: ambienteValido(), agora: () => AGORA, protocolo: 2 });
+  assert.deepEqual(Object.keys((await repositorio.reivindicar(1))!), ["id", "leaseToken", "recipient", "message", "expiresAt"]);
+  await repositorio.resultado(ID, { leaseToken: LEASE, outcome: "sent" }, 1);
+  assert.deepEqual(chamadas.map((c) => c.nome), ["reivindicar_whatsapp", "resultado_whatsapp"]);
+});
+
+test("snapshot reminder malformado ou sem capacidade falha antes da resposta HTTP", async () => {
+  const log = mock.method(console, "error", () => {});
+  try {
+    for (const protocolo of [undefined, "2"]) {
+      const { db, chamadas } = transporte(({ nome }) => {
+        if (nome.startsWith("enfileirar_")) return Response.json(0);
+        const partes = sequencia.map((p, i) => i === 3 ? { ...p, message: "texto indevido junto do link" } : p);
+        return Response.json([{ ...linha, tipo: "lembrete_formulario_24h", sequencia: partes,
+          mensagem: partes.map((p) => p.message).join("\n\n") }]);
+      });
+      const ambiente = ambienteValido();
+      const repositorio = criarRepositorioWhatsApp(db, { ambiente, agora: () => AGORA });
+      const deps = { ambiente, reivindicar: repositorio.reivindicar, resultado: repositorio.resultado };
+      const req = new Request("https://crm.invalid/api/integracoes/whatsapp/reivindicar", {
+        method: "POST", headers: { authorization: `Bearer ${TOKEN}`,
+          ...(protocolo ? { "X-Mel-Worker-Protocol": protocolo } : {}) }, body: "{}",
+      });
+      const r = await tratarReivindicacao(req, deps);
+      assert.equal(r.status, 503);
+      assert.equal((await r.json()).job, undefined);
+      assert.equal(chamadas.at(-1)?.nome, protocolo ? "reivindicar_whatsapp_v3" : "reivindicar_whatsapp");
+      assert.equal(chamadas.length, protocolo ? 2 : 1);
+    }
+  } finally { log.mock.restore(); }
+});
+
+test("resultado consulta configuracao atual: V3 com protocolo2 valido e V1 apos desativar sem repetir batch", async () => {
   const ambiente = ambienteValido();
   const { db, chamadas } = transporte(() => Response.json("enviado"));
-  const repositorio = criarRepositorioWhatsApp(db, { ambiente, agora: () => AGORA });
+  const repositorio = criarRepositorioWhatsApp(db, { ambiente, agora: () => AGORA, protocolo: 2 });
   await repositorio.resultado(ID, { leaseToken: LEASE, outcome: "sent" });
-  assert.deepEqual(chamadas[0], { nome: "resultado_whatsapp_v2", corpo: {
+  assert.deepEqual(chamadas[0], { nome: "resultado_whatsapp_v3", corpo: {
     p_id: ID, p_lease_token: LEASE, p_outcome: "sent", p_code: null,
     p_lembrete_ativo: true, p_inicio_em: INICIO_NORMALIZADO,
   } });
@@ -164,7 +218,7 @@ test("apos desligar lembrete, rota honra recusa V1 de started e permite ACK tard
   const repositorio = criarRepositorioWhatsApp(db, { ambiente, agora: () => AGORA });
   const deps = { ambiente, reivindicar: repositorio.reivindicar, resultado: repositorio.resultado };
   const req = (outcome: string) => new Request(`https://crm.invalid/api/integracoes/whatsapp/${ID}/resultado`, {
-    method: "POST", headers: { authorization: `Bearer ${TOKEN}`, "content-type": "application/json" },
+    method: "POST", headers: { authorization: `Bearer ${TOKEN}`, "content-type": "application/json", "X-Mel-Worker-Protocol": "2" },
     body: JSON.stringify({ leaseToken: LEASE, outcome }),
   });
   assert.equal((await tratarResultado(req("started"), ID, deps)).status, 409);
@@ -174,8 +228,12 @@ test("apos desligar lembrete, rota honra recusa V1 de started e permite ACK tard
   assert.ok(chamadas.every((c) => c.corpo.p_lease_token === LEASE));
 });
 
-test("rascunho de copy preserva separador para link e nao contem URL ou prazo inventado", () => {
-  assert.equal(PREFIXO_LEMBRETE_FORMULARIO,
-    "Oi! Aqui é a Mel 💛\n\nFicou alguma dúvida para finalizar o formulário do seu evento? Se precisar de ajuda, pode me chamar por aqui 😊\n\nSuas respostas estão salvas. Para continuar de onde parou:\n");
-  assert.ok(!PREFIXO_LEMBRETE_FORMULARIO.includes("http"));
+test("tres textos e pausas aprovados sao imutaveis e nao antecipam o link individual", () => {
+  assert.deepEqual(MENSAGENS_LEMBRETE_FORMULARIO, [
+    { message: "Olá! Aqui é a Mel Storymaker 👋", delayBeforeSeconds: 0 },
+    { message: "Ficou alguma dúvida para finalizar o formulário? Se precisar de ajuda, pode me chamar por aqui 😊", delayBeforeSeconds: 2 },
+    { message: "Suas respostas estão salvas. Para continuar de onde parou:", delayBeforeSeconds: 3 },
+  ]);
+  assert.ok(Object.isFrozen(MENSAGENS_LEMBRETE_FORMULARIO));
+  assert.ok(MENSAGENS_LEMBRETE_FORMULARIO.every((p) => Object.isFrozen(p) && !p.message.includes("http")));
 });

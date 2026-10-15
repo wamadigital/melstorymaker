@@ -1,5 +1,7 @@
 import asyncio
+from copy import deepcopy
 from datetime import datetime, timezone, timedelta
+import json
 from pathlib import Path
 import tempfile
 from types import SimpleNamespace
@@ -11,13 +13,14 @@ from worker import Ledger, iteration, process
 
 
 class FakeAPI:
-    def __init__(self, accepted=True, fail_final=False, active=True):
+    def __init__(self, accepted=True, fail_final=False, active=True, starts=None):
         self.calls = []
         self.receipts = []
         self.trace = []
         self.accepted = accepted
         self.fail_final = fail_final
         self.active = active
+        self.starts = list(starts) if starts is not None else []
 
     async def result(self, job, outcome, code=None):
         self.calls.append((outcome, code))
@@ -25,6 +28,11 @@ class FakeAPI:
         self.trace.append(("result", outcome))
         if outcome != "started" and self.fail_final:
             raise ConnectionError("API fictícia indisponível")
+        if outcome == "started" and self.starts:
+            accepted = self.starts.pop(0)
+            if isinstance(accepted, BaseException):
+                raise accepted
+            return {"accepted": accepted}
         return {"accepted": self.accepted}
 
     async def claim(self):
@@ -34,17 +42,25 @@ class FakeAPI:
 
 
 class FakeMCP:
-    def __init__(self, ready=True, sent=True, error=False):
+    def __init__(self, ready=True, sent=True, error=False, outcomes=None):
         self.connected = ready
         self.sent = sent
         self.error = error
         self.calls = 0
+        self.jobs = []
+        self.outcomes = list(outcomes) if outcomes is not None else []
 
     async def ready(self):
         return self.connected
 
     async def send(self, job):
         self.calls += 1
+        self.jobs.append(dict(job))
+        if self.outcomes:
+            result = self.outcomes.pop(0)
+            if isinstance(result, BaseException):
+                raise result
+            return result
         if self.error:
             raise TimeoutError("Envio fictício de resultado desconhecido")
         return self.sent
@@ -55,7 +71,7 @@ class WorkerTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.ledger_path = Path(self.tmp.name) / "worker-ledger.db"
         self.ledger = Ledger(self.ledger_path)
-        self.job = {"id": "ficticio-1", "leaseToken": "teste", "recipient": "5511999999999", "message": "Mensagem fictícia", "expiresAt": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()}
+        self.job = {"id": "c350bc94-24f1-4359-9e92-eac5f1a76e44", "leaseToken": "a8c7f5bc-66f3-41ba-9f2c-93d5e0d94369", "recipient": "5511999999999", "message": "Mensagem fictícia", "expiresAt": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()}
 
     def tearDown(self):
         self.ledger.close()
@@ -67,6 +83,26 @@ class WorkerTests(unittest.TestCase):
     def restart_ledger(self):
         self.ledger.close()
         self.ledger = Ledger(self.ledger_path)
+
+    def sequence(self):
+        self.now = datetime(2026, 10, 15, 15, tzinfo=timezone.utc)
+        self.sleeps = []
+        self.texts = ["Primeira mensagem fictícia 💛", "Segunda mensagem fictícia", "Terceira mensagem fictícia",
+                      "https://crm.invalid/continuar/" + self.job["id"]]
+        self.job["message"] = "\n\n".join(self.texts)
+        self.job["expiresAt"] = (self.now + timedelta(hours=1)).isoformat()
+        self.job["messagesSequence"] = [
+            {"message": message, "delayBeforeSeconds": delay}
+            for message, delay in zip(self.texts, (0, 2, 3, 2))
+        ]
+
+    async def fake_sleep(self, seconds):
+        self.sleeps.append(seconds)
+        self.now += timedelta(seconds=seconds)
+
+    def run_sequence(self, api, mcp, **options):
+        return asyncio.run(process(api, mcp, self.ledger, self.job,
+                                   sleep=options.get("sleep", self.fake_sleep), clock=lambda: self.now))
 
     def test_cloud_approval_precedes_send(self):
         api, mcp = FakeAPI(), FakeMCP()
@@ -246,6 +282,230 @@ class WorkerTests(unittest.TestCase):
                 asyncio.run(worker.run(once=True))
         self.assertEqual(api.trace, [("result", "sent")])
         self.assertEqual(self.ledger.pending(), [])
+
+    def test_api_negotiates_header_with_unchanged_legacy_json(self):
+        api = worker.API("token-ficticio-com-mais-de-trinta-e-dois-caracteres")
+        self.addCleanup(api.session.close)
+        requests = []
+
+        def send(request, **kwargs):
+            self.assertTrue(request.url.startswith("https://worker-ficticio.invalid/"))
+            self.assertEqual(request.headers["X-Mel-Worker-Protocol"], "2")
+            self.assertEqual(kwargs["allow_redirects"], False)
+            requests.append(json.loads(request.body))
+            return SimpleNamespace(raise_for_status=lambda: None, json=lambda: {"accepted": True})
+
+        with patch.object(worker, "ORIGIN", "https://worker-ficticio.invalid"), patch.object(api.session, "send", side_effect=send):
+            asyncio.run(api.claim())
+            asyncio.run(api.result(self.job, "started"))
+            asyncio.run(api.result(self.job, "sent"))
+        self.assertEqual(requests, [{}, {"leaseToken": self.job["leaseToken"], "outcome": "started"},
+                                   {"leaseToken": self.job["leaseToken"], "outcome": "sent"}])
+
+    def test_legacy_digest_stays_byte_compatible_and_never_sleeps(self):
+        self.assertEqual(Ledger.digest(self.job), "78564e27013fa92703b2616603c1bcc942b5c7d52327b81f7315015cc2b0d48c")
+        api, mcp = FakeAPI(), FakeMCP()
+        async def unexpected_sleep(_seconds):
+            self.fail("Confirmação legada não usa pausas ou chamadas adicionais")
+        self.assertEqual(asyncio.run(process(api, mcp, self.ledger, self.job, sleep=unexpected_sleep)), "sent")
+        self.assertEqual(api.calls, [("started", None), ("sent", None)])
+        self.assertEqual(mcp.jobs, [self.job])
+
+    def test_sequence_digest_protects_text_order_delays_and_fallback(self):
+        self.sequence()
+        digest = Ledger.digest(self.job)
+        mutations = []
+        for field in ("message", "delayBeforeSeconds"):
+            changed = deepcopy(self.job)
+            changed["messagesSequence"][1][field] = "Texto alterado" if field == "message" else 3
+            mutations.append(changed)
+        changed = deepcopy(self.job)
+        changed["messagesSequence"].reverse()
+        mutations.append(changed)
+        changed = deepcopy(self.job)
+        changed["message"] += " Outro fallback"
+        mutations.append(changed)
+        legacy = {key: self.job[key] for key in worker.LEGACY_JOB_FIELDS}
+        self.assertNotEqual(digest, Ledger.digest(legacy))
+        for changed in mutations:
+            self.assertNotEqual(digest, Ledger.digest(changed))
+
+    def test_sequence_waits_for_each_ack_then_delay_and_reauthorization(self):
+        self.sequence()
+        trace = []
+        test = self
+
+        class TraceAPI(FakeAPI):
+            async def result(self, job, outcome, code=None):
+                result = await super().result(job, outcome, code)
+                trace.append(("api", outcome))
+                return result
+
+        async def scenario():
+            first_started, release_first = asyncio.Event(), asyncio.Event()
+
+            class TraceMCP(FakeMCP):
+                async def ready(self):
+                    trace.append(("ready", None))
+                    return True
+
+                async def send(self, job):
+                    trace.append(("send", job["message"]))
+                    test.assertEqual(set(job), set(worker.LEGACY_JOB_FIELDS))
+                    if not self.calls:
+                        first_started.set()
+                        await release_first.wait()
+                    result = await super().send(job)
+                    trace.append(("ack", job["message"]))
+                    return result
+
+            async def sleep(seconds):
+                trace.append(("sleep", seconds))
+                await test.fake_sleep(seconds)
+
+            api, mcp = TraceAPI(), TraceMCP()
+            task = asyncio.create_task(process(api, mcp, test.ledger, test.job, sleep=sleep, clock=lambda: test.now))
+            await first_started.wait()
+            test.assertFalse(any(event == "sleep" for event, _ in trace), "Pausa não começa com envio ainda pendente")
+            test.assertEqual(test.ledger.pending()[0]["outcome"], "indeterminate")
+            release_first.set()
+            test.assertEqual(await task, "sent")
+            return api, mcp
+
+        api, mcp = asyncio.run(scenario())
+        expected = [("ready", None), ("api", "started")]
+        for index, message in enumerate(self.texts):
+            if index:
+                expected.extend([("sleep", (0, 2, 3, 2)[index]), ("ready", None), ("api", "started")])
+            expected.extend([("send", message), ("ack", message)])
+        expected.append(("api", "sent"))
+        self.assertEqual(trace, expected)
+        self.assertEqual([job["message"] for job in mcp.jobs], self.texts)
+        self.assertEqual(self.sleeps, [2, 3, 2])
+        self.assertEqual(api.calls, [("started", None)] * 4 + [("sent", None)])
+        self.assertEqual(self.ledger.get(self.job), "sent")
+        self.assertEqual(self.ledger.pending(), [])
+        for message in self.texts:
+            self.assertNotIn(message.encode(), self.ledger_path.read_bytes())
+
+    def test_second_message_failure_stops_remaining_and_restart_only_reconciles(self):
+        self.sequence()
+        api, mcp = FakeAPI(), FakeMCP(outcomes=[True, False])
+        self.assertEqual(self.run_sequence(api, mcp), "indeterminate")
+        self.assertEqual([job["message"] for job in mcp.jobs], self.texts[:2])
+        self.assertEqual(self.sleeps, [2])
+        self.restart_ledger()
+        self.assertEqual(asyncio.run(iteration(FakeAPI(), mcp, self.ledger)), "idle")
+        self.assertEqual(mcp.calls, 2)
+
+    def test_second_message_timeout_stays_indeterminate_without_retry(self):
+        self.sequence()
+        api, mcp = FakeAPI(), FakeMCP(outcomes=[True, TimeoutError("erro fictício")])
+        self.assertEqual(self.run_sequence(api, mcp), "indeterminate")
+        self.assertEqual(mcp.calls, 2)
+        self.assertEqual(self.ledger.get(self.job), "indeterminate")
+        self.assertEqual(self.run_sequence(FakeAPI(), mcp), "reconciled")
+        self.assertEqual(mcp.calls, 2)
+
+    def test_flag_off_before_next_part_stops_after_previous_ack(self):
+        self.sequence()
+        api, mcp = FakeAPI(starts=[True, False]), FakeMCP()
+        self.assertEqual(self.run_sequence(api, mcp), "indeterminate")
+        self.assertEqual([job["message"] for job in mcp.jobs], self.texts[:1])
+        self.assertEqual(self.sleeps, [2])
+        self.assertEqual(api.calls, [("started", None), ("started", None), ("indeterminate", None)])
+
+    def test_reauthorization_timeout_stops_remaining(self):
+        self.sequence()
+        api, mcp = FakeAPI(starts=[True, ConnectionError("rede fictícia")]), FakeMCP()
+        self.assertEqual(self.run_sequence(api, mcp), "indeterminate")
+        self.assertEqual(mcp.calls, 1)
+        self.assertEqual(self.ledger.get(self.job), "indeterminate")
+
+    def test_clock_expiry_during_delay_never_sends_next_part(self):
+        self.sequence()
+        self.job["expiresAt"] = (self.now + timedelta(seconds=1)).isoformat()
+        api, mcp = FakeAPI(), FakeMCP()
+        self.assertEqual(self.run_sequence(api, mcp), "indeterminate")
+        self.assertEqual(mcp.calls, 1)
+        self.assertEqual(api.calls, [("started", None), ("indeterminate", None)])
+
+    def test_offline_after_delay_stops_without_authorizing_next_part(self):
+        self.sequence()
+        api, mcp = FakeAPI(), FakeMCP()
+        with patch.object(mcp, "ready", side_effect=[True, False]):
+            self.assertEqual(self.run_sequence(api, mcp), "indeterminate")
+        self.assertEqual(mcp.calls, 1)
+        self.assertEqual(api.calls, [("started", None), ("indeterminate", None)])
+
+    def test_cancelled_delay_persists_indeterminate_and_propagates_shutdown(self):
+        self.sequence()
+        api, mcp = FakeAPI(), FakeMCP()
+        async def cancel(_seconds):
+            raise asyncio.CancelledError()
+        with self.assertRaises(asyncio.CancelledError):
+            self.run_sequence(api, mcp, sleep=cancel)
+        self.assertEqual(mcp.calls, 1)
+        self.assertEqual(self.ledger.get(self.job), "indeterminate")
+        self.assertEqual(self.ledger.pending()[0]["outcome"], "indeterminate")
+        self.restart_ledger()
+        recovered = FakeAPI()
+        asyncio.run(iteration(recovered, mcp, self.ledger))
+        self.assertEqual(recovered.calls, [("indeterminate", None)])
+        self.assertEqual(mcp.calls, 1)
+
+    def test_crash_between_parts_never_resumes_sequence(self):
+        self.sequence()
+        class SimulatedCrash(BaseException):
+            pass
+        async def crash(_seconds):
+            raise SimulatedCrash()
+        mcp = FakeMCP()
+        with self.assertRaises(SimulatedCrash):
+            self.run_sequence(FakeAPI(), mcp, sleep=crash)
+        self.restart_ledger()
+        api = FakeAPI()
+        asyncio.run(iteration(api, mcp, self.ledger))
+        self.assertEqual(api.calls, [("indeterminate", None)])
+        self.assertEqual(mcp.calls, 1)
+
+    def test_lost_final_sequence_ack_reconciles_without_repeating_four_messages(self):
+        self.sequence()
+        mcp = FakeMCP()
+        with self.assertRaises(ConnectionError):
+            self.run_sequence(FakeAPI(fail_final=True), mcp)
+        self.assertEqual(mcp.calls, 4)
+        self.assertEqual(self.ledger.pending()[0]["outcome"], "sent")
+        self.restart_ledger()
+        recovered = FakeAPI()
+        asyncio.run(iteration(recovered, mcp, self.ledger))
+        self.assertEqual(recovered.calls, [("sent", None)])
+        self.assertEqual(mcp.calls, 4)
+
+    def test_malformed_sequence_or_unknown_format_never_starts_or_sends(self):
+        self.sequence()
+        malformed = []
+        for value in (None, [], self.job["messagesSequence"][:3], "mensagens", [None] * 4):
+            job = deepcopy(self.job)
+            job["messagesSequence"] = value
+            malformed.append(job)
+        for field, value in (("message", " "), ("message", "\ud800"), ("delayBeforeSeconds", True),
+                             ("delayBeforeSeconds", -2), ("delayBeforeSeconds", 2.0)):
+            job = deepcopy(self.job)
+            job["messagesSequence"][1][field] = value
+            malformed.append(job)
+        job = deepcopy(self.job)
+        job["messagesSequence"][0]["unknown"] = "nao aceito"
+        malformed.append(job)
+        job = deepcopy(self.job)
+        job["unknownFormat"] = 3
+        malformed.append(job)
+        for job in malformed:
+            api, mcp = FakeAPI(), FakeMCP()
+            self.assertEqual(asyncio.run(process(api, mcp, self.ledger, job, sleep=self.fake_sleep)), "invalid_job")
+            self.assertEqual(api.calls, [])
+            self.assertEqual(mcp.calls, 0)
+            self.assertIsNone(self.ledger.get(job))
 
 
 if __name__ == "__main__":

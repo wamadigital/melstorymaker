@@ -683,11 +683,58 @@ grant execute on function public.resultado_whatsapp(uuid, uuid, text, text) to s
 -- Lembrete unico para formulario em Novo ha MAIS de 24 horas.
 -- Aplicar DEPOIS de whatsapp-outbox.sql, em transacao. Nao ativa flags,
 -- nao importa leads anteriores ao corte e nao altera status/carimbos do lead.
--- O mesmo bloco encerra schema.sql. RPCs antigos continuam confirmacao-only.
+-- O mesmo bloco encerra schema.sql. RPCs V1/V2 continuam confirmacao-only.
+-- V3 exige capacidade de sequencia no servidor; uma sequencia iniciada nunca
+-- volta a pendente, mesmo quando a interrupcao ocorre entre suas quatro partes.
 
 alter table public.whatsapp_outbox drop constraint if exists whatsapp_outbox_tipo_check;
 alter table public.whatsapp_outbox add constraint whatsapp_outbox_tipo_check
   check (tipo in ('confirmacao_recebimento', 'lembrete_formulario_24h'));
+
+alter table public.whatsapp_outbox add column if not exists sequencia jsonb;
+
+-- Snapshot aprovado: chaves, textos, pausas e URL individual sao fechados.
+-- Extracao JSON tolera entradas malformadas sem casts/erros em CHECK/RPC.
+create or replace function public.sequencia_lembrete_formulario_valida(
+  p_sequencia jsonb, p_lead_id uuid, p_mensagem text
+)
+returns boolean
+language plpgsql immutable security invoker
+set search_path = pg_catalog
+as $$
+declare
+  v_link text := p_sequencia #>> '{3,message}';
+  v_aprovadas jsonb := jsonb_build_array(
+    jsonb_build_object('message', 'Olá! Aqui é a Mel Storymaker 👋', 'delayBeforeSeconds', 0),
+    jsonb_build_object('message', 'Ficou alguma dúvida para finalizar o formulário? Se precisar de ajuda, pode me chamar por aqui 😊', 'delayBeforeSeconds', 2),
+    jsonb_build_object('message', 'Suas respostas estão salvas. Para continuar de onde parou:', 'delayBeforeSeconds', 3));
+begin
+  return coalesce(
+    v_link ~ ('^https://[^[:space:]/?#@]+/continuar/' || p_lead_id::text || '$')
+    and p_sequencia = v_aprovadas || jsonb_build_array(
+      jsonb_build_object('message', v_link, 'delayBeforeSeconds', 2))
+    and p_mensagem = (p_sequencia #>> '{0,message}') || E'\n\n'
+      || (p_sequencia #>> '{1,message}') || E'\n\n'
+      || (p_sequencia #>> '{2,message}') || E'\n\n' || v_link
+    and length(p_mensagem) between 1 and 2000, false);
+end;
+$$;
+revoke execute on function public.sequencia_lembrete_formulario_valida(jsonb, uuid, text)
+  from anon, authenticated, public;
+grant execute on function public.sequencia_lembrete_formulario_valida(jsonb, uuid, text) to service_role;
+
+-- Nao inventa copy para o legado nem altera fatos de envio ja iniciado/final.
+-- NULL permanece aceito apenas por compatibilidade dos registros anteriores;
+-- todas as RPCs recusam claim/started de lembrete sem snapshot valido.
+update public.whatsapp_outbox set estado = 'cancelado',
+  lease_token = null, lease_ate = null, ultimo_codigo = 'tipo_legado_nao_suportado'
+  where tipo = 'lembrete_formulario_24h' and sequencia is null
+    and estado in ('pendente', 'reservado');
+alter table public.whatsapp_outbox drop constraint if exists whatsapp_outbox_sequencia_check;
+alter table public.whatsapp_outbox add constraint whatsapp_outbox_sequencia_check check (
+  (tipo = 'confirmacao_recebimento' and sequencia is null)
+  or (tipo = 'lembrete_formulario_24h' and (sequencia is null
+    or public.sequencia_lembrete_formulario_valida(sequencia, lead_id, mensagem))));
 
 -- Mesmas regras de lib/form/validacao.ts: DDD existente, fixo ou celular com 9.
 create or replace function public.destinatario_whatsapp_br(p_whatsapp text)
@@ -714,8 +761,21 @@ $$;
 revoke execute on function public.destinatario_whatsapp_br(text) from anon, authenticated, public;
 grant execute on function public.destinatario_whatsapp_br(text) to service_role;
 
+-- O backend anterior pode chamar esta assinatura ao sofrer rollback.
+-- Ela nunca cria lembrete plaintext, mesmo com a flag antiga habilitada.
 create or replace function public.enfileirar_lembretes_formulario_whatsapp(
   p_inicio_em timestamptz, p_mensagem_prefixo text, p_app_url text
+)
+returns integer
+language sql security invoker
+set search_path = pg_catalog
+as $$ select 0; $$;
+revoke execute on function public.enfileirar_lembretes_formulario_whatsapp(timestamptz, text, text)
+  from anon, authenticated, public;
+grant execute on function public.enfileirar_lembretes_formulario_whatsapp(timestamptz, text, text) to service_role;
+
+create or replace function public.enfileirar_lembretes_formulario_whatsapp_v3(
+  p_inicio_em timestamptz, p_mensagens jsonb, p_app_url text
 )
 returns integer
 language plpgsql security invoker
@@ -725,11 +785,17 @@ declare
   v_agora timestamptz := statement_timestamp();
   v_base text := regexp_replace(p_app_url, '/+$', '');
   v_quantidade integer;
+  v_link_teste text := v_base || '/continuar/00000000-0000-4000-8000-000000000000';
+  v_teste jsonb := p_mensagens || jsonb_build_array(
+    jsonb_build_object('message', v_link_teste, 'delayBeforeSeconds', 2));
+  v_texto text := (p_mensagens #>> '{0,message}') || E'\n\n'
+    || (p_mensagens #>> '{1,message}') || E'\n\n'
+    || (p_mensagens #>> '{2,message}') || E'\n\n';
 begin
   if p_inicio_em is null or not isfinite(p_inicio_em) or p_inicio_em > v_agora
-    or p_mensagem_prefixo is null or btrim(p_mensagem_prefixo) = ''
     or p_app_url is null or p_app_url !~ '^https://[^[:space:]/?#@]+/*$'
-    or length(p_mensagem_prefixo) + length(v_base) + 11 + 36 > 2000 then
+    or not public.sequencia_lembrete_formulario_valida(v_teste,
+      '00000000-0000-4000-8000-000000000000', v_texto || v_link_teste) then
     return 0;
   end if;
 
@@ -746,20 +812,22 @@ begin
     order by l.created_at, l.id limit 50 for update of l skip locked
   )
   insert into public.whatsapp_outbox
-    (lead_id, tipo, ocorrido_em, expira_em, destinatario, mensagem)
+    (lead_id, tipo, ocorrido_em, expira_em, destinatario, mensagem, sequencia)
   select c.id, 'lembrete_formulario_24h', v_agora, v_agora + interval '24 hours',
-    c.destinatario, p_mensagem_prefixo || v_base || '/continuar/' || c.id::text
+    c.destinatario, v_texto || v_base || '/continuar/' || c.id::text,
+    p_mensagens || jsonb_build_array(jsonb_build_object('message',
+      v_base || '/continuar/' || c.id::text, 'delayBeforeSeconds', 2))
   from candidatos c
   on conflict (lead_id, tipo) do nothing;
   get diagnostics v_quantidade = row_count;
   return v_quantidade;
 end;
 $$;
-revoke execute on function public.enfileirar_lembretes_formulario_whatsapp(timestamptz, text, text)
+revoke execute on function public.enfileirar_lembretes_formulario_whatsapp_v3(timestamptz, jsonb, text)
   from anon, authenticated, public;
-grant execute on function public.enfileirar_lembretes_formulario_whatsapp(timestamptz, text, text) to service_role;
+grant execute on function public.enfileirar_lembretes_formulario_whatsapp_v3(timestamptz, jsonb, text) to service_role;
 
-create or replace function public.reivindicar_whatsapp_v2(
+create or replace function public.reivindicar_whatsapp_v3(
   p_lembrete_ativo boolean, p_inicio_em timestamptz
 )
 returns setof public.whatsapp_outbox
@@ -809,7 +877,9 @@ begin
       and o.proxima_tentativa_em <= v_agora and o.tentativas < 5
       and o.destinatario = public.destinatario_whatsapp_br(l.whatsapp)
       and ((o.tipo = 'confirmacao_recebimento' and l.status::text = 'aguardando_revisao')
-        or (o.tipo = 'lembrete_formulario_24h' and v_ativo and l.status::text = 'incompleto'
+        or (o.tipo = 'lembrete_formulario_24h' and v_ativo
+          and public.sequencia_lembrete_formulario_valida(o.sequencia, o.lead_id, o.mensagem)
+          and l.status::text = 'incompleto'
           and l.created_at >= p_inicio_em and l.created_at < v_agora - interval '24 hours'))
     order by case when o.tipo = 'confirmacao_recebimento' then 0 else 1 end,
       o.ocorrido_em, o.id limit 1 for update of o skip locked
@@ -821,10 +891,10 @@ begin
     from candidato c where o.id = c.id returning o.*;
 end;
 $$;
-revoke execute on function public.reivindicar_whatsapp_v2(boolean, timestamptz) from anon, authenticated, public;
-grant execute on function public.reivindicar_whatsapp_v2(boolean, timestamptz) to service_role;
+revoke execute on function public.reivindicar_whatsapp_v3(boolean, timestamptz) from anon, authenticated, public;
+grant execute on function public.reivindicar_whatsapp_v3(boolean, timestamptz) to service_role;
 
-create or replace function public.resultado_whatsapp_v2(
+create or replace function public.resultado_whatsapp_v3(
   p_id uuid, p_lease_token uuid, p_outcome text, p_code text,
   p_lembrete_ativo boolean, p_inicio_em timestamptz
 )
@@ -859,7 +929,10 @@ begin
   if p_outcome = 'started' then
     if v.estado not in ('reservado', 'enviando') then return null; end if;
     -- Flag/corte desligados nunca autorizam lembrete, nem por RPC legado.
-    if v.tipo = 'lembrete_formulario_24h' and not v_ativo then return null; end if;
+    if v.tipo = 'lembrete_formulario_24h' and (not v_ativo
+      or not public.sequencia_lembrete_formulario_valida(v.sequencia, v.lead_id, v.mensagem)) then
+      return null;
+    end if;
     v_elegivel := v.destinatario = public.destinatario_whatsapp_br(v_whatsapp)
       and ((v.tipo = 'confirmacao_recebimento' and v_status = 'aguardando_revisao')
         or (v.tipo = 'lembrete_formulario_24h' and v_status = 'incompleto'
@@ -872,7 +945,10 @@ begin
       return null;
     end if;
     update public.whatsapp_outbox set estado = 'enviando',
-      iniciado_em = coalesce(iniciado_em, v_agora) where id = p_id;
+      iniciado_em = coalesce(iniciado_em, v_agora),
+      lease_ate = case when v.tipo = 'lembrete_formulario_24h'
+        then coalesce(v.iniciado_em, v_agora) + interval '180 seconds'
+        else v.lease_ate end where id = p_id;
     return 'enviando';
   end if;
 
@@ -898,6 +974,30 @@ begin
   return null;
 end;
 $$;
+revoke execute on function public.resultado_whatsapp_v3(uuid, uuid, text, text, boolean, timestamptz)
+  from anon, authenticated, public;
+grant execute on function public.resultado_whatsapp_v3(uuid, uuid, text, text, boolean, timestamptz) to service_role;
+
+-- V2 tambem e confirmation-only, inclusive com flag/corte verdadeiros. Isso
+-- fecha o rollback para o backend que ja conhecia o lembrete plaintext.
+create or replace function public.reivindicar_whatsapp_v2(
+  p_lembrete_ativo boolean, p_inicio_em timestamptz
+)
+returns setof public.whatsapp_outbox
+language sql security invoker
+set search_path = pg_catalog
+as $$ select * from public.reivindicar_whatsapp_v3(false, null); $$;
+revoke execute on function public.reivindicar_whatsapp_v2(boolean, timestamptz) from anon, authenticated, public;
+grant execute on function public.reivindicar_whatsapp_v2(boolean, timestamptz) to service_role;
+
+create or replace function public.resultado_whatsapp_v2(
+  p_id uuid, p_lease_token uuid, p_outcome text, p_code text,
+  p_lembrete_ativo boolean, p_inicio_em timestamptz
+)
+returns text
+language sql security invoker
+set search_path = pg_catalog
+as $$ select public.resultado_whatsapp_v3(p_id, p_lease_token, p_outcome, p_code, false, null); $$;
 revoke execute on function public.resultado_whatsapp_v2(uuid, uuid, text, text, boolean, timestamptz)
   from anon, authenticated, public;
 grant execute on function public.resultado_whatsapp_v2(uuid, uuid, text, text, boolean, timestamptz) to service_role;
@@ -907,7 +1007,7 @@ create or replace function public.reivindicar_whatsapp()
 returns setof public.whatsapp_outbox
 language sql security invoker
 set search_path = pg_catalog
-as $$ select * from public.reivindicar_whatsapp_v2(false, null); $$;
+as $$ select * from public.reivindicar_whatsapp_v3(false, null); $$;
 revoke execute on function public.reivindicar_whatsapp() from anon, authenticated, public;
 grant execute on function public.reivindicar_whatsapp() to service_role;
 
@@ -917,6 +1017,6 @@ create or replace function public.resultado_whatsapp(
 returns text
 language sql security invoker
 set search_path = pg_catalog
-as $$ select public.resultado_whatsapp_v2(p_id, p_lease_token, p_outcome, p_code, false, null); $$;
+as $$ select public.resultado_whatsapp_v3(p_id, p_lease_token, p_outcome, p_code, false, null); $$;
 revoke execute on function public.resultado_whatsapp(uuid, uuid, text, text) from anon, authenticated, public;
 grant execute on function public.resultado_whatsapp(uuid, uuid, text, text) to service_role;

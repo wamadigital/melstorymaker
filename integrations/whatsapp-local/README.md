@@ -110,39 +110,49 @@ A flag desativada bloqueia novas confirmações e novos inícios de envio.
 Resultados de trabalhos já iniciados ainda podem ser reconciliados.
 Leads antigos não são importados, e não há backfill.
 
-## Lembrete de formulário incompleto (preparado, desativado)
+## Lembrete de formulário incompleto
 
-Pedido do owner em 14/10/2026; o texto abaixo ainda depende de aprovação:
+Texto e sequência definidos pelo owner em 15/10/2026:
 
-> Oi! Aqui é a Mel 💛
->
-> Ficou alguma dúvida para finalizar o formulário do seu evento? Se precisar de ajuda, pode me chamar por aqui 😊
->
-> Suas respostas estão salvas. Para continuar de onde parou:
-> [link individual para continuar]
+| Parte | Mensagem | Pausa antes |
+|---|---|---|
+| 1 | Olá! Aqui é a Mel Storymaker 👋 | Nenhuma |
+| 2 | Ficou alguma dúvida para finalizar o formulário? Se precisar de ajuda, pode me chamar por aqui 😊 | 2 segundos após o sucesso da parte 1 |
+| 3 | Suas respostas estão salvas. Para continuar de onde parou: | 3 segundos após o sucesso da parte 2 |
+| 4 | Link individual `/continuar/{id}`, sozinho | 2 segundos após o sucesso da parte 3 |
 
 O prazo conta da criação do lead, quando ele deixa o WhatsApp e avança na
 primeira pergunta. A primeira coluna é `Novo` (`incompleto`); nenhum status
-volta para ela. Salvar mais respostas não reinicia o prazo. A fila só aceita o
-lembrete após **mais de** 24 horas e confere novamente coluna, idade e telefone
-antes de autorizar o envio. Concluir o formulário ou mover o card impede o
-início do lembrete. Envio já iniciado tem resultado registrado, sem repetição
-automática em caso de dúvida.
+volta para ela. Salvar mais respostas não reinicia o prazo. O preparo exige
+**mais de** 24 horas em Novo; antes de cada parte, o servidor revalida coluna,
+idade, telefone e ativação. O link retoma as respostas salvas da própria pessoa.
 
-Há um único lembrete por lead, separado da confirmação de conclusão. Não muda
-o status nem os carimbos manuais de “já chamei”, e não exige e-mail ou nome.
-O worker existente busca essa fila a cada 60 segundos, com prioridade para as
-confirmações de conclusão. O Mac continua precisando estar acordado e conectado.
+Há um único lembrete por lead, composto das quatro partes, separado da
+confirmação de conclusão. As partes e as pausas são um snapshot na fila. O envio
+não muda status nem carimbos manuais de “já chamei”, e não exige e-mail ou nome.
+O worker busca a fila a cada 60 segundos e prioriza confirmações. O Mac precisa
+estar acordado e conectado. As pausas começam após o retorno de sucesso da
+mensagem anterior; as verificações e a rede também ocupam tempo.
 
-Antes de ativar, aprovar o texto, aplicar manualmente
-`supabase/whatsapp-lembrete-formulario.sql` no SQL Editor e publicar o backend.
-Só então configurar `WHATSAPP_LEMBRETE_FORMULARIO_ATIVO=true` e
+O worker anuncia `X-Mel-Worker-Protocol: 2`; só esse protocolo recebe sequências
+pelas RPCs V3. Clientes e backends antigos usam V1/V2, que entregam apenas
+confirmações e aceitam ACKs tardios de ambos os tipos. A sequência reserva um
+único job; o primeiro `started` fixa um lease de 180 segundos, revalidado nas
+partes seguintes. O ledger registra o início antes da primeira mensagem. Falha,
+timeout, interrupção ou recusa encerra a sequência como indeterminada: não há
+retomada nem repetição automática das partes. ACK perdido é reconciliado sem
+reenviar mensagens. `sent` exige o sucesso das quatro chamadas ao MCP; não é
+confirmação de entrega ou leitura no aparelho do cliente.
+
+Para ativar, aplicar manualmente `supabase/whatsapp-lembrete-formulario.sql`
+no SQL Editor, atualizar o worker canônico em Application Support e publicar o
+backend. Configurar `WHATSAPP_LEMBRETE_FORMULARIO_ATIVO=true` e
 `WHATSAPP_LEMBRETE_FORMULARIO_INICIO_EM` com o instante de ativação em ISO com
 fuso; `APP_URL` precisa ser HTTPS. O corte inclui apenas leads criados a partir
 desse instante, evitando mensagens retroativas. O interruptor geral
 `WHATSAPP_AUTOMACAO_ATIVA` continua valendo. Flag ausente/falsa, corte ausente ou
-inválido e URL inválida mantêm os lembretes desligados. Sem cron, serviço novo
-ou alteração no MCP do Mac.
+inválido e URL inválida mantêm os lembretes desligados. Sem cron ou ferramenta
+MCP nova. O `send_message` existente é chamado quatro vezes, em série.
 
 ## Falhas e recibos
 

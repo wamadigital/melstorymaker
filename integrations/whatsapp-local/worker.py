@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import sqlite3
 from datetime import datetime, timezone
+from uuid import UUID
 
 import requests
 from mcp import ClientSession, StdioServerParameters
@@ -21,9 +22,58 @@ ORIGIN = "https://melstorymaker.com.br"
 LOG = logging.getLogger("mel-whatsapp-worker")
 
 
-def unexpired(job: dict) -> bool:
+def unexpired(job: dict, now: datetime | None = None) -> bool:
     expires = datetime.fromisoformat(job["expiresAt"].replace("Z", "+00:00"))
-    return expires.tzinfo is not None and expires > datetime.now(timezone.utc)
+    return expires.tzinfo is not None and expires > (now or datetime.now(timezone.utc))
+
+
+LEGACY_JOB_FIELDS = ("id", "leaseToken", "recipient", "message", "expiresAt")
+SEQUENCE_DELAYS = (0, 2, 3, 2)
+
+
+def message_parts(job: dict) -> list[dict]:
+    """Valida o contrato inteiro antes de autorizar qualquer chamada de envio."""
+    if not isinstance(job, dict) or not set(LEGACY_JOB_FIELDS).issubset(job) or set(job) - {
+        *LEGACY_JOB_FIELDS, "messagesSequence"
+    }:
+        raise ValueError("invalid_job")
+    for field in ("id", "leaseToken"):
+        if not isinstance(job[field], str):
+            raise ValueError("invalid_job")
+        UUID(job[field])
+    recipient = job["recipient"]
+    if not isinstance(recipient, str) or not recipient.isascii() or not recipient.isdigit() or not (
+        recipient.startswith("55") and len(recipient) in (12, 13)
+    ):
+        raise ValueError("invalid_job")
+    if not isinstance(job["expiresAt"], str):
+        raise ValueError("invalid_job")
+    expires = datetime.fromisoformat(job["expiresAt"].replace("Z", "+00:00"))
+    if expires.tzinfo is None:
+        raise ValueError("invalid_job")
+
+    def valid_text(value) -> bool:
+        if not isinstance(value, str) or not value.strip() or len(value) > 4000:
+            return False
+        try:
+            value.encode("utf-8")
+            return True
+        except UnicodeError:
+            return False
+
+    if not valid_text(job["message"]):
+        raise ValueError("invalid_job")
+    if "messagesSequence" not in job:
+        return [{"message": job["message"], "delayBeforeSeconds": 0}]
+    sequence = job["messagesSequence"]
+    if not isinstance(sequence, list) or len(sequence) != len(SEQUENCE_DELAYS):
+        raise ValueError("invalid_sequence")
+    for part, delay in zip(sequence, SEQUENCE_DELAYS):
+        if not isinstance(part, dict) or set(part) != {"message", "delayBeforeSeconds"} or not valid_text(part["message"]):
+            raise ValueError("invalid_sequence")
+        if type(part["delayBeforeSeconds"]) is not int or part["delayBeforeSeconds"] != delay:
+            raise ValueError("invalid_sequence")
+    return sequence
 
 
 class Ledger:
@@ -37,7 +87,12 @@ class Ledger:
 
     @staticmethod
     def digest(job: dict) -> str:
-        return hashlib.sha256(json.dumps([job["recipient"], job["message"]], ensure_ascii=False).encode()).hexdigest()
+        value = [job["recipient"], job["message"]]
+        if "messagesSequence" in job:
+            value.extend(["messages_sequence_v2", [
+                [part["message"], part["delayBeforeSeconds"]] for part in job["messagesSequence"]
+            ]])
+        return hashlib.sha256(json.dumps(value, ensure_ascii=False).encode()).hexdigest()
 
     def get(self, job: dict) -> str | None:
         row = self.db.execute("SELECT digest,state FROM jobs WHERE id=?", (job["id"],)).fetchone()
@@ -75,6 +130,7 @@ class API:
         self.session = requests.Session()
         self.session.trust_env = False
         self.session.headers["Authorization"] = "Bearer " + token
+        self.session.headers["X-Mel-Worker-Protocol"] = "2"
 
     async def post(self, path: str, body: dict) -> dict:
         def request():
@@ -141,14 +197,22 @@ async def report_job(api, ledger: Ledger, job: dict, outcome: str) -> None:
     await report_ack(api, ledger, {"id": job["id"], "leaseToken": job["leaseToken"], "outcome": outcome})
 
 
-async def process(api, mcp, ledger: Ledger, job: dict) -> str:
+async def process(api, mcp, ledger: Ledger, job: dict, *, sleep=asyncio.sleep, clock=None) -> str:
+    try:
+        parts = message_parts(job)
+    except (ValueError, TypeError, OverflowError):
+        return "invalid_job"
+
+    def still_unexpired() -> bool:
+        return unexpired(job, clock()) if clock is not None else unexpired(job)
+
     previous = ledger.get(job)
     if previous:
         outcome = "sent" if previous == "sent" else "indeterminate"
         ledger.set(job, outcome)
         await report_job(api, ledger, job, outcome)
         return "reconciled"
-    if not unexpired(job):
+    if not still_unexpired():
         return "expired"
     try:
         ready = await mcp.ready()
@@ -163,18 +227,37 @@ async def process(api, mcp, ledger: Ledger, job: dict) -> str:
         return "rejected"
     # O registro antecede o envio. Crash/timeout não permitem repetir o envio.
     ledger.set(job, "started")
-    if not unexpired(job):
-        ledger.set(job, "indeterminate")
-        await report_job(api, ledger, job, "indeterminate")
-        return "expired_after_start"
+    expired_after_start = False
     try:
-        sent = await mcp.send(job)
+        sent = still_unexpired()
+        expired_after_start = not sent
+        for index, part in enumerate(parts):
+            if not sent:
+                break
+            if index:
+                # A pausa começa somente depois do ACK de sucesso anterior.
+                await sleep(part["delayBeforeSeconds"])
+                if not still_unexpired() or not await mcp.ready():
+                    sent = False
+                    break
+                # Revalida flag, coluna, telefone, corte e lease antes de cada parte.
+                accepted = await api.result(job, "started")
+                if accepted.get("accepted") is not True or not still_unexpired():
+                    sent = False
+                    break
+            single = {field: job[field] for field in LEGACY_JOB_FIELDS}
+            single["message"] = part["message"]
+            sent = await mcp.send(single) is True
+    except asyncio.CancelledError:
+        # O shutdown não espera rede: o recibo fica para a próxima reconciliação.
+        ledger.set(job, "indeterminate")
+        raise
     except Exception:
         sent = False
     outcome = "sent" if sent else "indeterminate"
     ledger.set(job, outcome)
     await report_job(api, ledger, job, outcome)
-    return outcome
+    return "expired_after_start" if expired_after_start else outcome
 
 
 async def iteration(api, mcp, ledger: Ledger) -> str:

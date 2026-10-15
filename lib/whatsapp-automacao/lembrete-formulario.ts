@@ -1,11 +1,16 @@
 import "server-only";
 import { z } from "zod";
 
-// Rascunho para aprovação. A presença da copy não habilita a automação.
-export const PREFIXO_LEMBRETE_FORMULARIO =
-  "Oi! Aqui é a Mel 💛\n\n" +
-  "Ficou alguma dúvida para finalizar o formulário do seu evento? Se precisar de ajuda, pode me chamar por aqui 😊\n\n" +
-  "Suas respostas estão salvas. Para continuar de onde parou:\n";
+// Copy e pausas aprovadas. A quarta parte (link individual, pausa de 2s) nasce
+// no SQL e fica congelada no snapshot; jobs existentes nunca sao recompostos.
+export const MENSAGENS_LEMBRETE_FORMULARIO = Object.freeze([
+  Object.freeze({ message: "Olá! Aqui é a Mel Storymaker 👋", delayBeforeSeconds: 0 }),
+  Object.freeze({
+    message: "Ficou alguma dúvida para finalizar o formulário? Se precisar de ajuda, pode me chamar por aqui 😊",
+    delayBeforeSeconds: 2,
+  }),
+  Object.freeze({ message: "Suas respostas estão salvas. Para continuar de onde parou:", delayBeforeSeconds: 3 }),
+] as const);
 
 export type AmbienteLembreteFormulario = {
   WHATSAPP_AUTOMACAO_ATIVA?: string;

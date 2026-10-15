@@ -6,12 +6,17 @@ import {
   automacaoAtiva, reivindicarWhatsApp, registrarResultadoWhatsApp,
   type AmbienteWhatsApp,
 } from "./index";
-import { resultadoSchema, type JobWhatsApp, type ResultadoWorker } from "./contrato";
+import {
+  HEADER_PROTOCOLO_WORKER, resultadoSchema, validarJobWorker,
+  type JobWhatsApp, type ResultadoWorker, type ProtocoloWorker,
+} from "./contrato";
+import { configuracaoLembreteFormulario } from "./lembrete-formulario";
 
 export type DependenciasHttpWhatsApp = {
   ambiente: AmbienteWhatsApp;
-  reivindicar: () => Promise<JobWhatsApp | null>;
-  resultado: (id: string, resultado: ResultadoWorker) => Promise<string | null>;
+  reivindicar: (protocolo?: ProtocoloWorker) => Promise<JobWhatsApp | null>;
+  resultado: (id: string, resultado: ResultadoWorker, protocolo?: ProtocoloWorker) => Promise<string | null>;
+  agora?: () => number;
 };
 const uuid = z.string().uuid();
 const cabecalhos = { "Cache-Control": "no-store" };
@@ -19,6 +24,9 @@ const resposta = (corpo: unknown, status = 200) => NextResponse.json(corpo, { st
 const reais = (): DependenciasHttpWhatsApp => ({
   ambiente: process.env, reivindicar: reivindicarWhatsApp, resultado: registrarResultadoWhatsApp,
 });
+export function protocoloWorker(req: Request): ProtocoloWorker {
+  return req.headers.get(HEADER_PROTOCOLO_WORKER) === "2" ? 2 : 1;
+}
 
 function autenticar(req: Request, ambiente: AmbienteWhatsApp): Response | null {
   const token = ambiente.WHATSAPP_WORKER_TOKEN;
@@ -34,12 +42,18 @@ function autenticar(req: Request, ambiente: AmbienteWhatsApp): Response | null {
 export async function tratarReivindicacao(req: Request, deps = reais()): Promise<Response> {
   const recusa = autenticar(req, deps.ambiente);
   if (recusa) return recusa;
-  if (!automacaoAtiva(deps.ambiente)) return resposta({ active: false, job: null });
+  const protocolo = protocoloWorker(req);
+  const detalhes = protocolo === 2 ? {
+    protocolVersion: 2,
+    reminderActive: configuracaoLembreteFormulario(deps.ambiente, (deps.agora ?? Date.now)()) !== null,
+  } : {};
+  if (!automacaoAtiva(deps.ambiente)) return resposta({ active: false, job: null, ...detalhes });
   try {
-    return resposta({ active: true, job: await deps.reivindicar() });
+    const job = await deps.reivindicar(protocolo);
+    return resposta({ active: true, job: job ? validarJobWorker(job, protocolo) : null, ...detalhes });
   } catch {
     console.error("[whatsapp] nao consegui reivindicar a fila");
-    return resposta({ erro: "Fila indisponivel" }, 503);
+    return resposta({ erro: "Fila indisponivel", ...detalhes }, 503);
   }
 }
 
@@ -61,7 +75,7 @@ export async function tratarResultado(
     return resposta({ erro: "Automacao desativada" }, 409);
   }
   try {
-    const state = await deps.resultado(id, parsed.data);
+    const state = await deps.resultado(id, parsed.data, protocoloWorker(req));
     const esperados = {
       started: ["enviando"], sent: ["enviado"], indeterminate: ["indeterminado"],
       failed: ["pendente", "expirado", "indeterminado"],
