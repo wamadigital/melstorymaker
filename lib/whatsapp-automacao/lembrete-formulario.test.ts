@@ -230,7 +230,7 @@ test("tres textos e pausas aprovados sao imutaveis e nao antecipam o link indivi
   assert.deepEqual(MENSAGENS_LEMBRETE_FORMULARIO, [
     { message: "Olá! Aqui é a Mel Storymaker 👋", delayBeforeSeconds: 0 },
     { message: "Ficou alguma dúvida para finalizar o formulário? Se precisar de ajuda, pode me chamar por aqui 😊", delayBeforeSeconds: 2 },
-    { message: "Suas respostas estão salvas. Para continuar de onde parou:", delayBeforeSeconds: 3 },
+    { message: "Suas respostas estão salvas, acesse o link:", delayBeforeSeconds: 3 },
   ]);
   assert.ok(Object.isFrozen(MENSAGENS_LEMBRETE_FORMULARIO));
   assert.ok(MENSAGENS_LEMBRETE_FORMULARIO.every((p) => Object.isFrozen(p) && !p.message.includes("http")));

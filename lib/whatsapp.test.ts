@@ -48,47 +48,35 @@ test("a mensagem e a copy do owner, com o link em linha propria", () => {
   assert.ok(msg.split("\n").includes("https://x.test/p.pdf"));
 });
 
-test("a 'Última tentativa' (30 dias) é a copy do owner, com o link da proposta na linha do meio", () => {
-  // Texto, emojis e quebras de linha ao pe da letra, como o owner mandou em 07/10/2026.
+test("a prévia da última tentativa contém as cinco partes aprovadas", () => {
   const link = "https://melstorymaker.com.br/p/a3f9";
-  assert.equal(
-    mensagemLembrete(30, link),
-    "Oi! Passando só para saber se você conseguiu dar uma olhadinha na proposta que te enviei. 🤍\n" +
-      "\n" +
-      `${link}\n` +
-      "\n" +
-      "Se ainda fizer sentido, é só me chamar que a gente conversa.\n" +
-      "E se não for o momento, sem problema nenhum, estarei por aqui pra quando você precisar! ✨",
-  );
-  // E o texto chega inteiro na conversa do lead, sem nada perdido no encode.
+  assert.equal(mensagemLembrete(30, link), [
+    "Oi! Passando só para saber se você conseguiu dar uma olhadinha na proposta que te enviei. 🤍",
+    link,
+    "Se ainda fizer sentido, é só me chamar que a gente conversa.",
+    "Se não for o momento, me avise por gentileza, para que eu possa me organizar por aqui 🙏",
+    "Desde já, agradeço ✨",
+  ].join("\n\n"));
   const aberto = new URL(linkLembreteWhatsApp(30, "(19) 99999-8888", link));
   assert.equal(aberto.pathname, "/5519999998888");
   assert.equal(aberto.searchParams.get("text"), mensagemLembrete(30, link));
 });
 
-test("o 'Relembrar cliente' (7 dias) é a copy do owner, com o link da proposta na linha do meio", () => {
-  // Texto, emojis e quebras de linha ao pe da letra, como o owner mandou em 07/10/2026.
+test("a prévia do primeiro lembrete contém as quatro partes aprovadas", () => {
   const link = "https://melstorymaker.com.br/p/a3f9";
-  assert.equal(
-    mensagemLembrete(7, link),
-    "Oi! Passando só para saber se você conseguiu dar uma olhadinha na proposta que te enviei. 🤍\n" +
-      "\n" +
-      `${link}\n` +
-      "\n" +
-      "Se ficou alguma dúvida, me chama que eu te explico. ✨",
-  );
-  const aberto = new URL(linkLembreteWhatsApp(7, "(19) 99999-8888", link));
-  assert.equal(aberto.searchParams.get("text"), mensagemLembrete(7, link));
+  assert.equal(mensagemLembrete(7, link), [
+    "Olá, como vai?!",
+    "Passando só para saber se você conseguiu dar uma olhadinha na proposta que te enviei.",
+    link,
+    "Se ficou alguma dúvida, me chama que eu te explico. ✨",
+  ].join("\n\n"));
 });
 
-test("sem proposta gerada, a 'Última tentativa' sai sem o link e sem linha vazia sobrando", () => {
-  assert.equal(
-    mensagemLembrete(30, null),
-    "Oi! Passando só para saber se você conseguiu dar uma olhadinha na proposta que te enviei. 🤍\n" +
-      "\n" +
-      "Se ainda fizer sentido, é só me chamar que a gente conversa.\n" +
-      "E se não for o momento, sem problema nenhum, estarei por aqui pra quando você precisar! ✨",
-  );
+test("os lembretes exigem uma proposta HTTPS", () => {
+  for (const marco of [7, 30] as const) {
+    assert.throws(() => mensagemLembrete(marco, null), /proposta_ausente/);
+    assert.throws(() => mensagemLembrete(marco, "http://invalido.test"), /proposta_ausente/);
+  }
 });
 
 test("a URL do PDF sobrevive ao encode", () => {

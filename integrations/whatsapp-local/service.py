@@ -285,6 +285,7 @@ def bundle(root: Path, staged: Path, final: Path) -> None:
     names = [
         "run-bridge.sh", "run-mcp.sh", "run-worker.sh", "worker.py", "service.py",
         "prepare.py", "compat.py", "local_server.go", "local_server_test.go",
+        "local_activity.go", "local_activity_test.go",
     ]
     for name in names:
         copy_regular(source_scripts / name, scripts / name)

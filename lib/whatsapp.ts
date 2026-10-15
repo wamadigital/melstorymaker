@@ -1,7 +1,7 @@
-// Links wa.me. Nenhuma API de WhatsApp entra neste projeto: o botao do painel
-// so abre a conversa no aparelho da Mel, com a mensagem pronta.
+// Links de contato/proposta. Os lembretes do Kanban usam a fila MCP privada.
 
 import type { Categoria } from "@/lib/form/types";
+import { sequenciaLembreteProposta } from "@/lib/whatsapp-automacao/lembretes-proposta";
 
 /**
  * Normaliza o numero para o formato do wa.me (DDI + DDD + numero, so digitos).
@@ -74,43 +74,13 @@ export function linkConversaLead(whatsappLead: string | null | undefined): strin
   return numero ? `https://wa.me/${numero}` : null;
 }
 
-/**
- * Cobranca de quem recebeu a proposta e nao respondeu.
- *
- * As duas sao copy do owner, de 07/10/2026, ao pe da letra -- texto, emojis e
- * quebras de linha: a de 7 dias ("Relembrar cliente") e a de 30 ("Ultima
- * tentativa"). Abrem com a mesma frase; o que muda e o fecho. Duas regras que
- * valem em qualquer versao:
- *
- *   1. O link da proposta VOLTA na mensagem. Faz 7 (ou 30) dias que ela foi
- *      enviada; obrigar a pessoa a procurar a conversa antiga e perder o lead
- *      de novo pelo mesmo motivo. Sem proposta gerada, a mensagem sai sem link.
- *   2. Aos 30 dias a saida e honrosa. E a ultima mensagem: cobrar de novo com
- *      o tom dos 7 dias soa a insistencia, e a Mel trabalha de indicacao.
- *
- * Mesma diagramacao da `mensagemProposta`: o link sozinho na linha, cercado de
- * quebras, e o que faz o WhatsApp gerar a previa.
- */
+/** Prévia textual; o MCP usa as partes e pausas de sequenciaLembreteProposta. */
 export function mensagemLembrete(marco: 7 | 30, pdfUrl: string | null): string {
-  const linhas =
-    marco === 7
-      ? [
-          "Oi! Passando só para saber se você conseguiu dar uma olhadinha na proposta que te enviei. 🤍",
-          ...(pdfUrl ? ["", pdfUrl, ""] : [""]),
-          "Se ficou alguma dúvida, me chama que eu te explico. ✨",
-        ]
-      : [
-          "Oi! Passando só para saber se você conseguiu dar uma olhadinha na proposta que te enviei. 🤍",
-          ...(pdfUrl ? ["", pdfUrl, ""] : [""]),
-          "Se ainda fizer sentido, é só me chamar que a gente conversa.",
-          "E se não for o momento, sem problema nenhum, estarei por aqui pra quando você precisar! ✨",
-        ];
-  return linhas.join("\n");
+  return sequenciaLembreteProposta(marco, pdfUrl ?? "").map((p) => p.message).join("\n\n");
 }
 
 /**
- * Link do botao de cobranca no cartao do quadro. Sem numero do lead abre o
- * seletor de conversas da Mel, mesmo comportamento do botao da proposta.
+ * Compatibilidade de links antigos. O botão do Kanban não usa este helper.
  */
 export function linkLembreteWhatsApp(
   marco: 7 | 30,

@@ -53,7 +53,7 @@ export function IndicadorWhatsApp({
                 <li key={envio.tipo} className="space-y-0.5 text-xs">
                   <p className="font-medium">{envio.rotulo}</p>
                   <p className="text-[0.6875rem] text-muted-foreground">
-                    {envio.origem === "automatico" ? "Envio automático" : "Marcado pela Mel"}
+                    {envio.origem === "automatico" ? "Envio automático" : envio.origem === "sistema" ? "Enviado pelo sistema" : "Marcado pela Mel"}
                     {" · "}
                     <time dateTime={envio.enviadoEm}>{dataHoraLocal(envio.enviadoEm)}</time>
                   </p>

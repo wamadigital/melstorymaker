@@ -2,8 +2,19 @@ import type { Lead } from "@/lib/form/types";
 
 /** Metadados de um envio confirmado pelo worker; nunca leva conteúdo ou contato. */
 export type DisparoWhatsApp = {
-  tipo: "confirmacao_recebimento" | "lembrete_formulario_24h";
+  tipo: "confirmacao_recebimento" | "lembrete_formulario_24h" | "lembrete_proposta_7d" | "lembrete_proposta_30d";
   enviado_em: string;
+  /** Revisão exata, somente para lembretes de proposta confirmados. */
+  proposta_enviado_em?: string;
+};
+
+export type SolicitacaoWhatsApp = {
+  tipo: "lembrete_proposta_7d" | "lembrete_proposta_30d";
+  estado: "pendente" | "reservado" | "enviando" | "enviado" | "indeterminado" | "expirado" | "cancelado";
+  ocorrido_em: string;
+  proposta_enviado_em: string;
+  /** Texto de uma lista fixa; nunca publica erro bruto do worker. */
+  motivo: string | null;
 };
 
 /**
@@ -39,4 +50,5 @@ export type LeadCartao = Pick<
 > & {
   /** Resumo da fila privada, enriquecido no servidor depois da leitura das raias. */
   disparos_whatsapp?: DisparoWhatsApp[];
+  solicitacoes_whatsapp?: SolicitacaoWhatsApp[];
 };

@@ -7,7 +7,7 @@ import { BotaoLembrete } from "@/components/admin/BotaoLembrete";
 import { BotaoLembreteEmail } from "@/components/admin/BotaoLembreteEmail";
 import { ChamarWhatsApp } from "@/components/admin/ChamarWhatsApp";
 import { IndicadorWhatsApp } from "@/components/admin/IndicadorWhatsApp";
-import { estadoLembrete, SELO_LEMBRETE, temaCobranca } from "@/lib/admin/lembretes";
+import { estadoLembrete, temaCobranca } from "@/lib/admin/lembretes";
 import { estadoLembreteEmail } from "@/lib/admin/lembrete-email";
 import { linkContatoInicial } from "@/lib/admin/acoes";
 import { DESCRICAO_COLUNA, TEMA_COLUNA, rotuloCategoria, rotuloPasso } from "@/lib/admin/rotulos";
@@ -63,6 +63,11 @@ export function CartaoLead({
   // cliente" apaga a cobranca na hora, sem esperar o servidor responder. A cor
   // tambem sai da coluna: azul-claro em "Enviado", cinza em "Esfriou".
   const lembrete = estadoLembrete(lead, coluna, agoraMs);
+  const marcoLembrete = lembrete.pendente ?? lembrete.cobrado;
+  const solicitacaoLembrete = lead.solicitacoes_whatsapp?.filter((solicitacao) =>
+    solicitacao.tipo === `lembrete_proposta_${marcoLembrete}d` &&
+    solicitacao.proposta_enviado_em === lead.enviado_em)
+    .sort((a, b) => Date.parse(b.ocorrido_em) - Date.parse(a.ocorrido_em))[0];
   const alerta = temaCobranca(coluna, lembrete);
 
   // Quem parou no meio do formulario mas deixou telefone: da para puxar a
@@ -169,25 +174,16 @@ export function CartaoLead({
           </div>
         )}
 
-        {!sobreposto && (lembrete.pendente || lembrete.cobrado) && (
+        {!sobreposto && marcoLembrete && (
           <div className="@container px-3 pb-3">
-            {lembrete.pendente ? (
-              <BotaoLembrete
-                id={lead.id}
-                nome={nome}
-                marco={lembrete.pendente}
-                classeTexto={alerta?.texto}
-                whatsapp={lead.whatsapp}
-                pdfUrl={lead.pdf_url}
-              />
-            ) : (
-              <p className="flex items-center gap-1 text-[0.6875rem] whitespace-nowrap text-muted-foreground">
-                {/* Sem o check abaixo de ~132px: "Lembrado aos 30 dias" so cabe
-                    numa linha do cartao de seis colunas sem ele. */}
-                <Check className="hidden size-3 shrink-0 @min-[8.25rem]:block" strokeWidth={3} />
-                {SELO_LEMBRETE[lembrete.cobrado!]}
-              </p>
-            )}
+            <BotaoLembrete
+              id={lead.id}
+              nome={nome}
+              marco={marcoLembrete}
+              classeTexto={alerta?.texto}
+              solicitacao={solicitacaoLembrete}
+              confirmado={!lembrete.pendente && lembrete.cobrado !== null}
+            />
           </div>
         )}
       </div>

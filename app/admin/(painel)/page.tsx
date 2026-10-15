@@ -83,6 +83,7 @@ export default async function PaginaLeads({ searchParams }: { searchParams: Prom
         {
           cartoes: ((data ?? []) as unknown as LeadCartao[]).map((lead) => ({
             ...lead, disparos_whatsapp: disparos.porLead.get(lead.id) ?? [],
+            solicitacoes_whatsapp: disparos.solicitacoesPorLead.get(lead.id) ?? [],
           })),
           total: count ?? 0,
           // Erro por coluna, e nao da pagina inteira: uma raia que falhou nao

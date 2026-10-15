@@ -1,11 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, MessageCircle } from "lucide-react";
+import { Check, Clock3, Loader2, MessageCircle } from "lucide-react";
 import { toast } from "sonner";
 import { ROTULO_LEMBRETE, type Marco } from "@/lib/admin/lembretes";
-import { linkLembreteWhatsApp } from "@/lib/whatsapp";
+import type { SolicitacaoWhatsApp } from "@/lib/admin/tipos";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -14,51 +14,63 @@ type Props = {
   marco: Marco;
   /** Tinta do texto, a mesma do cartao (`temaCobranca`): azul em Enviado, cinza em Esfriou. */
   classeTexto?: string;
-  whatsapp: string | null;
-  pdfUrl: string | null;
+  solicitacao?: SolicitacaoWhatsApp;
+  /** Somente ACK confirmado da proposta vigente; nunca uma marcação manual. */
+  confirmado?: boolean;
 };
 
 /**
- * Botao de cobranca no cartao do quadro. Abre a conversa do lead com a mensagem
- * pronta E carimba que a Mel cobrou -- os dois no mesmo clique, porque separar
- * daria um segundo passo que ninguem faz e o cartao ficaria pintado para sempre.
- *
- * O `window.open` vem ANTES do fetch, e sincrono dentro do handler: navegador
- * bloqueia popup aberta depois de um await, e o clique perderia a janela.
+ * O clique solicita o envio ao worker local. Enfileirar não confirma envio:
+ * somente o ACK do WhatsApp atualiza os carimbos e o histórico do cartão.
  */
-export function BotaoLembrete({ id, nome, marco, classeTexto, whatsapp, pdfUrl }: Props) {
+export function BotaoLembrete({ id, nome, marco, classeTexto, solicitacao, confirmado = false }: Props) {
   const router = useRouter();
   const [ocupado, setOcupado] = useState(false);
-
-  async function marcar(marcado: boolean) {
-    const r = await fetch(`/api/admin/leads/${id}/lembrete`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ marco, marcado }),
-    });
-    const json = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(json.erro ?? "Não consegui marcar.");
-    router.refresh();
-  }
+  const cliqueEmCurso = useRef(false);
+  const chaveServidor = `${id}:${marco}:${solicitacao?.estado ?? ""}:${solicitacao?.ocorrido_em ?? ""}:${solicitacao?.motivo ?? ""}`;
+  type EstadoEnvio = "fila" | "enviando" | "enviado";
+  const [local, setLocal] = useState<{ estado: EstadoEnvio; chaveServidor: string } | null>(null);
+  const estadoServidor = solicitacao?.estado === "pendente" || solicitacao?.estado === "reservado" ? "fila"
+    : solicitacao?.estado === "enviando" ? "enviando" : solicitacao?.estado === "enviado" ? "enviado" : null;
+  // Uma atualização do servidor substitui o feedback otimista do POST. Assim
+  // um cancelamento do worker não deixa o botão preso em "Na fila".
+  const estado = confirmado ? "enviado" : local?.chaveServidor === chaveServidor ? local.estado : estadoServidor;
+  const indeterminado = !confirmado && solicitacao?.estado === "indeterminado";
+  const motivo = solicitacao?.motivo ?? (indeterminado
+    ? "O resultado deste envio precisa ser conferido no WhatsApp antes de outra tentativa."
+    : solicitacao?.estado === "expirado" ? "O prazo deste envio expirou."
+      : solicitacao?.estado === "cancelado" ? "Este envio foi cancelado antes de concluir." : null);
+  const setEstado = (novo: EstadoEnvio) => setLocal({ estado: novo, chaveServidor });
 
   async function cobrar() {
-    window.open(linkLembreteWhatsApp(marco, whatsapp, pdfUrl), "_blank", "noopener");
+    if (cliqueEmCurso.current || ocupado || estado || indeterminado) return;
+    cliqueEmCurso.current = true;
     setOcupado(true);
     try {
-      await marcar(true);
-      toast.success(`Lembrete de ${marco} dias marcado para ${nome || "o lead"}.`, {
-        // A marca acontece no clique, antes de a mensagem sair de fato. Se a Mel
-        // abrir a conversa e desistir, este e o caminho de volta.
-        action: {
-          label: "Desfazer",
-          onClick: () => {
-            void marcar(false).catch((e: Error) => toast.error(e.message));
-          },
-        },
+      const r = await fetch(`/api/admin/leads/${id}/lembrete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ marco }),
       });
+      const json = await r.json().catch(() => ({}));
+      if (!r.ok || json.ok !== true) throw new Error(json.erro ?? "Não consegui solicitar o envio.");
+      if (json.estado === "enviado") {
+        setEstado("enviado");
+        toast.success(`Lembrete de ${marco} dias já enviado para ${nome || "o lead"}.`);
+      } else if (json.estado === "enviando") {
+        setEstado("enviando");
+        toast.info(`O lembrete está sendo enviado para ${nome || "o lead"}.`);
+      } else if (json.estado === "pendente" || json.estado === "reservado") {
+        setEstado("fila");
+        toast.success(`Lembrete na fila para ${nome || "o lead"}. O envio depende do WhatsApp conectado no Mac.`);
+      } else {
+        throw new Error(json.erro ?? "O envio não foi confirmado. Atualize o cartão antes de tentar novamente.");
+      }
+      router.refresh();
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
+      cliqueEmCurso.current = false;
       setOcupado(false);
     }
   }
@@ -73,7 +85,9 @@ export function BotaoLembrete({ id, nome, marco, classeTexto, whatsapp, pdfUrl }
     <div className="@container">
       <button
         type="button"
-        disabled={ocupado}
+        disabled={ocupado || estado !== null || indeterminado}
+        aria-busy={ocupado || estado === "enviando"}
+        aria-label={estado === "enviado" ? `Lembrete de ${marco} dias enviado para ${nome || "o lead"}` : undefined}
         onClick={cobrar}
         className={cn(
           "flex w-full items-center justify-center gap-1.5 rounded-md border px-2 py-1.5",
@@ -82,13 +96,18 @@ export function BotaoLembrete({ id, nome, marco, classeTexto, whatsapp, pdfUrl }
           classeTexto,
         )}
       >
-        {ocupado ? (
+        {ocupado || estado === "enviando" ? (
           <Loader2 className={cn(icone, "animate-spin")} />
+        ) : estado === "enviado" ? (
+          <Check className={icone} />
+        ) : estado === "fila" ? (
+          <Clock3 className={icone} />
         ) : (
           <MessageCircle className={icone} />
         )}
-        {ROTULO_LEMBRETE[marco]}
+        {indeterminado ? "Conferir envio" : estado === "fila" ? "Na fila" : estado === "enviando" ? "Enviando" : estado === "enviado" ? "Enviado" : ROTULO_LEMBRETE[marco]}
       </button>
+      {motivo && !estado && <p className="mt-1 text-[0.6875rem] leading-snug text-muted-foreground" role="status">{motivo}</p>}
     </div>
   );
 }

@@ -13,16 +13,26 @@ import { recusarMovimento } from "./status";
 import { STATUS, type Status } from "@/lib/form/types";
 import { maisNovoPrimeiro } from "./ordem";
 import { linkLembreteWhatsApp, mensagemLembrete } from "@/lib/whatsapp";
+import type { DisparoWhatsApp } from "./tipos";
 
 const DIA = 86_400_000;
 const AGORA = Date.parse("2026-09-03T12:00:00-03:00");
 
 /** Lead enviado ha N dias, sem nenhuma cobranca feita. */
-const enviadoHa = (dias: number, extra: Partial<Record<string, string | null>> = {}) => ({
+const enviadoHa = (dias: number, extra: {
+  lembrete_7_em?: string | null;
+  lembrete_30_em?: string | null;
+  disparos_whatsapp?: DisparoWhatsApp[];
+} = {}) => ({
   enviado_em: new Date(AGORA - dias * DIA).toISOString(),
   lembrete_7_em: null,
   lembrete_30_em: null,
   ...extra,
+});
+const ack = (marco: 7 | 30, diasAtras: number, diasProposta: number): DisparoWhatsApp => ({
+  tipo: marco === 7 ? "lembrete_proposta_7d" : "lembrete_proposta_30d",
+  enviado_em: new Date(AGORA - diasAtras * DIA).toISOString(),
+  proposta_enviado_em: new Date(AGORA - diasProposta * DIA).toISOString(),
 });
 
 test("dias corridos saem da diferença em ms, não de componentes de data", () => {
@@ -40,7 +50,7 @@ test("a cobrança só existe em Enviado e em Esfriou", () => {
   for (const status of STATUS) {
     const estado = estadoLembrete(lead, status as Status, AGORA);
     if (status === "enviado" || status === "esfriou") {
-      assert.equal(estado.pendente, 30, `em ${status}, 40 dias tem que cobrar`);
+      assert.equal(estado.pendente, 7, `em ${status}, a primeira mensagem vem antes da última tentativa`);
     } else {
       assert.deepEqual(estado, SEM_LEMBRETE, `${status} não devia cobrar nada`);
     }
@@ -62,11 +72,12 @@ test("a fronteira é exatamente 7 e exatamente 30", () => {
   assert.equal(estadoLembrete(enviadoHa(6), "enviado", AGORA).pendente, null);
   assert.equal(estadoLembrete(enviadoHa(7), "enviado", AGORA).pendente, 7);
   assert.equal(estadoLembrete(enviadoHa(29), "enviado", AGORA).pendente, 7);
-  assert.equal(estadoLembrete(enviadoHa(30), "enviado", AGORA).pendente, 30);
+  assert.equal(estadoLembrete(enviadoHa(30), "enviado", AGORA).pendente, 7);
+  assert.equal(estadoLembrete(enviadoHa(30, { disparos_whatsapp: [ack(7, 20, 30)] }), "enviado", AGORA).pendente, 30);
 });
 
 test("cobrar apaga o alerta, e o selo diz qual cobrança foi feita", () => {
-  const cobrado7 = enviadoHa(10, { lembrete_7_em: new Date(AGORA - DIA).toISOString() });
+  const cobrado7 = enviadoHa(10, { disparos_whatsapp: [ack(7, 1, 10)] });
   const estado = estadoLembrete(cobrado7, "enviado", AGORA);
   assert.equal(estado.pendente, null, "cartao cobrado nao pode continuar gritando");
   assert.equal(estado.cobrado, 7);
@@ -74,15 +85,14 @@ test("cobrar apaga o alerta, e o selo diz qual cobrança foi feita", () => {
 });
 
 test("aos 30 dias o alerta volta, mesmo com a cobrança de 7 dias já feita", () => {
-  const cobrado7 = enviadoHa(31, { lembrete_7_em: new Date(AGORA - 20 * DIA).toISOString() });
+  const cobrado7 = enviadoHa(31, { disparos_whatsapp: [ack(7, 20, 31)] });
   assert.equal(estadoLembrete(cobrado7, "enviado", AGORA).pendente, 30);
 });
 
-test("lead de mês e meio pula os 7 dias e vai direto para a última tentativa", () => {
-  // Cobrar "faz uma semana que te mandei" num lead de 45 dias seria mentira.
+test("lead de mês e meio sem primeiro lembrete oferece Relembrar cliente antes da última tentativa", () => {
   const estado = estadoLembrete(enviadoHa(45), "enviado", AGORA);
-  assert.equal(estado.marco, 30);
-  assert.equal(estado.pendente, 30);
+  assert.equal(estado.marco, 7);
+  assert.equal(estado.pendente, 7);
   assert.equal(estado.cobrado, null);
 });
 
@@ -90,6 +100,7 @@ test("com as duas cobranças feitas o cartão silencia e mostra o selo de 30 dia
   const tudoCobrado = enviadoHa(35, {
     lembrete_7_em: new Date(AGORA - 28 * DIA).toISOString(),
     lembrete_30_em: new Date(AGORA - 2 * DIA).toISOString(),
+    disparos_whatsapp: [ack(7, 28, 35), ack(30, 2, 35)],
   });
   const estado = estadoLembrete(tudoCobrado, "enviado", AGORA);
   assert.equal(estado.pendente, null);
@@ -100,30 +111,37 @@ test("reenviar reinicia cobranças e selos sem apagar carimbos do envio anterior
   const antigo7 = new Date(AGORA - 50 * DIA).toISOString();
   const antigo30 = new Date(AGORA - 40 * DIA).toISOString();
   for (const dias of [0, 6, 7, 29, 30]) {
-    const lead = enviadoHa(dias, { lembrete_7_em: antigo7, lembrete_30_em: antigo30 });
+    const lead = enviadoHa(dias, { lembrete_7_em: antigo7, lembrete_30_em: antigo30,
+      disparos_whatsapp: [ack(7, 50, 60), ack(30, 40, 60)] });
     const antes = { ...lead };
     for (const coluna of ["enviado", "esfriou"] as const) {
       const estado = estadoLembrete(lead, coluna, AGORA);
-      assert.equal(estado.pendente, dias >= 30 ? 30 : dias >= 7 ? 7 : null, `${coluna}/${dias}`);
+      assert.equal(estado.pendente, dias >= 7 ? 7 : null, `${coluna}/${dias}`);
       assert.equal(estado.cobrado, null, "cobrança antiga não vira selo no envio vigente");
     }
     assert.deepEqual(lead, antes, "a leitura do estado preserva o histórico");
   }
 });
 
-test("só carimbos iguais ou posteriores ao envio vigente silenciam a cobrança", () => {
+test("só ACKs reais iguais ou posteriores ao envio vigente silenciam a cobrança", () => {
   for (const dias of [7, 30]) {
     const lead = enviadoHa(dias);
-    const coluna = dias === 7 ? "lembrete_7_em" : "lembrete_30_em";
     const enviadoMs = Date.parse(lead.enviado_em);
     for (const deslocamento of [-1, 0, 1]) {
       const carimbo = new Date(enviadoMs + deslocamento).toISOString();
-      const estado = estadoLembrete({ ...lead, [coluna]: carimbo }, "esfriou", AGORA);
+      const disparos_whatsapp: DisparoWhatsApp[] = [
+        ...(dias === 30 ? [ack(7, 20, dias)] : []),
+        { tipo: dias === 7 ? "lembrete_proposta_7d" : "lembrete_proposta_30d", enviado_em: carimbo,
+          proposta_enviado_em: lead.enviado_em },
+      ];
+      const estado = estadoLembrete({ ...lead, disparos_whatsapp }, "esfriou", AGORA);
       assert.equal(estado.pendente, deslocamento < 0 ? dias : null);
-      assert.equal(estado.cobrado, deslocamento < 0 ? null : dias);
+      assert.equal(estado.cobrado, deslocamento < 0 ? (dias === 30 ? 7 : null) : dias);
     }
-    const invalido = estadoLembrete({ ...lead, [coluna]: "nao e data" }, "esfriou", AGORA);
-    assert.equal(invalido.pendente, dias);
+    const invalido = estadoLembrete({ ...lead, disparos_whatsapp: [
+      { tipo: "lembrete_proposta_7d", enviado_em: "nao e data" },
+    ] }, "esfriou", AGORA);
+    assert.equal(invalido.pendente, 7);
     assert.equal(invalido.cobrado, null);
   }
 });
@@ -132,10 +150,45 @@ test("carimbo antigo de 30 dias não esconde cobrança válida de 7 dias do novo
   const lead = enviadoHa(31, {
     lembrete_7_em: new Date(AGORA - 24 * DIA).toISOString(),
     lembrete_30_em: new Date(AGORA - 40 * DIA).toISOString(),
+    disparos_whatsapp: [ack(7, 24, 31), ack(30, 40, 60)],
   });
   const estado = estadoLembrete(lead, "esfriou", AGORA);
   assert.equal(estado.cobrado, 7);
   assert.equal(estado.pendente, 30);
+});
+
+test("marcações manuais não satisfazem a sequência obrigatória nem escondem o primeiro envio MCP", () => {
+  for (const dias of [10, 31]) {
+    const estado = estadoLembrete(enviadoHa(dias, {
+      lembrete_7_em: new Date(AGORA - DIA).toISOString(),
+      lembrete_30_em: new Date(AGORA).toISOString(),
+    }), "esfriou", AGORA);
+    assert.equal(estado.pendente, 7);
+    assert.equal(estado.cobrado, null);
+  }
+});
+
+test("ACK tardio de proposta anterior não satisfaz o primeiro lembrete da proposta vigente", () => {
+  const antigo = ack(7, 1, 40);
+  const lead = enviadoHa(31, { lembrete_7_em: antigo.enviado_em, disparos_whatsapp: [antigo] });
+  const estado = estadoLembrete(lead, "esfriou", AGORA);
+  assert.equal(estado.pendente, 7);
+  assert.equal(estado.cobrado, null);
+  const semRevisao = { tipo: antigo.tipo, enviado_em: antigo.enviado_em };
+  assert.equal(estadoLembrete({ ...lead, disparos_whatsapp: [semRevisao] }, "esfriou", AGORA).pendente, 7);
+});
+
+test("revisões separadas por microssegundos continuam distintas no cartão", () => {
+  const proposta = "2026-08-01T12:00:00.123456+00:00";
+  const anterior = "2026-08-01T12:00:00.123455+00:00";
+  assert.equal(Date.parse(proposta), Date.parse(anterior), "Date.parse descarta os microssegundos");
+  const lead = { ...enviadoHa(31), enviado_em: proposta, disparos_whatsapp: [{
+    tipo: "lembrete_proposta_7d" as const, enviado_em: new Date(AGORA - DIA).toISOString(),
+    proposta_enviado_em: anterior,
+  }] };
+  assert.equal(estadoLembrete(lead, "esfriou", AGORA).pendente, 7);
+  lead.disparos_whatsapp[0].proposta_enviado_em = proposta;
+  assert.equal(estadoLembrete(lead, "esfriou", AGORA).pendente, 30);
 });
 
 test("a mensagem de cobrança leva o link da proposta de volta", () => {
@@ -150,22 +203,21 @@ test("a mensagem de cobrança leva o link da proposta de volta", () => {
   }
 });
 
-test("sem proposta gerada, a mensagem sai sem link quebrado", () => {
+test("sem proposta gerada, a cobrança é recusada antes de produzir mensagem", () => {
   for (const marco of [7, 30] as const) {
-    const msg = mensagemLembrete(marco, null);
-    assert.ok(!msg.includes("http"), `lembrete de ${marco} dias vazou link nenhum`);
-    assert.ok(!msg.includes("null") && !msg.includes("undefined"));
-    assert.ok(msg.trim().length > 0);
+    assert.throws(() => mensagemLembrete(marco, null), /proposta_ausente/);
   }
 });
 
 test("as duas cobranças são mensagens diferentes", () => {
-  assert.notEqual(mensagemLembrete(7, null), mensagemLembrete(30, null));
+  const proposta = "https://melstorymaker.com.br/p/a3f9";
+  assert.notEqual(mensagemLembrete(7, proposta), mensagemLembrete(30, proposta));
 });
 
-test("o link abre a conversa do lead; sem número, o seletor da Mel", () => {
-  assert.ok(linkLembreteWhatsApp(7, "(19) 99999-8888", null).startsWith("https://wa.me/5519999998888?text="));
-  assert.ok(linkLembreteWhatsApp(30, null, null).startsWith("https://wa.me/?text="));
+test("o helper legado exige proposta mesmo quando formata um link de conversa", () => {
+  const proposta = "https://melstorymaker.com.br/p/a3f9";
+  assert.ok(linkLembreteWhatsApp(7, "(19) 99999-8888", proposta).startsWith("https://wa.me/5519999998888?text="));
+  assert.ok(linkLembreteWhatsApp(30, null, proposta).startsWith("https://wa.me/?text="));
 });
 
 test("`perdido` entrou no enum com rótulo, tema e trânsito próprios", () => {
@@ -190,10 +242,10 @@ test("`perdido` entrou no enum com rótulo, tema e trânsito próprios", () => {
 test("no Esfriou aparecem o Relembrar cliente e, aos 30 dias, a Última tentativa", () => {
   // O lead esfria no 7º dia: é lá que a Mel cobra.
   assert.equal(estadoLembrete(enviadoHa(8), "esfriou", AGORA).pendente, 7);
-  assert.equal(estadoLembrete(enviadoHa(30), "esfriou", AGORA).pendente, 30);
+  assert.equal(estadoLembrete(enviadoHa(30, { disparos_whatsapp: [ack(7, 20, 30)] }), "esfriou", AGORA).pendente, 30);
   // Quem foi cobrado aos 7 silencia até os 30, com o selo.
   const cobrado = estadoLembrete(
-    enviadoHa(15, { lembrete_7_em: new Date(AGORA - 7 * DIA).toISOString() }),
+    enviadoHa(15, { disparos_whatsapp: [ack(7, 7, 15)] }),
     "esfriou",
     AGORA,
   );
@@ -206,8 +258,8 @@ test("cores: Relembrar na tinta da coluna, Última tentativa vermelha, âmbar nu
   assert.equal(temaCobranca("esfriou", estadoLembrete(enviadoHa(8), "esfriou", AGORA)), TEMA_COBRANCA.esfriou);
   assert.equal(temaCobranca("enviado", estadoLembrete(enviadoHa(8), "enviado", AGORA)), TEMA_COBRANCA.enviado);
   // 30 dias: vermelho, em qualquer coluna, como era antes.
-  assert.equal(temaCobranca("esfriou", estadoLembrete(enviadoHa(31), "esfriou", AGORA)), TEMA_ULTIMA_TENTATIVA);
-  assert.equal(temaCobranca("enviado", estadoLembrete(enviadoHa(31), "enviado", AGORA)), TEMA_ULTIMA_TENTATIVA);
+  assert.equal(temaCobranca("esfriou", estadoLembrete(enviadoHa(31, { disparos_whatsapp: [ack(7, 20, 31)] }), "esfriou", AGORA)), TEMA_ULTIMA_TENTATIVA);
+  assert.equal(temaCobranca("enviado", estadoLembrete(enviadoHa(31, { disparos_whatsapp: [ack(7, 20, 31)] }), "enviado", AGORA)), TEMA_ULTIMA_TENTATIVA);
   assert.match(TEMA_ULTIMA_TENTATIVA.cartao, /red/);
   // Sem cobrança pendente, cartão comum.
   assert.equal(temaCobranca("enviado", estadoLembrete(enviadoHa(3), "enviado", AGORA)), null);

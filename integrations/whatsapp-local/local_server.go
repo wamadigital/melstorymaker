@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/json"
@@ -18,13 +19,17 @@ import (
 	"unicode/utf8"
 
 	"go.mau.fi/whatsmeow"
+	waProto "go.mau.fi/whatsmeow/proto/waE2E"
+	"go.mau.fi/whatsmeow/types"
+	"google.golang.org/protobuf/proto"
 )
 
 const localBridgeMaxBodyBytes int64 = 64 * 1024
 
 type localSendRequest struct {
-	Recipient string `json:"recipient"`
-	Message   string `json:"message"`
+	Recipient       string `json:"recipient"`
+	Message         string `json:"message"`
+	AutomationJobID string `json:"automation_job_id,omitempty"`
 }
 
 type localBridgeResponse struct {
@@ -36,7 +41,7 @@ type localBridgeResponse struct {
 // The installer copies this file into the pinned upstream package. It never
 // exposes the upstream mux, downloads, arbitrary paths or conversation history.
 func startLocalRESTServer(client *whatsmeow.Client, _ *MessageStore, port int) {
-	handler, err := newLocalRESTHandler(client, os.Getenv("MEL_WHATSAPP_BRIDGE_TOKEN"))
+	handler, err := newLocalRESTHandler(client, os.Getenv("MEL_WHATSAPP_BRIDGE_TOKEN"), localActivityRecorder)
 	if err != nil || port < 1 || port > 65535 {
 		log.Print("Local WhatsApp bridge configuration is invalid")
 		os.Exit(1)
@@ -71,7 +76,7 @@ func newLocalHTTPServer(handler http.Handler) *http.Server {
 }
 
 // nil client is a simulation, not an instruction to initialize or pair a client.
-func newLocalRESTHandler(client *whatsmeow.Client, token string) (http.Handler, error) {
+func newLocalRESTHandler(client *whatsmeow.Client, token string, activities ...*localActivityStore) (http.Handler, error) {
 	if len(token) < 32 {
 		return nil, errors.New("local bridge token must contain at least 32 characters")
 	}
@@ -82,6 +87,55 @@ func newLocalRESTHandler(client *whatsmeow.Client, token string) (http.Handler, 
 	}
 	expectedToken := sha256.Sum256([]byte(token))
 	mux := http.NewServeMux()
+	var activity *localActivityStore
+	if len(activities) > 0 {
+		activity = activities[0]
+	}
+
+	mux.HandleFunc("/api/activity-check", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.Header().Set("Allow", http.MethodPost)
+			writeLocalError(w, http.StatusMethodNotAllowed, "method_not_allowed", "Use POST for the activity check.")
+			return
+		}
+		mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+		if err != nil || mediaType != "application/json" {
+			writeLocalError(w, http.StatusUnsupportedMediaType, "invalid_content_type", "Use UTF-8 application/json.")
+			return
+		}
+		body := http.MaxBytesReader(w, r.Body, 4096)
+		defer body.Close()
+		data, err := io.ReadAll(body)
+		if err != nil || !utf8.Valid(data) {
+			writeLocalError(w, http.StatusBadRequest, "invalid_payload", "Invalid activity payload.")
+			return
+		}
+		var request struct {
+			Recipient string `json:"recipient"`
+			JobID     string `json:"jobId"`
+			Days      int    `json:"days"`
+		}
+		decoder := json.NewDecoder(bytes.NewReader(data))
+		decoder.DisallowUnknownFields()
+		if err = decoder.Decode(&request); err != nil {
+			writeLocalError(w, http.StatusBadRequest, "invalid_payload", "Invalid activity payload.")
+			return
+		}
+		var extra json.RawMessage
+		if err = decoder.Decode(&extra); !errors.Is(err, io.EOF) || !validLocalBrazilRecipient(request.Recipient) || !validLocalJobID(request.JobID) || (request.Days != 5 && request.Days != 15) {
+			writeLocalError(w, http.StatusBadRequest, "invalid_payload", "Invalid activity payload.")
+			return
+		}
+		decision := localActivityDecision{Code: "inactivity_unverified", Activity: localActivityProof{CheckedAt: time.Now()}}
+		if activity != nil && localClientConnected(client) {
+			ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+			defer cancel()
+			if keys, err := localActivityIdentity(ctx, client, request.Recipient); err == nil {
+				decision = activity.decision(keys, request.JobID, request.Days, time.Now())
+			}
+		}
+		writeLocalJSON(w, http.StatusOK, decision)
+	})
 
 	mux.HandleFunc("/api/status", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -145,6 +199,10 @@ func newLocalRESTHandler(client *whatsmeow.Client, token string) (http.Handler, 
 			writeLocalError(w, http.StatusBadRequest, "invalid_message", "Message must contain 1 to 4000 UTF-8 characters and cannot be blank.")
 			return
 		}
+		if request.AutomationJobID != "" && !validLocalJobID(request.AutomationJobID) {
+			writeLocalError(w, http.StatusBadRequest, "invalid_payload", "Invalid automation reference.")
+			return
+		}
 		if client == nil {
 			writeLocalError(w, http.StatusOK, "simulation_no_send", "Simulation does not send messages.")
 			return
@@ -153,10 +211,24 @@ func newLocalRESTHandler(client *whatsmeow.Client, token string) (http.Handler, 
 			writeLocalError(w, http.StatusServiceUnavailable, "not_connected", "WhatsApp is not connected and authenticated.")
 			return
 		}
-		// The prepared upstream applies a 25s send timeout. Never pass a media path
-		// or return the SDK error/success text, which may include the phone number.
-		success, _ := sendWhatsAppMessage(client, request.Recipient, request.Message, "")
-		if !success {
+		// Generate the exact SDK ID before sending so an own-device echo can never
+		// make a sequence block itself. Only this job's own IDs are excluded later.
+		keys := []types.JID{types.NewJID(request.Recipient, types.DefaultUserServer)}
+		ctx, cancel := context.WithTimeout(r.Context(), 25*time.Second)
+		defer cancel()
+		if mapped, err := localActivityIdentity(ctx, client, request.Recipient); err == nil {
+			keys = mapped
+		}
+		if request.AutomationJobID != "" && (activity == nil || !activity.canSend(keys, request.AutomationJobID, time.Now())) {
+			writeLocalError(w, http.StatusConflict, "inactivity_unverified", "The proposal activity guard did not authorize this send.")
+			return
+		}
+		messageID := client.GenerateMessageID()
+		if activity != nil {
+			activity.record(keys, string(messageID), request.AutomationJobID, time.Now())
+		}
+		_, err = client.SendMessage(ctx, keys[0], &waProto.Message{Conversation: proto.String(request.Message)}, whatsmeow.SendRequestExtra{ID: messageID})
+		if err != nil {
 			writeLocalError(w, http.StatusBadGateway, "send_failed", "Could not confirm message sending. Do not retry automatically.")
 			return
 		}
@@ -179,12 +251,28 @@ func newLocalRESTHandler(client *whatsmeow.Client, token string) (http.Handler, 
 			return
 		}
 		// Reject unsupported paths before ServeMux can canonicalize/redirect them.
-		if r.URL.Path != "/api/status" && r.URL.Path != "/api/send" {
+		if r.URL.Path != "/api/status" && r.URL.Path != "/api/send" && r.URL.Path != "/api/activity-check" {
 			writeLocalError(w, http.StatusNotFound, "not_found", "Local endpoint not found.")
 			return
 		}
 		mux.ServeHTTP(w, r)
 	}), nil
+}
+
+func validLocalJobID(value string) bool {
+	if len(value) != 36 {
+		return false
+	}
+	for index, char := range value {
+		if index == 8 || index == 13 || index == 18 || index == 23 {
+			if char != '-' {
+				return false
+			}
+		} else if !((char >= '0' && char <= '9') || (char >= 'a' && char <= 'f')) {
+			return false
+		}
+	}
+	return true
 }
 
 func localClientConnected(client *whatsmeow.Client) bool {

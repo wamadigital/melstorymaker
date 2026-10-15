@@ -11,6 +11,7 @@ import {
   type JobWhatsApp, type ResultadoWorker, type ProtocoloWorker,
 } from "./contrato";
 import { configuracaoLembreteFormulario } from "./lembrete-formulario";
+import { lembretesPropostaAtivos } from "./lembretes-proposta";
 
 export type DependenciasHttpWhatsApp = {
   ambiente: AmbienteWhatsApp;
@@ -25,7 +26,8 @@ const reais = (): DependenciasHttpWhatsApp => ({
   ambiente: process.env, reivindicar: reivindicarWhatsApp, resultado: registrarResultadoWhatsApp,
 });
 export function protocoloWorker(req: Request): ProtocoloWorker {
-  return req.headers.get(HEADER_PROTOCOLO_WORKER) === "2" ? 2 : 1;
+  const valor = req.headers.get(HEADER_PROTOCOLO_WORKER);
+  return valor === "3" ? 3 : valor === "2" ? 2 : 1;
 }
 
 function autenticar(req: Request, ambiente: AmbienteWhatsApp): Response | null {
@@ -43,13 +45,15 @@ export async function tratarReivindicacao(req: Request, deps = reais()): Promise
   const recusa = autenticar(req, deps.ambiente);
   if (recusa) return recusa;
   const protocolo = protocoloWorker(req);
-  const config = protocolo === 2
+  const config = protocolo >= 2
     ? configuracaoLembreteFormulario(deps.ambiente, (deps.agora ?? Date.now)()) : null;
-  const detalhes = protocolo === 2 ? {
-    protocolVersion: 2,
+  const propostas = protocolo === 3 && lembretesPropostaAtivos(deps.ambiente);
+  const detalhes = protocolo >= 2 ? {
+    protocolVersion: protocolo,
     reminderActive: config !== null,
+    ...(protocolo === 3 ? { proposalReminderActive: propostas } : {}),
   } : {};
-  if (!config) return resposta({ active: false, job: null, ...detalhes });
+  if (!config && !propostas) return resposta({ active: false, job: null, ...detalhes });
   try {
     const job = await deps.reivindicar(protocolo);
     return resposta({ active: true, job: job ? validarJobWorker(job, protocolo) : null, ...detalhes });
@@ -74,15 +78,17 @@ export async function tratarResultado(
   if (!parsed.success) return resposta({ erro: "Resultado invalido" }, 400);
   // Desligar bloqueia novos envios, mas aceita ACK/indeterminado dos ja iniciados.
   const protocolo = protocoloWorker(req);
-  if (parsed.data.outcome === "started" && (protocolo !== 2 ||
-    !configuracaoLembreteFormulario(deps.ambiente, (deps.agora ?? Date.now)()))) {
+  if (parsed.data.activity && protocolo !== 3) return resposta({ erro: "Protocolo invalido" }, 400);
+  if (parsed.data.outcome === "started" && (protocolo < 2 ||
+    (!configuracaoLembreteFormulario(deps.ambiente, (deps.agora ?? Date.now)()) &&
+      !(protocolo === 3 && lembretesPropostaAtivos(deps.ambiente))))) {
     return resposta({ erro: "Automacao desativada" }, 409);
   }
   try {
     const state = await deps.resultado(id, parsed.data, protocolo);
     const esperados = {
       started: ["enviando"], sent: ["enviado"], indeterminate: ["indeterminado"],
-      failed: ["pendente", "expirado", "indeterminado"],
+      failed: ["pendente", "expirado", "indeterminado", "cancelado"],
     };
     if (!state) return resposta({ erro: "Lease ou estado recusado" }, 409);
     if (!esperados[parsed.data.outcome].includes(state)) throw new Error("estado_rpc_invalido");

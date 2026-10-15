@@ -11,7 +11,7 @@ declare
   v_seq jsonb := jsonb_build_array(
     jsonb_build_object('message','Olá! Aqui é a Mel Storymaker 👋','delayBeforeSeconds',0),
     jsonb_build_object('message','Ficou alguma dúvida para finalizar o formulário? Se precisar de ajuda, pode me chamar por aqui 😊','delayBeforeSeconds',2),
-    jsonb_build_object('message','Suas respostas estão salvas. Para continuar de onde parou:','delayBeforeSeconds',3));
+    jsonb_build_object('message','Suas respostas estão salvas, acesse o link:','delayBeforeSeconds',3));
 begin
   if public.registrar_confirmacao_whatsapp('af111111-0000-4000-8000-000000000001',
     '5519988887777','Confirmação não autorizada',now()) is not null then

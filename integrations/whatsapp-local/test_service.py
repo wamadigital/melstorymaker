@@ -196,7 +196,7 @@ class ServiceTests(unittest.TestCase):
 
     def relocation_fixture(self):
         scripts = self.root / "integrations/whatsapp-local"
-        for name in ("run-mcp.sh", "worker.py", "service.py", "prepare.py", "compat.py", "local_server.go", "local_server_test.go"):
+        for name in ("run-mcp.sh", "worker.py", "service.py", "prepare.py", "compat.py", "local_server.go", "local_server_test.go", "local_activity.go", "local_activity_test.go"):
             (scripts / name).write_text("código fictício para cópia")
         (scripts / "dependencies").mkdir()
         (scripts / "dependencies/uv.lock").write_text("lock fictício")

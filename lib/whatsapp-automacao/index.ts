@@ -9,6 +9,7 @@ import {
   configuracaoLembreteFormulario, MENSAGENS_LEMBRETE_FORMULARIO,
   type AmbienteLembreteFormulario,
 } from "./lembrete-formulario";
+import { lembretesPropostaAtivos } from "./lembretes-proposta";
 
 export type AmbienteWhatsApp = AmbienteLembreteFormulario & {
   [chave: string]: string | undefined;
@@ -32,16 +33,16 @@ export function criarRepositorioWhatsApp(db: SupabaseClient, contexto: ContextoR
   const ambiente: AmbienteWhatsApp = contexto.ambiente ?? process.env;
   const agora = contexto.agora ?? Date.now;
   const protocoloPadrao = contexto.protocolo ?? 1;
-  const configAtual = (protocolo: ProtocoloWorker) => protocolo === 2
+  const configAtual = (protocolo: ProtocoloWorker) => protocolo >= 2
     ? configuracaoLembreteFormulario(ambiente, agora()) : null;
+  const propostasAtivas = (protocolo: ProtocoloWorker) => protocolo === 3 && lembretesPropostaAtivos(ambiente);
   const falhaLembretes = contexto.falhaLembretes ??
     (() => console.error("[whatsapp] nao consegui registrar lembretes do formulario"));
   return {
     reivindicar: async (protocolo = protocoloPadrao): Promise<JobWhatsApp | null> => {
       const config = configAtual(protocolo);
-      // Existe uma única automação aprovada. Nunca cair no claim legado de
-      // confirmações quando faltar capacidade, flag ou configuração do lembrete.
-      if (!config) return null;
+      const propostas = propostasAtivas(protocolo);
+      if (!config && !propostas) return null;
       if (config) {
         try {
           const { error } = await db.rpc("enfileirar_lembretes_formulario_whatsapp_v3", {
@@ -53,20 +54,28 @@ export function criarRepositorioWhatsApp(db: SupabaseClient, contexto: ContextoR
           falhaLembretes();
         }
       }
-      const { data, error } = await db.rpc("reivindicar_whatsapp_v3", {
-        p_lembrete_ativo: true, p_inicio_em: config.inicioEm,
-      })
+      const { data, error } = await db.rpc(protocolo === 3 ? "reivindicar_whatsapp_v4" : "reivindicar_whatsapp_v3",
+        protocolo === 3 ? {
+          p_formulario_ativo: !!config, p_inicio_em: config?.inicioEm ?? null, p_propostas_ativo: propostas,
+        } : { p_lembrete_ativo: true, p_inicio_em: config!.inicioEm })
         .abortSignal(AbortSignal.timeout(5_000));
       if (error) throw new Error("claim_whatsapp");
       return data?.[0] ? envelopeJob(data[0], protocolo) : null;
     },
     resultado: async (id: string, resultado: ResultadoWorker, protocolo = protocoloPadrao): Promise<string | null> => {
       const config = configAtual(protocolo);
-      if (resultado.outcome === "started" && !config) return null;
-      const { data, error } = await db.rpc(config ? "resultado_whatsapp_v3" : "resultado_whatsapp", {
+      const propostas = propostasAtivas(protocolo);
+      if (resultado.outcome === "started" && !config && !propostas) return null;
+      const { data, error } = await db.rpc(protocolo === 3 ? "resultado_whatsapp_v4" : config ? "resultado_whatsapp_v3" : "resultado_whatsapp", {
         p_id: id, p_lease_token: resultado.leaseToken, p_outcome: resultado.outcome,
         p_code: resultado.code ?? null,
-        ...(config ? { p_lembrete_ativo: true, p_inicio_em: config.inicioEm } : {}),
+        ...(protocolo === 3 ? {
+          p_formulario_ativo: !!config, p_inicio_em: config?.inicioEm ?? null, p_propostas_ativo: propostas,
+          p_historico_verificado_em: resultado.activity?.checkedAt ?? null,
+          p_historico_cobertura_inicio_em: resultado.activity?.coverageStartedAt ?? null,
+          p_ultima_interacao_em: resultado.activity?.lastInteractionAt ?? null,
+          p_historico_completo: resultado.activity?.complete ?? false,
+        } : config ? { p_lembrete_ativo: true, p_inicio_em: config.inicioEm } : {}),
       }).abortSignal(AbortSignal.timeout(5_000));
       if (error) throw new Error("resultado_whatsapp");
       return typeof data === "string" ? data : null;

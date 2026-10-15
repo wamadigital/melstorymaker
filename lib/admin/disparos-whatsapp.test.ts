@@ -49,6 +49,31 @@ test("mudar de coluna ou reenviar a proposta conserva todos os contatos anterior
   }
 });
 
+test("envios das propostas só entram no histórico pelo ACK, sem duplicar o carimbo do mesmo envio", () => {
+  const historico = historicoWhatsApp({
+    ...semContato(),
+    lembrete_7_em: "2026-10-15T09:00:00-03:00",
+    lembrete_30_em: RECENTE,
+    disparos_whatsapp: [
+      { tipo: "lembrete_proposta_7d", enviado_em: RECENTE },
+      { tipo: "lembrete_proposta_30d", enviado_em: RECENTE },
+    ],
+  });
+  assert.deepEqual(historico.map(({ rotulo, origem }) => [rotulo, origem]), [
+    ["Lembrete após 30 dias", "sistema"], ["Lembrete após 7 dias", "sistema"],
+  ]);
+});
+
+test("um envio MCP posterior conserva uma marcação manual histórica distinta", () => {
+  const historico = historicoWhatsApp({
+    ...semContato(), lembrete_7_em: ANTIGO,
+    disparos_whatsapp: [{ tipo: "lembrete_proposta_7d", enviado_em: RECENTE }],
+  });
+  assert.deepEqual(historico.map(({ origem, enviadoEm }) => [origem, enviadoEm]), [
+    ["sistema", RECENTE], ["manual", ANTIGO],
+  ]);
+});
+
 test("ignora carimbos inválidos e tipos de automação desconhecidos", () => {
   const tortos = [null, "", "não é data", "123", "2026-10-15", "2026-02-30T12:00:00Z", "2026-10-15T12:00:00"];
   for (const carimbo of tortos) {
@@ -102,9 +127,11 @@ const json = (dados: unknown) => new Response(JSON.stringify(dados), { headers: 
 
 test("lê somente metadados dos envios confirmados em uma consulta para todos os cartões", async () => {
   const { db, pedidos } = bancoFicticio(() => json([
-    { lead_id: ID, tipo: "confirmacao_recebimento", enviado_em: ANTIGO },
-    { lead_id: ID, tipo: "lembrete_formulario_24h", enviado_em: RECENTE },
-    { lead_id: OUTRO, tipo: "confirmacao_recebimento", enviado_em: RECENTE },
+    { lead_id: ID, tipo: "confirmacao_recebimento", enviado_em: ANTIGO, estado: "enviado", proposta_enviado_em: ANTIGO },
+    { lead_id: ID, tipo: "lembrete_formulario_24h", enviado_em: RECENTE, estado: "enviado" },
+    { lead_id: ID, tipo: "lembrete_proposta_7d", enviado_em: RECENTE, estado: "enviado", proposta_enviado_em: ANTIGO },
+    { lead_id: ID, tipo: "lembrete_proposta_30d", enviado_em: RECENTE, estado: "enviado", proposta_enviado_em: ANTIGO },
+    { lead_id: OUTRO, tipo: "confirmacao_recebimento", enviado_em: RECENTE, estado: "enviado" },
   ]));
   const resultado = await lerDisparosWhatsApp([ID, OUTRO, ID], db);
   assert.equal(resultado.erro, false);
@@ -112,21 +139,22 @@ test("lê somente metadados dos envios confirmados em uma consulta para todos os
   const { url, metodo } = pedidos[0];
   assert.equal(metodo, "GET");
   assert.equal(url.pathname, "/rest/v1/whatsapp_outbox");
-  assert.equal(url.searchParams.get("select"), "lead_id,tipo,enviado_em");
-  assert.equal(url.searchParams.get("estado"), "eq.enviado");
-  assert.equal(url.searchParams.get("enviado_em"), "not.is.null");
+  assert.equal(url.searchParams.get("select"), "lead_id,tipo,enviado_em,estado,ocorrido_em,proposta_enviado_em,ultimo_codigo");
+  assert.equal(url.searchParams.get("estado"), "in.(pendente,reservado,enviando,enviado,indeterminado,expirado,cancelado)");
   assert.equal(url.searchParams.get("lead_id"), `in.(${ID},${OUTRO})`);
-  assert.equal(url.searchParams.get("tipo"), "in.(confirmacao_recebimento,lembrete_formulario_24h)");
+  assert.equal(url.searchParams.get("tipo"), "in.(confirmacao_recebimento,lembrete_formulario_24h,lembrete_proposta_7d,lembrete_proposta_30d)");
   assert.deepEqual(resultado.porLead.get(ID), [
     { tipo: "confirmacao_recebimento", enviado_em: ANTIGO },
     { tipo: "lembrete_formulario_24h", enviado_em: RECENTE },
+    { tipo: "lembrete_proposta_7d", enviado_em: RECENTE, proposta_enviado_em: ANTIGO },
+    { tipo: "lembrete_proposta_30d", enviado_em: RECENTE, proposta_enviado_em: ANTIGO },
   ]);
   assert.deepEqual(resultado.porLead.get(OUTRO), [{ tipo: "confirmacao_recebimento", enviado_em: RECENTE }]);
 });
 
 test("resposta auxiliar não publica conteúdo nem registros de outros leads ou tipos", async () => {
   const { db } = bancoFicticio(() => json([
-    { lead_id: ID, tipo: "confirmacao_recebimento", enviado_em: RECENTE, mensagem: "conteúdo privado", lease_token: "segredo" },
+    { lead_id: ID, tipo: "confirmacao_recebimento", enviado_em: RECENTE, estado: "enviado", mensagem: "conteúdo privado", lease_token: "segredo" },
     { lead_id: OUTRO, tipo: "confirmacao_recebimento", enviado_em: RECENTE },
     { lead_id: ID, tipo: "automacao_desconhecida", enviado_em: RECENTE },
     { lead_id: ID, tipo: "lembrete_formulario_24h", enviado_em: null },
@@ -137,16 +165,38 @@ test("resposta auxiliar não publica conteúdo nem registros de outros leads ou 
   assert.deepEqual([...resultado.porLead], [[ID, [{ tipo: "confirmacao_recebimento", enviado_em: RECENTE }]]]);
 });
 
+test("status da solicitação não inventa envio e só publica motivo de lista fixa", async () => {
+  const base = { lead_id: ID, tipo: "lembrete_proposta_7d", enviado_em: null,
+    ocorrido_em: RECENTE, proposta_enviado_em: ANTIGO };
+  const { db, pedidos } = bancoFicticio(() => json([
+    { ...base, estado: "pendente", ultimo_codigo: null, mensagem: "privado", destinatario: "privado" },
+    { ...base, tipo: "lembrete_proposta_30d", estado: "cancelado", ultimo_codigo: "inactivity_recent" },
+    { ...base, estado: "indeterminado", ultimo_codigo: "erro bruto privado" },
+    { ...base, estado: "estado_desconhecido", ultimo_codigo: "inactivity_recent" },
+    { ...base, lead_id: OUTRO, estado: "pendente" },
+  ]));
+  const resultado = await lerDisparosWhatsApp([ID], db);
+  assert.equal(pedidos.length, 1);
+  assert.equal(resultado.porLead.size, 0, "fila e cancelamento não são histórico de envio");
+  assert.deepEqual(resultado.solicitacoesPorLead.get(ID), [
+    { tipo: "lembrete_proposta_7d", estado: "pendente", ocorrido_em: RECENTE, proposta_enviado_em: ANTIGO, motivo: null },
+    { tipo: "lembrete_proposta_30d", estado: "cancelado", ocorrido_em: RECENTE, proposta_enviado_em: ANTIGO,
+      motivo: "Houve interação recente com este contato no WhatsApp." },
+    { tipo: "lembrete_proposta_7d", estado: "indeterminado", ocorrido_em: RECENTE, proposta_enviado_em: ANTIGO, motivo: null },
+  ]);
+  assert.ok(!JSON.stringify([...resultado.solicitacoesPorLead]).includes("privado"));
+});
+
 test("quadro sem cartões não consulta a fila", async () => {
   const { db, pedidos } = bancoFicticio(() => { throw new Error("não consultar"); });
-  assert.deepEqual(await lerDisparosWhatsApp([], db), { porLead: new Map(), erro: false });
+  assert.deepEqual(await lerDisparosWhatsApp([], db), { porLead: new Map(), solicitacoesPorLead: new Map(), erro: false });
   assert.equal(pedidos.length, 0);
 });
 
 test("falha transitória retenta somente a leitura e recupera o histórico", async () => {
   const { db, pedidos } = bancoFicticio((n) => n === 1
     ? new Response(JSON.stringify({ message: "JWT issued at future fictício" }), { status: 401 })
-    : json([{ lead_id: ID, tipo: "confirmacao_recebimento", enviado_em: RECENTE }]));
+    : json([{ lead_id: ID, tipo: "confirmacao_recebimento", enviado_em: RECENTE, estado: "enviado" }]));
   const resultado = await lerDisparosWhatsApp([ID], db);
   assert.equal(pedidos.length, 2);
   assert.equal(resultado.erro, false);

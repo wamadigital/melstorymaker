@@ -11,6 +11,9 @@ alter table public.whatsapp_outbox add constraint whatsapp_outbox_tipo_check
 
 alter table public.whatsapp_outbox add column if not exists sequencia jsonb;
 
+-- Revalidar a CHECK depois de trocar a funcao; historico terminal fica intacto.
+alter table public.whatsapp_outbox drop constraint if exists whatsapp_outbox_sequencia_check;
+
 -- Snapshot aprovado: chaves, textos, pausas e URL individual sao fechados.
 -- Extracao JSON tolera entradas malformadas sem casts/erros em CHECK/RPC.
 create or replace function public.sequencia_lembrete_formulario_valida(
@@ -25,7 +28,7 @@ declare
   v_aprovadas jsonb := jsonb_build_array(
     jsonb_build_object('message', 'Olá! Aqui é a Mel Storymaker 👋', 'delayBeforeSeconds', 0),
     jsonb_build_object('message', 'Ficou alguma dúvida para finalizar o formulário? Se precisar de ajuda, pode me chamar por aqui 😊', 'delayBeforeSeconds', 2),
-    jsonb_build_object('message', 'Suas respostas estão salvas. Para continuar de onde parou:', 'delayBeforeSeconds', 3));
+    jsonb_build_object('message', 'Suas respostas estão salvas, acesse o link:', 'delayBeforeSeconds', 3));
 begin
   return coalesce(
     v_link ~ ('^https://[^[:space:]/?#@]+/continuar/' || p_lead_id::text || '$')
@@ -41,17 +44,23 @@ revoke execute on function public.sequencia_lembrete_formulario_valida(jsonb, uu
   from anon, authenticated, public;
 grant execute on function public.sequencia_lembrete_formulario_valida(jsonb, uuid, text) to service_role;
 
--- Nao inventa copy para o legado nem altera fatos de envio ja iniciado/final.
--- NULL permanece aceito apenas por compatibilidade dos registros anteriores;
--- todas as RPCs recusam claim/started de lembrete sem snapshot valido.
+-- Snapshots antigos nao voltam ao circuito de envio. Nao reescrever texto,
+-- sequencia ou carimbos historicos. Um envio antigo iniciado fica indeterminado
+-- com o MESMO token, para aceitar apenas o ACK tardio, sem continuar a sequencia.
 update public.whatsapp_outbox set estado = 'cancelado',
-  lease_token = null, lease_ate = null, ultimo_codigo = 'tipo_legado_nao_suportado'
-  where tipo = 'lembrete_formulario_24h' and sequencia is null
-    and estado in ('pendente', 'reservado');
-alter table public.whatsapp_outbox drop constraint if exists whatsapp_outbox_sequencia_check;
+  lease_token = null, lease_ate = null, ultimo_codigo = 'copy_lembrete_substituida'
+  where tipo = 'lembrete_formulario_24h' and estado in ('pendente', 'reservado')
+    and not public.sequencia_lembrete_formulario_valida(sequencia, lead_id, mensagem);
+update public.whatsapp_outbox set estado = 'indeterminado',
+  ultimo_codigo = 'copy_lembrete_substituida'
+  where tipo = 'lembrete_formulario_24h' and estado = 'enviando'
+    and not public.sequencia_lembrete_formulario_valida(sequencia, lead_id, mensagem);
+-- Somente a copy atual e aceita em qualquer estado ativo. A excecao e apenas
+-- historica/terminal: nao torna a copy antiga valida para INSERT/claim/started.
 alter table public.whatsapp_outbox add constraint whatsapp_outbox_sequencia_check check (
   (tipo = 'confirmacao_recebimento' and sequencia is null)
-  or (tipo = 'lembrete_formulario_24h' and (sequencia is null
+  or (tipo = 'lembrete_formulario_24h' and (
+    estado not in ('pendente', 'reservado', 'enviando')
     or public.sequencia_lembrete_formulario_valida(sequencia, lead_id, mensagem))));
 
 -- Mesmas regras de lib/form/validacao.ts: DDD existente, fixo ou celular com 9.
@@ -136,7 +145,7 @@ begin
     p_mensagens || jsonb_build_array(jsonb_build_object('message',
       v_base || '/continuar/' || c.id::text, 'delayBeforeSeconds', 2))
   from candidatos c
-  on conflict (lead_id, tipo) do nothing;
+  on conflict (lead_id, tipo) where tipo in ('confirmacao_recebimento', 'lembrete_formulario_24h') do nothing;
   get diagnostics v_quantidade = row_count;
   return v_quantidade;
 end;

@@ -9,7 +9,7 @@ export const MENSAGENS_LEMBRETE_FORMULARIO = Object.freeze([
     message: "Ficou alguma dúvida para finalizar o formulário? Se precisar de ajuda, pode me chamar por aqui 😊",
     delayBeforeSeconds: 2,
   }),
-  Object.freeze({ message: "Suas respostas estão salvas. Para continuar de onde parou:", delayBeforeSeconds: 3 }),
+  Object.freeze({ message: "Suas respostas estão salvas, acesse o link:", delayBeforeSeconds: 3 }),
 ] as const);
 
 export type AmbienteLembreteFormulario = {

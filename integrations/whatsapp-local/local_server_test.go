@@ -74,7 +74,7 @@ func TestLocalBridgeFailsClosedForInvalidConfiguration(t *testing.T) {
 
 func TestLocalBridgeAuthenticatesEveryEndpoint(t *testing.T) {
 	handler := localTestHandler(t, nil)
-	for _, path := range []string{"/api/status", "/api/send", "/api/download"} {
+	for _, path := range []string{"/api/status", "/api/send", "/api/activity-check", "/api/download"} {
 		for _, authorization := range []string{"", "Basic " + localTestToken, "Bearer wrong", "Bearer " + localTestToken + "extra", "Bearer " + localTestToken + " "} {
 			request := localTestRequest(http.MethodGet, path, "")
 			request.Header.Del("Authorization")

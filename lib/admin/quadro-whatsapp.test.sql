@@ -115,7 +115,7 @@ declare
   v_mensagens jsonb := '[
     {"message":"Olá! Aqui é a Mel Storymaker 👋","delayBeforeSeconds":0},
     {"message":"Ficou alguma dúvida para finalizar o formulário? Se precisar de ajuda, pode me chamar por aqui 😊","delayBeforeSeconds":2},
-    {"message":"Suas respostas estão salvas. Para continuar de onde parou:","delayBeforeSeconds":3}
+    {"message":"Suas respostas estão salvas, acesse o link:","delayBeforeSeconds":3}
   ]';
 begin
   perform set_config('mel.teste_broadcast_falha','false',true);

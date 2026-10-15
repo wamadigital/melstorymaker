@@ -103,17 +103,18 @@ test("falhas nao vazam erro/credenciais; ACK inexistente nao autoriza WhatsApp",
   } finally { log.mock.restore(); }
 });
 
-test("somente header2 permite claim/started; protocolos antigos só reconciliam ACK", async () => {
-  for (const header of [null, "1", "", "02", "2,1", "3", "true", "2"]) {
+test("headers2/3 permitem claim/started; protocolos antigos só reconciliam ACK", async () => {
+  for (const header of [null, "1", "", "02", "2,1", "4", "true", "2", "3"]) {
     const { deps } = dependencias();
     const protocolos: (ProtocoloWorker | undefined)[] = [];
-    deps.reivindicar = async (protocolo) => { protocolos.push(protocolo); return job; };
+    deps.reivindicar = async (protocolo) => { protocolos.push(protocolo); return protocolo === 3 ? { ...job, tipo: "lembrete_formulario_24h" } : job; };
     deps.resultado = async (_id, resultado, protocolo) => { protocolos.push(protocolo); return resultado.outcome === "sent" ? "enviado" : "enviando"; };
     const claim = await tratarReivindicacao(req({ protocol: 2 }, `Bearer ${TOKEN}`, header), deps);
     assert.equal(claim.status, 200);
-    assert.equal((await claim.json()).active, header === "2");
-    assert.equal((await tratarResultado(req({ leaseToken: LEASE, outcome: "started" }, `Bearer ${TOKEN}`, header), ID, deps)).status, header === "2" ? 200 : 409);
-    assert.deepEqual(protocolos, header === "2" ? [2, 2] : []);
+    const ativo = header === "2" || header === "3";
+    assert.equal((await claim.json()).active, ativo);
+    assert.equal((await tratarResultado(req({ leaseToken: LEASE, outcome: "started" }, `Bearer ${TOKEN}`, header), ID, deps)).status, ativo ? 200 : 409);
+    assert.deepEqual(protocolos, ativo ? [Number(header), Number(header)] : []);
     assert.equal((await tratarResultado(req({ leaseToken: LEASE, outcome: "sent" }, `Bearer ${TOKEN}`, header), ID, deps)).status, 200);
     assert.equal((await tratarResultado(req({ leaseToken: LEASE, outcome: "started", protocol: 2 }, `Bearer ${TOKEN}`, header), ID, deps)).status, 400);
   }

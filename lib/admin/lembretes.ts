@@ -1,4 +1,5 @@
 import type { Lead, Status } from "@/lib/form/types";
+import type { DisparoWhatsApp } from "@/lib/admin/tipos";
 
 /**
  * Cobranca de quem recebeu a proposta e sumiu.
@@ -14,10 +15,11 @@ import type { Lead, Status } from "@/lib/form/types";
  * A cobranca vive em DUAS colunas desde 07/10/2026: "Enviado" e "Esfriou". O
  * lead fica no maximo uma semana em "Enviado" e vai sozinho para "Esfriou"
  * (`lib/admin/esfriar.ts` -- a unica transicao automatica do sistema); la
- * aparecem o "Relembrar cliente" e, aos 30 dias, a "Ultima tentativa".
+ * aparecem o "Relembrar cliente" e, aos 30 dias, a "Ultima tentativa" se o
+ * primeiro lembrete foi confirmado pelo WhatsApp para a proposta vigente.
  *
- * Este modulo so DIZ em que ponto o lead esta. Quem manda a mensagem, marca o
- * lembrete e move o cartao para "Lead perdido" e a Mel, um clique de cada vez.
+ * Este modulo só descreve o cartão. A Mel solicita o envio com um clique;
+ * o worker verifica interação recente e confirma o envio antes de carimbar.
  */
 
 export const DIAS_LEMBRETE_1 = 7;
@@ -44,7 +46,9 @@ export const SEM_LEMBRETE: EstadoLembrete = {
   cobrado: null,
 };
 
-type CamposLembrete = Pick<Lead, "enviado_em" | "lembrete_7_em" | "lembrete_30_em">;
+type CamposLembrete = Pick<Lead, "enviado_em" | "lembrete_7_em" | "lembrete_30_em"> & {
+  disparos_whatsapp?: DisparoWhatsApp[];
+};
 
 /** As colunas em que existe cobranca: quem recebeu a proposta e ainda nao respondeu. */
 export const COLUNAS_COM_COBRANCA = ["enviado", "esfriou"] as const satisfies readonly Status[];
@@ -89,20 +93,24 @@ export function estadoLembrete(
   if (!temCobranca(coluna) || !lead.enviado_em) return SEM_LEMBRETE;
 
   const dias = diasCorridos(lead.enviado_em, agoraMs);
-  // Reenviar a proposta reinicia o relógio. Os carimbos ficam no banco como
-  // histórico, mas só uma cobrança do envio vigente pode silenciar o cartão.
+  // A marcação manual antiga não prova um envio pelo MCP. O histórico conserva
+  // esses carimbos, mas a nova sequência só avança com um ACK real do worker.
+  // Ambos os carimbos de revisão vêm do mesmo banco. Comparar o texto preserva
+  // microssegundos que Date.parse truncaria. ACK tardio de outra revisão não
+  // satisfaz o pré-requisito, mesmo quando chegou depois da proposta atual.
   const enviadoMs = Date.parse(lead.enviado_em);
-  const nesteEnvio = (carimbo: string | null) =>
-    !!carimbo && Number.isFinite(enviadoMs) && Date.parse(carimbo) >= enviadoMs;
-  const cobrado7 = nesteEnvio(lead.lembrete_7_em);
-  const cobrado30 = nesteEnvio(lead.lembrete_30_em);
+  const nesteEnvio = (tipo: DisparoWhatsApp["tipo"]) => Number.isFinite(enviadoMs) &&
+    (lead.disparos_whatsapp ?? []).some((disparo) => disparo.tipo === tipo &&
+      disparo.proposta_enviado_em === lead.enviado_em &&
+      Date.parse(disparo.enviado_em) >= enviadoMs && Date.parse(disparo.enviado_em) <= agoraMs);
+  const cobrado7 = nesteEnvio("lembrete_proposta_7d");
+  const cobrado30 = nesteEnvio("lembrete_proposta_30d");
   const cobrado: Marco | null = cobrado30 ? 30 : cobrado7 ? 7 : null;
 
-  // A ordem importa: aos 40 dias o marco e 30 mesmo que os 7 nunca tenham sido
-  // cobrados. Cobrar "faz uma semana" em cima de um lead de mes e meio seria
-  // pior do que nao cobrar.
+  // Mesmo aos 40 dias, o primeiro lembrete vem antes da última tentativa.
+  // Nenhum dos textos afirma há quantos dias a proposta foi enviada.
   const marco: Marco | null =
-    dias >= DIAS_LEMBRETE_2 ? 30 : dias >= DIAS_LEMBRETE_1 ? 7 : null;
+    dias >= DIAS_LEMBRETE_2 && cobrado7 ? 30 : dias >= DIAS_LEMBRETE_1 ? 7 : null;
 
   const jaCobrado = marco === 30 ? cobrado30 : marco === 7 ? cobrado7 : true;
 

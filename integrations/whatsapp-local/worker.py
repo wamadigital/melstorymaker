@@ -9,8 +9,9 @@ import logging
 import os
 from pathlib import Path
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from uuid import UUID
+from urllib.parse import urlsplit
 
 import requests
 from mcp import ClientSession, StdioServerParameters
@@ -29,12 +30,30 @@ def unexpired(job: dict, now: datetime | None = None) -> bool:
 
 LEGACY_JOB_FIELDS = ("id", "leaseToken", "recipient", "message", "expiresAt")
 SEQUENCE_DELAYS = (0, 2, 3, 2)
+PROPOSAL_TYPES = {"lembrete_proposta_7d": 5, "lembrete_proposta_30d": 15}
+JOB_TYPES = {"lembrete_formulario_24h", *PROPOSAL_TYPES}
+PROPOSAL_TEXTS = {
+    "lembrete_proposta_7d": (
+        "Olá, como vai?!",
+        "Passando só para saber se você conseguiu dar uma olhadinha na proposta que te enviei.",
+        None,
+        "Se ficou alguma dúvida, me chama que eu te explico. ✨",
+    ),
+    "lembrete_proposta_30d": (
+        "Oi! Passando só para saber se você conseguiu dar uma olhadinha na proposta que te enviei. 🤍",
+        None,
+        "Se ainda fizer sentido, é só me chamar que a gente conversa.",
+        "Se não for o momento, me avise por gentileza, para que eu possa me organizar por aqui 🙏",
+        "Desde já, agradeço ✨",
+    ),
+}
+PROPOSAL_DELAYS = {"lembrete_proposta_7d": (0, 2, 3, 2), "lembrete_proposta_30d": (0, 4, 4, 3, 5)}
 
 
 def message_parts(job: dict) -> list[dict]:
     """Valida o contrato inteiro antes de autorizar qualquer chamada de envio."""
     if not isinstance(job, dict) or not set(LEGACY_JOB_FIELDS).issubset(job) or set(job) - {
-        *LEGACY_JOB_FIELDS, "messagesSequence"
+        *LEGACY_JOB_FIELDS, "messagesSequence", "tipo"
     }:
         raise ValueError("invalid_job")
     for field in ("id", "leaseToken"):
@@ -63,16 +82,32 @@ def message_parts(job: dict) -> list[dict]:
 
     if not valid_text(job["message"]):
         raise ValueError("invalid_job")
+    kind = job.get("tipo")
+    if kind is not None and kind not in JOB_TYPES:
+        raise ValueError("invalid_job")
     if "messagesSequence" not in job:
+        if kind is not None:
+            raise ValueError("invalid_sequence")
         return [{"message": job["message"], "delayBeforeSeconds": 0}]
     sequence = job["messagesSequence"]
-    if not isinstance(sequence, list) or len(sequence) != len(SEQUENCE_DELAYS):
+    delays = PROPOSAL_DELAYS.get(kind, SEQUENCE_DELAYS)
+    if not isinstance(sequence, list) or len(sequence) != len(delays):
         raise ValueError("invalid_sequence")
-    for part, delay in zip(sequence, SEQUENCE_DELAYS):
+    for index, (part, delay) in enumerate(zip(sequence, delays)):
         if not isinstance(part, dict) or set(part) != {"message", "delayBeforeSeconds"} or not valid_text(part["message"]):
             raise ValueError("invalid_sequence")
         if type(part["delayBeforeSeconds"]) is not int or part["delayBeforeSeconds"] != delay:
             raise ValueError("invalid_sequence")
+        if kind in PROPOSAL_TEXTS:
+            expected = PROPOSAL_TEXTS[kind][index]
+            if expected is not None:
+                if part["message"] != expected:
+                    raise ValueError("invalid_sequence")
+            else:
+                url = urlsplit(part["message"])
+                if (url.scheme != "https" or not url.hostname or url.username or url.password
+                        or part["message"].strip() != part["message"] or any(c.isspace() for c in part["message"])):
+                    raise ValueError("invalid_sequence")
     return sequence
 
 
@@ -92,6 +127,8 @@ class Ledger:
             value.extend(["messages_sequence_v2", [
                 [part["message"], part["delayBeforeSeconds"]] for part in job["messagesSequence"]
             ]])
+        if "tipo" in job:
+            value.extend(["job_type_v3", job["tipo"]])
         return hashlib.sha256(json.dumps(value, ensure_ascii=False).encode()).hexdigest()
 
     def get(self, job: dict) -> str | None:
@@ -130,7 +167,7 @@ class API:
         self.session = requests.Session()
         self.session.trust_env = False
         self.session.headers["Authorization"] = "Bearer " + token
-        self.session.headers["X-Mel-Worker-Protocol"] = "2"
+        self.session.headers["X-Mel-Worker-Protocol"] = "3"
 
     async def post(self, path: str, body: dict) -> dict:
         def request():
@@ -140,12 +177,20 @@ class API:
         return await asyncio.to_thread(request)
 
     async def claim(self) -> dict:
-        return await self.post("/api/integracoes/whatsapp/reivindicar", {})
+        response = await self.post("/api/integracoes/whatsapp/reivindicar", {})
+        if response.get("protocolVersion") != 3:
+            raise ValueError("invalid_worker_protocol")
+        job = response.get("job")
+        if job is not None and (not isinstance(job, dict) or job.get("tipo") not in JOB_TYPES):
+            raise ValueError("invalid_job")
+        return response
 
-    async def result(self, job: dict, outcome: str, code: str | None = None) -> dict:
+    async def result(self, job: dict, outcome: str, code: str | None = None, activity: dict | None = None) -> dict:
         body = {"leaseToken": job["leaseToken"], "outcome": outcome}
         if code:
             body["code"] = code
+        if activity is not None:
+            body["activity"] = activity
         return await self.post("/api/integracoes/whatsapp/" + job["id"] + "/resultado", body)
 
 
@@ -168,11 +213,52 @@ class LocalMCP:
         return await asyncio.to_thread(check)
 
     async def send(self, job: dict) -> bool:
-        result = await asyncio.wait_for(self.session.call_tool("send_message", {"recipient": job["recipient"], "message": job["message"]}), timeout=35)
+        arguments = {"recipient": job["recipient"], "message": job["message"]}
+        if job.get("tipo") in PROPOSAL_TYPES:
+            arguments["automation_job_id"] = job["id"]
+        result = await asyncio.wait_for(self.session.call_tool("send_message", arguments), timeout=35)
         if result.isError or not result.content:
             return False
         value = json.loads(result.content[0].text)
         return value.get("success") is True
+
+    async def activity(self, job: dict) -> dict:
+        def check():
+            direct = requests.Session()
+            direct.trust_env = False
+            token = (STATE / "bridge-token").read_text().strip()
+            try:
+                response = direct.post("http://127.0.0.1:18281/api/activity-check",
+                    headers={"Authorization": "Bearer " + token},
+                    json={"recipient": job["recipient"], "jobId": job["id"], "days": PROPOSAL_TYPES[job["tipo"]]},
+                    timeout=(3, 5), allow_redirects=False)
+                response.raise_for_status()
+                return response.json()
+            finally:
+                direct.close()
+        return await asyncio.to_thread(check)
+
+
+def verified_activity(value: object, days: int, now: datetime) -> dict | None:
+    """Bridge metadata must prove a complete, fresh window before every part."""
+    if not isinstance(value, dict) or value.get("allowed") is not True:
+        return None
+    proof = value.get("activity")
+    if not isinstance(proof, dict) or set(proof) != {"checkedAt", "coverageStartedAt", "lastInteractionAt", "complete"} or proof.get("complete") is not True:
+        return None
+    try:
+        checked = datetime.fromisoformat(proof["checkedAt"].replace("Z", "+00:00"))
+        coverage = datetime.fromisoformat(proof["coverageStartedAt"].replace("Z", "+00:00"))
+        last = None if proof["lastInteractionAt"] is None else datetime.fromisoformat(proof["lastInteractionAt"].replace("Z", "+00:00"))
+        if any(timestamp.tzinfo is None for timestamp in (checked, coverage, *([] if last is None else [last]))):
+            return None
+        age = (now - checked).total_seconds()
+        cutoff = checked - timedelta(days=days)
+        if age < -5 or age > 30 or coverage > cutoff or (last is not None and last > cutoff):
+            return None
+    except (AttributeError, ValueError, TypeError, OverflowError):
+        return None
+    return proof
 
 
 async def report_ack(api, ledger: Ledger, ack: dict) -> bool:
@@ -221,8 +307,26 @@ async def process(api, mcp, ledger: Ledger, job: dict, *, sleep=asyncio.sleep, c
     if not ready:
         await api.result(job, "failed", "bridge_disconnected")
         return "not_connected"
+    async def activity_gate() -> tuple[dict | None, str | None]:
+        days = PROPOSAL_TYPES.get(job.get("tipo"))
+        if days is None:
+            return None, None
+        try:
+            value = await mcp.activity(job)
+            proof = verified_activity(value, days, clock() if clock is not None else datetime.now(timezone.utc))
+            if proof is not None:
+                return proof, None
+            code = "inactivity_recent" if isinstance(value, dict) and value.get("code") == "inactivity_recent" else "inactivity_unverified"
+            return None, code
+        except Exception:
+            return None, "inactivity_unverified"
+
+    proof, blocked = await activity_gate()
+    if blocked is not None:
+        await api.result(job, "failed", blocked)
+        return blocked
     # Se o servidor não confirmar a elegibilidade, não chama WhatsApp.
-    accepted = await api.result(job, "started")
+    accepted = await api.result(job, "started", activity=proof) if proof is not None else await api.result(job, "started")
     if accepted.get("accepted") is not True:
         return "rejected"
     # O registro antecede o envio. Crash/timeout não permitem repetir o envio.
@@ -241,11 +345,17 @@ async def process(api, mcp, ledger: Ledger, job: dict, *, sleep=asyncio.sleep, c
                     sent = False
                     break
                 # Revalida flag, coluna, telefone, corte e lease antes de cada parte.
-                accepted = await api.result(job, "started")
+                proof, blocked = await activity_gate()
+                if blocked is not None:
+                    sent = False
+                    break
+                accepted = await api.result(job, "started", activity=proof) if proof is not None else await api.result(job, "started")
                 if accepted.get("accepted") is not True or not still_unexpired():
                     sent = False
                     break
             single = {field: job[field] for field in LEGACY_JOB_FIELDS}
+            if "tipo" in job:
+                single["tipo"] = job["tipo"]
             single["message"] = part["message"]
             sent = await mcp.send(single) is True
     except asyncio.CancelledError:

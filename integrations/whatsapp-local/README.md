@@ -1,25 +1,19 @@
 # WhatsApp local da Mel
 
-**Interrompido em 15/10/2026 por determinação do owner:** confirmação ao concluir
-o formulário removida do submit. `WHATSAPP_AUTOMACAO_ATIVA=false` em produção e
-no ambiente local; worker parado, `enabled:false` e início pelo launchd desativado.
-O lembrete de formulário também fica pausado enquanto o serviço estiver parado.
-Não reativar nem tratar autorização de instalação como aprovação de mensagem.
-Preservar os registros históricos de envios; não apagar confirmações já enviadas.
+**Situação da publicação de 15/10/2026:** confirmação ao concluir formulário
+permanece removida. Habilitados somente os lembretes de proposta por clique
+nos botões de 7/30 dias. Flag própria do formulário permanece desligada.
+O worker local processa a fila manual e o observador registra a cobertura;
+ambos dependem do Mac ligado e conectado. Preservar histórico e sessão.
 
 Instalação no Mac Apple Silicon do Henrique, autorizada em 14/10/2026.
 O sistema continua na Vercel; o Mac busca a fila privada por HTTPS e envia pelo
 MCP. Não existe túnel, porta pública ou credencial de banco entregue ao worker.
 
-A única automação aos leads permitida é o lembrete de formulário incompleto:
-três textos exatos de `MENSAGENS_LEMBRETE_FORMULARIO`, pausas 2/3/2 segundos e
-link individual sozinho na quarta mensagem. A confirmação antiga foi excluída
-do código de envio. Aplicar manualmente `supabase/whatsapp-somente-lembrete.sql`
-depois dos SQLs anteriores: a RPC antiga não registra nada e outros tipos não
-podem ficar pendentes/reservados/enviando. Registros históricos permanecem.
-A API não usa fallback para confirmação nem aceita texto diferente do aprovado.
-Os envios continuam pausados até ordem explícita para retomar.
-
+Os envios autorizados são o lembrete automático de formulário incompleto e os
+lembretes de proposta acionados pelo botão da Mel. Copy e pausas são fechadas;
+a confirmação de recebimento permanece removida. Flags, histórico de envios e
+sessão não devem ser alterados para executar testes. Somente os lembretes de proposta por clique são habilitados nesta publicação.
 Proposta exige aprovação da Mel e permanece no fluxo atual do painel.
 
 | Componente | Local |
@@ -107,14 +101,14 @@ continua precisando estar ligado, acordado e conectado.
 ## Ativação
 
 1. Aplicar `supabase/whatsapp-outbox.sql` manualmente no SQL Editor da conta da Mel.
-2. Publicar as rotas e o gatilho da conclusão, mantendo a flag desativada até validar.
+2. Publicar as rotas privadas, mantendo todas as flags desativadas até validar.
 3. Configurar `WHATSAPP_WORKER_TOKEN` na Vercel com o segredo privado de
    `.whatsapp-local/state/worker-token`; nunca usar `NEXT_PUBLIC_`.
 4. Conectar o WhatsApp da Mel e confirmar o status autenticado do bridge.
 5. Ativar `WHATSAPP_AUTOMACAO_ATIVA=true` no servidor e `enabled:true` em
    `.whatsapp-local/state/worker-config.json`, então iniciar o worker.
 
-A flag desativada bloqueia novas confirmações e novos inícios de envio.
+A flag desativada bloqueia reservas e novos inícios de envio.
 Resultados de trabalhos já iniciados ainda podem ser reconciliados.
 Leads antigos não são importados, e não há backfill.
 
@@ -126,8 +120,13 @@ Texto e sequência definidos pelo owner em 15/10/2026:
 |---|---|---|
 | 1 | Olá! Aqui é a Mel Storymaker 👋 | Nenhuma |
 | 2 | Ficou alguma dúvida para finalizar o formulário? Se precisar de ajuda, pode me chamar por aqui 😊 | 2 segundos após o sucesso da parte 1 |
-| 3 | Suas respostas estão salvas. Para continuar de onde parou: | 3 segundos após o sucesso da parte 2 |
+| 3 | Suas respostas estão salvas, acesse o link: | 3 segundos após o sucesso da parte 2 |
 | 4 | Link individual `/continuar/{id}`, sozinho | 2 segundos após o sucesso da parte 3 |
+
+A terceira mensagem foi ajustada pelo owner em 15/10/2026. Para instalações
+existentes, aplicar manualmente `supabase/whatsapp-lembrete-copy.sql` no banco
+da Mel junto da publicação do backend. O histórico mantém o texto enviado;
+sequências antigas ainda pendentes são canceladas, sem reenvio automático.
 
 O prazo conta da criação do lead, quando ele deixa o WhatsApp e avança na
 primeira pergunta. A primeira coluna é `Novo` (`incompleto`); nenhum status
@@ -138,20 +137,16 @@ idade, telefone e ativação. O link retoma as respostas salvas da própria pess
 Há um único lembrete por lead, composto das quatro partes, separado da
 confirmação de conclusão. As partes e as pausas são um snapshot na fila. O envio
 não muda status nem carimbos manuais de “já chamei”, e não exige e-mail ou nome.
-O worker busca a fila a cada 60 segundos e prioriza confirmações. O Mac precisa
+O worker busca os itens elegíveis da fila a cada 60 segundos. O Mac precisa
 estar acordado e conectado. As pausas começam após o retorno de sucesso da
 mensagem anterior; as verificações e a rede também ocupam tempo.
 
-O worker anuncia `X-Mel-Worker-Protocol: 2`; só esse protocolo recebe sequências
-pelas RPCs V3. Clientes e backends antigos usam V1/V2, que entregam apenas
-confirmações e aceitam ACKs tardios de ambos os tipos. A sequência reserva um
-único job; o primeiro `started` fixa um lease de 180 segundos, revalidado nas
-partes seguintes. O ledger registra o início antes da primeira mensagem. Falha,
-timeout, interrupção ou recusa encerra a sequência como indeterminada: não há
-retomada nem repetição automática das partes. ACK perdido é reconciliado sem
-reenviar mensagens. `sent` exige o sucesso das quatro chamadas ao MCP; não é
-confirmação de entrega ou leitura no aparelho do cliente.
-
+O worker atualizado anuncia `X-Mel-Worker-Protocol: 3`; o backend preserva
+protocolo 2 apenas para formulário. O protocolo 3 permite também as duas
+sequências de proposta, com comprovação local de inatividade. Falha, timeout,
+interrupção ou recusa após o início encerra a sequência como indeterminada,
+sem repetição de partes. Um ACK perdido é reconciliado sem reenviar mensagens.
+`sent` exige sucesso de todas as chamadas ao MCP, sem afirmar leitura no celular.
 Para ativar, aplicar manualmente `supabase/whatsapp-lembrete-formulario.sql`
 no SQL Editor, atualizar o worker canônico em Application Support e publicar o
 backend. Configurar `WHATSAPP_LEMBRETE_FORMULARIO_ATIVO=true` e
@@ -174,9 +169,51 @@ reenvio automático. O worker pode reenviar o ACK ao servidor sem enviar outra
 mensagem. Um retorno de envio confirma aceitação pelo cliente do WhatsApp;
 não confirma leitura nem entrega ao destinatário.
 
-O registro na fila é auxiliar e ocorre após concluir o formulário. Falha ou
-crash entre a conclusão e o registro pode perder essa confirmação; o formulário
-permanece concluído. A fila não substitui a fila da Meta nem o CallMeBot interno.
+O formulário não enfileira confirmação de recebimento. O primeiro lembrete é
+preparado apenas para formulários elegíveis após o corte de ativação; os dois
+lembretes de proposta nascem exclusivamente de um clique autenticado da Mel.
+A fila não substitui a integração CRM da Meta nem o CallMeBot interno.
+
+## Lembretes de proposta por clique
+
+Aplicar manualmente `supabase/whatsapp-lembretes-proposta.sql` depois da
+atualização da terceira frase (`whatsapp-lembrete-copy.sql`). Atualizar bridge,
+MCP e worker da cópia canônica antes de ativar `WHATSAPP_LEMBRETE_PROPOSTA_ATIVO`.
+O preparo do código não instala o runtime nem ativa qualquer flag.
+
+Em 15/10/2026, o observador e o worker atualizados foram instalados no runtime
+canônico, com a sessão preservada e o bridge autenticado. A cobertura começou
+às 10h28 de São Paulo. O worker desta publicação atende somente a fila criada pelos botões. Os SQLs
+incrementais são aplicados na conta da Mel antes da publicação do backend;
+a observação local, sozinha, não ativa mensagens.
+
+| Fluxo | Prazo desde a proposta | Silêncio mínimo | Sequência |
+|---|---|---|---|
+| Relembrar cliente | 7 dias | 5 dias | 4 partes; pausas 2/3/2s |
+| Última tentativa | 30 dias e primeiro lembrete confirmado para a mesma proposta | 15 dias | 5 partes; pausas 4/4/3/5s |
+| Formulário em Novo | mais de 24h desde criação, após o corte | não exige histórico de conversa | 4 partes; pausas 2/3/2s |
+
+O primeiro lembrete conta como interação para o segundo. Se for enviado no dia
+25, a última tentativa aguarda pelo menos até o dia 40. Nenhum relógio dispara
+essas cobranças por conta própria: cada tentativa exige o clique no card. O botão
+faz a solicitação somente após o prazo de 7/30 dias e fica bloqueado durante
+a fila/envio. Depois do ACK completo, permanece visível como `Enviado`,
+desabilitado. O bloqueio também existe no banco para o mesmo lembrete da mesma
+proposta: outra aba, clique duplo e POST direto não criam um segundo disparo.
+
+O bridge antigo não registra conversas. O novo observador guarda somente hashes
+privados dos identificadores e horários de mensagens/chamadas individuais,
+sem texto, mídia ou nomes. A cobertura começa depois da conexão e sincronização
+de mensagens offline; é necessário observar continuamente a janela inteira.
+Reinício, desconexão, suspensão do Mac ou identidade PN/LID sem correspondência
+bloqueiam o envio. Não assumir silêncio com histórico vazio ou incompleto.
+
+A verificação ocorre antes de cada parte. Só as partes da própria tentativa são
+excluídas da consulta; resposta do lead, mensagem da Mel em outro aparelho ou
+outro disparo interrompem a sequência. Falha depois de começar não reenvia nada.
+Se a primeira verificação bloquear antes de começar, outro clique pode tentar
+de novo quando houver cobertura e silêncio suficientes. Não existe retentativa
+automática para falta de histórico ou interação recente.
 
 ## Versões e verificações
 

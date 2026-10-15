@@ -45,7 +45,7 @@ declare
   v_mensagens jsonb := '[
     {"message":"Olá! Aqui é a Mel Storymaker 👋","delayBeforeSeconds":0},
     {"message":"Ficou alguma dúvida para finalizar o formulário? Se precisar de ajuda, pode me chamar por aqui 😊","delayBeforeSeconds":2},
-    {"message":"Suas respostas estão salvas. Para continuar de onde parou:","delayBeforeSeconds":3}
+    {"message":"Suas respostas estão salvas, acesse o link:","delayBeforeSeconds":3}
   ]';
   v_prefixo text := (v_mensagens #>> '{0,message}') || E'\n\n'
     || (v_mensagens #>> '{1,message}') || E'\n\n'
@@ -286,7 +286,7 @@ declare
   v_mensagens jsonb := '[
     {"message":"Olá! Aqui é a Mel Storymaker 👋","delayBeforeSeconds":0},
     {"message":"Ficou alguma dúvida para finalizar o formulário? Se precisar de ajuda, pode me chamar por aqui 😊","delayBeforeSeconds":2},
-    {"message":"Suas respostas estão salvas. Para continuar de onde parou:","delayBeforeSeconds":3}
+    {"message":"Suas respostas estão salvas, acesse o link:","delayBeforeSeconds":3}
   ]';
   v_job public.whatsapp_outbox%rowtype;
   v_retorno text;
@@ -362,20 +362,27 @@ begin
   end;
   delete from public.whatsapp_outbox where lead_id=v_id;
 
-  -- NULL legado e preservado para fatos/ACK, mas nunca chega a um worker.
+  -- NULL legado e preservado somente no historico, nunca em um estado ativo.
+  begin
+    insert into public.whatsapp_outbox
+      (lead_id,tipo,ocorrido_em,expira_em,destinatario,mensagem)
+      values(v_id,'lembrete_formulario_24h',v_agora,v_agora+interval '24 hours',
+        '5519988887777','Snapshot textual legado');
+    raise exception 'CHECK aceitou snapshot NULL ativo';
+  exception when check_violation then null;
+  end;
   insert into public.whatsapp_outbox
-    (lead_id,tipo,ocorrido_em,expira_em,destinatario,mensagem)
+    (lead_id,tipo,ocorrido_em,expira_em,destinatario,mensagem,estado,lease_token,iniciado_em)
     values(v_id,'lembrete_formulario_24h',v_agora,v_agora+interval '24 hours',
-      '5519988887777','Snapshot textual legado') returning * into v_job;
+      '5519988887777','Snapshot textual legado','indeterminado',gen_random_uuid(),v_agora)
+    returning * into v_job;
   if exists(select 1 from public.reivindicar_whatsapp_v3(true,v_corte))
     or exists(select 1 from public.reivindicar_whatsapp_v2(true,v_corte)) then
     raise exception 'Worker recebeu lembrete NULL legado';
   end if;
-  update public.whatsapp_outbox set estado='enviando',lease_token=gen_random_uuid(),
-    lease_ate=v_agora+interval '90 seconds',iniciado_em=v_agora where id=v_job.id returning * into v_job;
   v_retorno := public.resultado_whatsapp_v3(v_job.id,v_job.lease_token,'started',null,true,v_corte);
   if v_retorno is not null
-    or (select estado from public.whatsapp_outbox where id=v_job.id) is distinct from 'enviando' then
+    or (select estado from public.whatsapp_outbox where id=v_job.id) is distinct from 'indeterminado' then
     raise exception 'Started alterou ou autorizou legado NULL iniciado';
   end if;
   v_retorno := public.resultado_whatsapp_v2(v_job.id,v_job.lease_token,'sent',null,true,v_corte);

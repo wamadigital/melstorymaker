@@ -8,7 +8,7 @@ export type EntradaHistoricoWhatsApp = {
   tipo: TipoHistoricoWhatsApp;
   rotulo: string;
   enviadoEm: string;
-  origem: "automatico" | "manual";
+  origem: "automatico" | "manual" | "sistema";
 };
 
 type CamposHistorico = Pick<LeadCartao,
@@ -18,6 +18,8 @@ type CamposHistorico = Pick<LeadCartao,
 const ROTULOS: Record<TipoHistoricoWhatsApp, string> = {
   confirmacao_recebimento: "Confirmação de recebimento",
   lembrete_formulario_24h: "Finalize o formulário",
+  lembrete_proposta_7d: "Lembrete após 7 dias",
+  lembrete_proposta_30d: "Lembrete após 30 dias",
   lembrete_7_dias: "Lembrete após 7 dias",
   lembrete_30_dias: "Lembrete após 30 dias",
   contato_inicial: "Contato inicial",
@@ -29,11 +31,12 @@ export function ehDataEnvioWhatsApp(valor: unknown): valor is string {
 }
 
 export function ehTipoDisparoWhatsApp(valor: unknown): valor is DisparoWhatsApp["tipo"] {
-  return valor === "confirmacao_recebimento" || valor === "lembrete_formulario_24h";
+  return valor === "confirmacao_recebimento" || valor === "lembrete_formulario_24h" ||
+    valor === "lembrete_proposta_7d" || valor === "lembrete_proposta_30d";
 }
 
 /**
- * Envios automáticos confirmados e afirmações manuais da Mel. Não usa a coluna
+ * Envios confirmados pelo worker e afirmações manuais da Mel. Não usa a coluna
  * atual nem o envio da proposta: reorganizar o quadro não apaga um contato feito.
  */
 export function historicoWhatsApp(lead: CamposHistorico): EntradaHistoricoWhatsApp[] {
@@ -49,10 +52,18 @@ export function historicoWhatsApp(lead: CamposHistorico): EntradaHistoricoWhatsA
   };
 
   for (const disparo of lead.disparos_whatsapp ?? []) {
-    if (disparo && ehTipoDisparoWhatsApp(disparo.tipo)) adicionar(disparo.tipo, disparo.enviado_em, "automatico");
+    if (disparo && ehTipoDisparoWhatsApp(disparo.tipo)) {
+      const origem = disparo.tipo === "lembrete_proposta_7d" || disparo.tipo === "lembrete_proposta_30d"
+        ? "sistema" : "automatico";
+      adicionar(disparo.tipo, disparo.enviado_em, origem);
+    }
   }
-  adicionar("lembrete_7_dias", lead.lembrete_7_em, "manual");
-  adicionar("lembrete_30_dias", lead.lembrete_30_em, "manual");
+  // O ACK também carimba o lead. Esse mesmo instante não é outro envio manual.
+  const mesmoEnvio = (tipo: DisparoWhatsApp["tipo"], carimbo: unknown) => ehDataEnvioWhatsApp(carimbo) &&
+    lead.disparos_whatsapp?.some((disparo) => disparo.tipo === tipo && ehDataEnvioWhatsApp(disparo.enviado_em) &&
+      Date.parse(disparo.enviado_em) === Date.parse(carimbo));
+  if (!mesmoEnvio("lembrete_proposta_7d", lead.lembrete_7_em)) adicionar("lembrete_7_dias", lead.lembrete_7_em, "manual");
+  if (!mesmoEnvio("lembrete_proposta_30d", lead.lembrete_30_em)) adicionar("lembrete_30_dias", lead.lembrete_30_em, "manual");
   adicionar("contato_inicial", lead.chamado_whatsapp_em, "manual");
 
   return [...porTipo.values()].sort((a, b) => Date.parse(b.enviadoEm) - Date.parse(a.enviadoEm) ||

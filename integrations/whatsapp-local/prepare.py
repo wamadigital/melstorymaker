@@ -20,6 +20,8 @@ APP_FILES = (
     "whatsapp-bridge/main.go",
     "whatsapp-bridge/local_server.go",
     "whatsapp-bridge/local_server_test.go",
+    "whatsapp-bridge/local_activity.go",
+    "whatsapp-bridge/local_activity_test.go",
     "whatsapp-bridge/go.mod",
     "whatsapp-bridge/go.sum",
     "whatsapp-mcp-server/main.py",
@@ -53,7 +55,7 @@ def _artifact_hashes(app: Path) -> dict[str, str]:
 def _input_hashes() -> dict[str, str]:
     directory = Path(__file__).resolve().parent
     names = [
-        "prepare.py", "local_server.go", "local_server_test.go",
+        "prepare.py", "local_server.go", "local_server_test.go", "local_activity.go", "local_activity_test.go",
         "dependencies/go.mod", "dependencies/go.sum",
         "dependencies/pyproject.toml", "dependencies/uv.lock",
     ]
@@ -159,6 +161,16 @@ def _patch_app(app: Path) -> None:
     go = replace_once(go, 'switch v := evt.(type) {\n\t\tcase *events.Message:\n\t\t\t// Process regular messages\n\t\t\thandleMessage(client, messageStore, v, logger)\n\n\t\tcase *events.HistorySync:\n\t\t\t// Process history sync events\n\t\t\thandleHistorySync(client, messageStore, v, logger)', '''switch evt.(type) {
 		case *events.Message, *events.HistorySync:
 			// Envio para o CRM não precisa guardar conversas ou histórico pessoal.''')
+    go = replace_once(go, '\t// Setup event handling for messages and history sync', '''	stopActivity, err := startLocalActivityRecorder(client, os.Getenv("MEL_WHATSAPP_BRIDGE_TOKEN"))
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "Não foi possível iniciar metadados de interação")
+		return
+	}
+	defer stopActivity()
+
+	// Setup event handling for messages and history sync''')
+    go = replace_once(go, '\tclient.AddEventHandler(func(evt interface{}) {', '''	client.AddEventHandler(func(evt interface{}) {
+		recordLocalActivityEvent(client, evt)''')
     go = replace_once(go, 'startRESTServer(client, messageStore, 8080)', 'startLocalRESTServer(client, messageStore, 18281)')
     go = replace_once(go, '\t\tqrChan, _ := client.GetQRChannel(context.Background())', '''		if os.Getenv("MEL_WHATSAPP_PAIRING") != "1" {
 			fmt.Fprintln(os.Stderr, "Conecte o WhatsApp pelo comando de pareamento")
@@ -180,7 +192,7 @@ def _patch_app(app: Path) -> None:
     go = replace_once(go, '\t"github.com/mdp/qrterminal"', '\t"github.com/mdp/qrterminal"\n\t"rsc.io/qr"')
     go = replace_once(go, '\t// Wait a moment for connection to stabilize', '\t_ = os.Remove("pairing.png")\n\n\t// Wait a moment for connection to stabilize')
     go_file.write_text(aplicar_compatibilidade_go(patch_history_download(go)))
-    for name in ("local_server.go", "local_server_test.go"):
+    for name in ("local_server.go", "local_server_test.go", "local_activity.go", "local_activity_test.go"):
         shutil.copyfile(Path(__file__).parent / name, app / "whatsapp-bridge" / name)
     for name in ("go.mod", "go.sum"):
         shutil.copyfile(Path(__file__).parent / "dependencies" / name, app / "whatsapp-bridge" / name)
@@ -202,9 +214,24 @@ def mel_tool():
             return mcp.tool()(function)
         return function
     return register''')
-    main_file.write_text(main.replace("@mcp.tool()", "@mel_tool()"))
+    main = main.replace("@mcp.tool()", "@mel_tool()")
+    main = replace_once(main, '''def send_message(
+    recipient: str,
+    message: str
+)''', '''def send_message(
+    recipient: str,
+    message: str,
+    automation_job_id: Optional[str] = None
+)''')
+    main = replace_once(main, 'whatsapp_send_message(recipient, message)', 'whatsapp_send_message(recipient, message, automation_job_id)')
+    main_file.write_text(main)
     whatsapp_file = app / "whatsapp-mcp-server/whatsapp.py"
-    whatsapp_file.write_text(patch_whatsapp(whatsapp_file.read_text()))
+    whatsapp = patch_whatsapp(whatsapp_file.read_text())
+    whatsapp = replace_once(whatsapp, 'def send_message(recipient: str, message: str)', 'def send_message(recipient: str, message: str, automation_job_id: Optional[str] = None)')
+    whatsapp = replace_once(whatsapp,
+        '            "message": message,\n        }\n        \n        response = _local_post(url, payload)',
+        '            "message": message,\n        }\n        if automation_job_id is not None:\n            payload["automation_job_id"] = automation_job_id\n        \n        response = _local_post(url, payload)')
+    whatsapp_file.write_text(whatsapp)
 
 
 def prepare() -> None:

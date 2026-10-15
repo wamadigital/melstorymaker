@@ -6,7 +6,7 @@ from pathlib import Path
 import tempfile
 from types import SimpleNamespace
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, AsyncMock
 
 import worker
 from worker import Ledger, iteration, process
@@ -21,11 +21,14 @@ class FakeAPI:
         self.fail_final = fail_final
         self.active = active
         self.starts = list(starts) if starts is not None else []
+        self.activities = []
 
-    async def result(self, job, outcome, code=None):
+    async def result(self, job, outcome, code=None, activity=None):
         self.calls.append((outcome, code))
         self.receipts.append(dict(job))
         self.trace.append(("result", outcome))
+        if activity is not None:
+            self.activities.append(deepcopy(activity))
         if outcome != "started" and self.fail_final:
             raise ConnectionError("API fictícia indisponível")
         if outcome == "started" and self.starts:
@@ -290,10 +293,10 @@ class WorkerTests(unittest.TestCase):
 
         def send(request, **kwargs):
             self.assertTrue(request.url.startswith("https://worker-ficticio.invalid/"))
-            self.assertEqual(request.headers["X-Mel-Worker-Protocol"], "2")
+            self.assertEqual(request.headers["X-Mel-Worker-Protocol"], "3")
             self.assertEqual(kwargs["allow_redirects"], False)
             requests.append(json.loads(request.body))
-            return SimpleNamespace(raise_for_status=lambda: None, json=lambda: {"accepted": True})
+            return SimpleNamespace(raise_for_status=lambda: None, json=lambda: {"accepted": True, "protocolVersion": 3})
 
         with patch.object(worker, "ORIGIN", "https://worker-ficticio.invalid"), patch.object(api.session, "send", side_effect=send):
             asyncio.run(api.claim())
@@ -506,6 +509,137 @@ class WorkerTests(unittest.TestCase):
             self.assertEqual(api.calls, [])
             self.assertEqual(mcp.calls, 0)
             self.assertIsNone(self.ledger.get(job))
+
+    def proposal(self, kind="lembrete_proposta_7d"):
+        self.now = datetime.now(timezone.utc)
+        self.sleeps = []
+        self.job["tipo"] = kind
+        self.job["expiresAt"] = (self.now + timedelta(hours=1)).isoformat()
+        self.texts = [text if text is not None else "https://proposal.invalid/proposta.pdf"
+                      for text in worker.PROPOSAL_TEXTS[kind]]
+        self.job["message"] = "\n\n".join(self.texts)
+        self.job["messagesSequence"] = [
+            {"message": text, "delayBeforeSeconds": delay}
+            for text, delay in zip(self.texts, worker.PROPOSAL_DELAYS[kind])]
+
+    def activity_proof(self):
+        return {"checkedAt": self.now.isoformat(),
+                "coverageStartedAt": (self.now - timedelta(days=16)).isoformat(),
+                "lastInteractionAt": None, "complete": True}
+
+    def proposal_mcp(self, decisions=None):
+        mcp = FakeMCP()
+        mcp.activity_calls = []
+        pending = list(decisions or [])
+        async def check(job):
+            mcp.activity_calls.append(job["id"])
+            if pending:
+                value = pending.pop(0)
+                if isinstance(value, BaseException):
+                    raise value
+                return value
+            return {"allowed": True, "activity": self.activity_proof(), "code": "inactivity_clear"}
+        mcp.activity = check
+        return mcp
+
+    def test_proposal_sequences_keep_exact_copy_delays_and_check_every_part(self):
+        for kind, delays in worker.PROPOSAL_DELAYS.items():
+            with self.subTest(kind=kind):
+                self.proposal(kind)
+                # Fresh ID per scenario: reuse would correctly reconcile instead.
+                self.job["id"] = "c350bc94-24f1-4359-9e92-eac5f1a76e4" + ("4" if kind.endswith("7d") else "5")
+                api, mcp = FakeAPI(), self.proposal_mcp()
+                self.assertEqual(self.run_sequence(api, mcp), "sent")
+                self.assertEqual([job["message"] for job in mcp.jobs], self.texts)
+                self.assertEqual(self.sleeps, list(delays[1:]))
+                self.assertEqual(len(mcp.activity_calls), len(delays))
+                self.assertEqual(len(api.activities), len(delays))
+                self.assertTrue(all(proof["complete"] for proof in api.activities))
+
+    def test_recent_or_unverified_activity_blocks_before_first_part_without_ledger(self):
+        for code in ("inactivity_recent", "inactivity_unverified"):
+            self.proposal()
+            api, mcp = FakeAPI(), self.proposal_mcp([{"allowed": False, "code": code}])
+            self.assertEqual(self.run_sequence(api, mcp), code)
+            self.assertEqual(api.calls, [("failed", code)])
+            self.assertEqual(mcp.calls, 0)
+            self.assertIsNone(self.ledger.get(self.job))
+
+    def test_new_interaction_during_pause_stops_partial_job_without_resume(self):
+        self.proposal()
+        api = FakeAPI()
+        mcp = self.proposal_mcp([
+            {"allowed": True, "activity": self.activity_proof()},
+            {"allowed": False, "code": "inactivity_recent"}])
+        self.assertEqual(self.run_sequence(api, mcp), "indeterminate")
+        self.assertEqual(mcp.calls, 1)
+        self.assertEqual(api.calls, [("started", None), ("indeterminate", None)])
+        self.assertEqual(self.run_sequence(FakeAPI(), mcp), "reconciled")
+        self.assertEqual(mcp.calls, 1)
+
+    def test_activity_transport_failure_fails_closed(self):
+        self.proposal()
+        mcp = self.proposal_mcp([ConnectionError("fixture offline")])
+        api = FakeAPI()
+        self.assertEqual(self.run_sequence(api, mcp), "inactivity_unverified")
+        self.assertEqual(api.calls, [("failed", "inactivity_unverified")])
+        self.assertEqual(mcp.calls, 0)
+
+    def test_activity_evidence_must_be_complete_fresh_and_cover_required_window(self):
+        self.proposal("lembrete_proposta_30d")
+        invalid = []
+        for field, value in (
+            ("complete", False),
+            ("complete", 1),
+            ("checkedAt", (self.now-timedelta(seconds=31)).isoformat()),
+            ("checkedAt", (self.now+timedelta(seconds=6)).isoformat()),
+            ("coverageStartedAt", (self.now-timedelta(days=14)).isoformat()),
+            ("lastInteractionAt", (self.now-timedelta(days=15)+timedelta(seconds=1)).isoformat()),
+            ("lastInteractionAt", self.now.isoformat()),
+            ("lastInteractionAt", "not-a-timestamp"),
+        ):
+            proof = self.activity_proof(); proof[field] = value
+            invalid.append(proof)
+        invalid += [None, {}, {**self.activity_proof(), "unknown": "no"}]
+        for proof in invalid:
+            api, mcp = FakeAPI(), self.proposal_mcp([{"allowed": True, "activity": proof}])
+            self.assertEqual(self.run_sequence(api, mcp), "inactivity_unverified")
+            self.assertEqual(mcp.calls, 0)
+
+    def test_proposal_payload_rejects_missing_link_copy_and_delay_changes(self):
+        self.proposal()
+        valid = deepcopy(self.job)
+        for field, value in (("message", "texto não aprovado"), ("delayBeforeSeconds", 3)):
+            self.job = deepcopy(valid)
+            self.job["messagesSequence"][0][field] = value
+            mcp = self.proposal_mcp()
+            self.assertEqual(self.run_sequence(FakeAPI(), mcp), "invalid_job")
+            self.assertEqual(mcp.calls, 0)
+        for url in ("", "[link da proposta]", "http://proposal.invalid/file.pdf", "https://user:secret@proposal.invalid/file.pdf", "https://proposal.invalid/a\nb"):
+            self.job = deepcopy(valid)
+            self.job["messagesSequence"][2]["message"] = url
+            mcp = self.proposal_mcp()
+            self.assertEqual(self.run_sequence(FakeAPI(), mcp), "invalid_job")
+            self.assertEqual(mcp.calls, 0)
+
+    def test_mcp_receives_exact_current_job_marker_only_for_proposals(self):
+        self.proposal()
+        session = SimpleNamespace(call_tool=AsyncMock(return_value=SimpleNamespace(
+            isError=False, content=[SimpleNamespace(text='{"success":true}')])) )
+        local = worker.LocalMCP(session)
+        self.assertTrue(asyncio.run(local.send(self.job)))
+        session.call_tool.assert_awaited_once_with("send_message", {
+            "recipient": self.job["recipient"], "message": self.job["message"], "automation_job_id": self.job["id"]})
+
+    def test_network_claim_rejects_old_protocol_or_unknown_job_kind(self):
+        api = worker.API("token-ficticio-com-mais-de-trinta-e-dois-caracteres")
+        self.addCleanup(api.session.close)
+        for response in ({"protocolVersion": 2, "job": None},
+                         {"protocolVersion": 3, "job": self.job},
+                         {"protocolVersion": 3, "job": {**self.job, "tipo": "confirmacao_recebimento"}}):
+            with patch.object(api, "post", new=AsyncMock(return_value=response)):
+                with self.assertRaises(ValueError):
+                    asyncio.run(api.claim())
 
 
 if __name__ == "__main__":
