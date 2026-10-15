@@ -211,6 +211,12 @@ Regras do engine:
 | RF-25 | Lembrete automático de formulário incompleto após mais de 24 horas em Novo | Um único WhatsApp por lead elegível, com link `/continuar/{id}`; `status = incompleto`, `created_at < agora − 24h` e telefone conferidos na reserva e novamente antes do envio. Quatro mensagens com pausas de 2/3/2 segundos, conforme texto do owner em 15/10/2026; flag exclusiva desativada por padrão e corte de ativação obrigatório. Único disparo sem clique permitido: API aceita somente os textos aprovados e protocolo 2/3; os dois lembretes de proposta exigem clique autenticado e protocolo 3, e a RPC de confirmação permanece inerte. RPCs V3 e revalidação antes de cada parte; interrupção não reenvia a sequência. Nenhuma mudança de status, `enviado_em` ou “já chamei” |
 | RF-26 | Indicador de mensagens no WhatsApp no cartão do Kanban | Ícone verde somente após envio confirmado de pelo menos uma das três mensagens atuais. Hover, clique ou teclado abrem exatamente três linhas: Finalize o formulário, Lembrete após 7 dias e Lembrete após 30 dias. Enviado tem bolinha verde e texto verde tachado; não enviado tem bolinha e texto cinza. Sem datas/origens ou botão desabilitado de substituição. Marcações manuais e a antiga confirmação não contam como envio; histórico persistido permanece intacto. ACK atualiza o quadro ao vivo sem expor conteúdo da fila |
 
+### Execução dos lembretes na nuvem — 15/10/2026
+
+Bridge autenticado, observador, MCP stdio e worker têm execução canônica na Railway Hobby, independente do Mac. O backend web e a fila privada permanecem na Vercel/Supabase. A migração preservou sessão, metadados de interação, ledger e ACKs; não criou textos, gatilhos ou envios. Somente os lembretes de proposta por clique estão habilitados: `WHATSAPP_AUTOMACAO_ATIVA=true`, `WHATSAPP_LEMBRETE_PROPOSTA_ATIVO=true` e `WHATSAPP_LEMBRETE_FORMULARIO_ATIVO=false`; confirmação de recebimento permanece removida.
+
+As condições de RF-20 e RF-25, textos e pausas permanecem iguais. A cobertura de silêncio de 5/15 dias reinicia após a reconexão na Railway, mesmo com banco importado; contatos reais aguardam a observação contínua completa. A exceção temporária dos cinco cards do owner mantém seu prazo original. O Mac é somente backup, com LaunchAgents próprios descarregados/desabilitados e worker local desativado; não iniciar a origem enquanto a nuvem estiver ativa. Recuperação exige a versão mais recente do estado remoto, inclusive ledger/ACKs.
+
 ## 8. Painel admin
 
 Rotas:
@@ -399,7 +405,7 @@ Regras:
 
 ## 12. Arquitetura e stack
 
-| Camada | Escolha | Free tier |
+| Camada | Escolha | Custo / limite |
 |---|---|---|
 | Framework | Next.js 14+ (App Router, TypeScript) | n/a |
 | Hosting | Vercel Hobby | Suficiente |
@@ -407,7 +413,10 @@ Regras:
 | Banco/Auth/Storage | Supabase Free | 500MB DB, 1GB Storage, 50k MAU auth |
 | PDF | pdf-lib + @pdf-lib/fontkit | Open source |
 | E-mail | Gmail SMTP (Nodemailer), atrás de MailAdapter | Workspace: 2.000 destinatários/dia |
-| WhatsApp | Links wa.me | Gratuito |
+| WhatsApp manual | Links wa.me para proposta e contato inicial | Gratuito |
+| Lembretes WhatsApp | Bridge Go + MCP stdio + worker na Railway Hobby, uma réplica e volume `/data` de 512 MB | 256.000.000 bytes de RAM e 0,05 vCPU; hard limits aprovados de US$ 10 compute e US$ 0 Railway Agent no workspace; sem upgrade de plano |
+
+O limite financeiro não representa uma fatura fixa garantida. Ao atingir o hard limit de compute, os workloads do workspace param. O runtime usa `/data/state` privado, sem domínio público ou TCP proxy; ferramentas `export_state.py`/`receive_state.py` fazem migração acompanhada com checksums e validação antes do commit, sem ativar mensagens. Procedimento e evidências da implantação ficam em `integrations/whatsapp-railway/README.md`.
 
 ### Estrutura do repo
 

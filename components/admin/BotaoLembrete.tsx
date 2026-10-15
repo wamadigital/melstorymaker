@@ -65,7 +65,7 @@ export function BotaoLembrete({ id, nome, marco, propostaEnviadoEm, classeTexto,
         toast.info(`O lembrete está sendo enviado para ${nome || "o lead"}.`);
       } else if (json.estado === "pendente" || json.estado === "reservado") {
         setEstado("fila");
-        toast.success(`Lembrete na fila para ${nome || "o lead"}. O envio depende do WhatsApp conectado no Mac.`);
+        toast.success(`Lembrete na fila para ${nome || "o lead"}. O envio depende do WhatsApp conectado.`);
       } else {
         throw new Error(json.erro ?? "O envio não foi confirmado. Atualize o cartão antes de tentar novamente.");
       }

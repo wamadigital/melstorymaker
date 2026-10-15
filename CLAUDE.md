@@ -4,7 +4,7 @@ Contrato operacional deste repo. A especificação completa (requisitos, árvore
 
 ## Contexto em 2 linhas
 
-MVP: lead preenche formulário multi-etapas estilo Typeform em `/formulario`, sistema gera PDF fiel à arte do Figma, Mel aprova no painel `/admin` e envia por e-mail + WhatsApp. O anúncio de casamento chega antes pela LP de venda `/casamento`. Prazo de 2 dias, custo de infra R$ 0 (free tiers). Produção: `https://melstorymaker.com.br` (DNS gerenciado no Registro.br).
+MVP: lead preenche formulário multi-etapas estilo Typeform em `/formulario`, sistema gera PDF fiel à arte do Figma, Mel aprova no painel `/admin` e envia por e-mail + WhatsApp. O anúncio de casamento chega antes pela LP de venda `/casamento`. O MVP original usava free tiers; desde 15/10/2026 o runtime de WhatsApp funciona na Railway Hobby, com limites financeiros aprovados abaixo. Produção: `https://melstorymaker.com.br` (DNS gerenciado no Registro.br).
 
 ## Stack (travada, não sugerir alternativas)
 
@@ -13,7 +13,7 @@ MVP: lead preenche formulário multi-etapas estilo Typeform em `/formulario`, si
 - Supabase: Postgres, Auth, Storage
 - pdf-lib + @pdf-lib/fontkit
 - Nodemailer + Gmail SMTP, atrás de `MailAdapter`
-- Deploy: Vercel
+- Deploy web: Vercel; bridge, MCP stdio e worker WhatsApp: Railway Hobby
 
 ## Comandos
 
@@ -44,6 +44,8 @@ lib/form               arvore.json + engine de renderização
 lib/pdf                templates.config.ts, gerar.ts, formatadores pt-BR
 lib/mail               adapter.ts, gmail.ts, templates de e-mail
 lib/meta               Meta Pixel (navegador) + Conversions API (servidor)
+integrations/whatsapp-local   Código compartilhado de bridge/MCP/worker; instruções antigas do Mac somente para recuperação acompanhada
+integrations/whatsapp-railway Docker, supervisor, contexto isolado e ferramentas privadas de exportação/importação
 lib/contrato           Contrato com o cliente: tipos, catálogo, cláusulas, montagem, IA, PDF
 lib/assinatura         Assinatura eletrônica (iLoveAPI/iLovePDF) atrás de ProvedorAssinatura
 app/api/admin/leads/[id]/contrato   Rotas do contrato: dados, texto, IA, PDF, arquivo, assinatura
@@ -59,7 +61,7 @@ assets/fonts           Fontes da marca (.ttf)
 supabase/schema.sql    Schema completo (crm-outbox.sql e quadro-tempo-real.sql são blocos dele, para aplicar sozinhos)
 ```
 
-## Interrupção do WhatsApp em 15/10/2026
+## Estado operacional do WhatsApp em 15/10/2026
 
 Determinação vigente do owner: retirar a confirmação automática ao concluir o
 formulário, cujo texto não recebeu aprovação específica. O submit não enfileira
@@ -67,17 +69,44 @@ essa mensagem. A publicação de 15/10/2026 habilita SOMENTE os lembretes de
 proposta acionados pelos botões de 7/30 dias, autorizados pelo owner, com
 `WHATSAPP_AUTOMACAO_ATIVA=true` e `WHATSAPP_LEMBRETE_PROPOSTA_ATIVO=true` em produção.
 `WHATSAPP_LEMBRETE_FORMULARIO_ATIVO=false`: formulário continua sem disparo
-sem clique. O worker local atende a fila manual; observador e WhatsApp exigem
-Mac ligado e conectado. O ambiente de desenvolvimento permanece pausado.
+sem clique. Bridge, MCP stdio, observador e worker executam na Railway; a fila
+manual funciona com o Mac desligado. O ambiente de desenvolvimento permanece pausado.
 Preservar histórico, sessão e ACKs anteriores. Não habilitar confirmação nem
 lembrete automático de formulário sem nova orientação específica do owner.
+
+O runtime canônico é o projeto privado `mel-whatsapp`, serviço `whatsapp`, na
+Railway Hobby. Implantação `47e5370d-dd0b-4d9b-a57a-e482a6974b4a` confirmou Linux
+x86_64, conexão autenticada do bridge e worker em execução. Uma réplica em
+`us-east4`, 256.000.000 bytes de RAM, 0,05 vCPU e volume persistente de 512 MB
+em `/data`; sem domínio público ou TCP proxy. Sessão, metadados e ledger ficam
+em `/data/state`; o REST do bridge continua somente em loopback. O import
+conferiu SHA-256 de oito payloads e preservou quatro registros `sent`, sem ACKs
+pendentes no checkpoint. Não houve novo disparo para comprovar a migração.
+
+Os dois LaunchAgents próprios do Mac foram descarregados e desabilitados. A
+cópia em `~/Library/Application Support/MelStorymaker/WhatsApp` é backup;
+`worker-config.json` tem `enabled:false`, com registro privado `cloud-migration.json`.
+Não iniciar `connect.command`, bridge, worker ou reinstalar LaunchAgents da
+origem. Recuperação exige primeiro parar a nuvem e trazer o estado persistente
+mais recente, inclusive ledger/ACKs; nunca reutilizar a mesma sessão em dois hosts.
+`export_state.py` e `receive_state.py` são ferramentas de operação privada,
+não rotas públicas nem componentes da imagem. Instruções em
+`integrations/whatsapp-railway/README.md`.
+
+A comprovação de silêncio reiniciou na reconexão da nuvem: são necessários
+5/15 dias contínuos de observação para contatos reais. Importar o banco não
+restaura cobertura nem libera mensagens; manter a exceção temporária do owner
+somente até seu prazo original. O owner autorizou até US$ 10 de compute e
+US$ 0 de Railway Agent; ambos os hard limits do workspace foram aplicados,
+sem upgrade do Hobby. Esses limites não garantem uma fatura mensal fixa e
+atingir o limite de compute interrompe os workloads do workspace.
 
 ## Decisões travadas (NUNCA reabrir nem "melhorar")
 
 1. PDF gerado com pdf-lib sobre os PDFs base do Figma. Nunca Puppeteer, Chromium, headless browser ou API do Figma em runtime.
 2. E-mail sempre pela interface `MailAdapter`, com `GmailAdapter` (SMTP do Gmail da Mel, App Password) como único provider. Nunca chamar Nodemailer direto de uma rota: é a interface que garante que a trava do `MAIL_DRY_RUN` não seja contornada. **Sem serviço transacional de e-mail** — a conta Workspace entrega 2.000 destinatários/dia e o volume da Mel é muito menor. Não introduzir um sem que o volume mude de ordem de grandeza.
 2b. O remetente é `mel@wama.digital`, e isso é **deliberado** — não é migração pendente para `@melstorymaker.com.br`. Decisão do owner em 18/08/2026: o nome de exibição ("Mel Simão | Storymaker") é o que o lead lê, e o endereço da agência não atrapalha. Não trocar sem pedido explícito: mudar exigiria criar o endereço no Workspace e alteraria `GMAIL_USER` junto, já que o Google reescreve o remetente.
-3. **WhatsApp autorizado em 15/10/2026:** formulário em Novo há mais de 24h usa uma sequência por lead, três textos exatos de `MENSAGENS_LEMBRETE_FORMULARIO`, pausas 2/3/2s e link individual sozinho na quarta parte; terceira frase atual: "Suas respostas estão salvas, acesse o link:". Lembretes de proposta de 7/30 dias usam somente clique autenticado nos botões do Kanban: quatro partes com pausas 2/3/2s e cinco partes com pausas 4/4/3/5s, conforme `lembretes-proposta.ts`. Exigem respectivamente 5/15 dias sem mensagens ao contato, recebidas ou enviadas por qualquer aparelho, com verificação de metadados local antes de CADA parte; histórico incompleto, identidade incerta ou Mac desconectado bloqueiam. A última tentativa exige ACK completo do primeiro lembrete para a mesma proposta; carimbo manual não vale. O primeiro lembrete também conta como interação, impondo no mínimo 15 dias entre os envios. Nenhum cron enfileira lembretes de proposta. Protocolo 3 e RPCs V4 obrigatórios para propostas; protocolo 2 continua formulário apenas. A confirmação de recebimento permanece excluída, submit não enfileira mensagens. Fila privada, bridge em loopback autenticado e worker no Mac; falha após início fica indeterminada sem repetição automática. A publicação habilita somente os lembretes de proposta por clique; a flag do formulário continua desligada. SQLs incrementais manuais `whatsapp-lembrete-copy.sql` e `whatsapp-lembretes-proposta.sql`; preservar histórico e sessões. O registro local novo guarda somente hashes e horários, exige observação contínua de 5/15 dias e perde a comprovação de cobertura após reinício/desconexão/suspensão. Proposta inicial mantém o fluxo aprovado pela Mel. Exceção aprovada pelo owner (18/08/2026): notificação interna de lead novo via CallMeBot (`lib/notifica/`), em que a Mel só RECEBE de um gateway; conteúdo mínimo (sem e-mail nem telefone do lead na mensagem), falha nunca quebra o submit (`after()` + try/catch), e sem `NOTIFICA_WHATSAPP_APIKEY` é no-op. Essa exceção também retira a notificação de lead novo do escopo v2 proibido da regra 8. **A única env obrigatória é a apikey**: o número vem de `MEL_WHATSAPP`, e `NOTIFICA_WHATSAPP_FONE` só existe para mandar o aviso a um aparelho diferente. Pedir o mesmo telefone em duas variáveis já deixou a notificação muda em produção (20/08/2026, apikey configurada e fone não). A notificação dispara **no submit** (`incompleto` → `aguardando_revisao`), não na criação do lead: avisar na criação significaria uma mensagem para cada pessoa que escolheu a categoria e desistiu.
+3. **WhatsApp autorizado em 15/10/2026:** formulário em Novo há mais de 24h usa uma sequência por lead, três textos exatos de `MENSAGENS_LEMBRETE_FORMULARIO`, pausas 2/3/2s e link individual sozinho na quarta parte; terceira frase atual: "Suas respostas estão salvas, acesse o link:". Lembretes de proposta de 7/30 dias usam somente clique autenticado nos botões do Kanban: quatro partes com pausas 2/3/2s e cinco partes com pausas 4/4/3/5s, conforme `lembretes-proposta.ts`. Exigem respectivamente 5/15 dias sem mensagens ao contato, recebidas ou enviadas por qualquer aparelho, com verificação de metadados no bridge da Railway antes de CADA parte; histórico incompleto, identidade incerta ou bridge desconectado bloqueiam. A última tentativa exige ACK completo do primeiro lembrete para a mesma proposta; carimbo manual não vale. O primeiro lembrete também conta como interação, impondo no mínimo 15 dias entre os envios. Nenhum cron enfileira lembretes de proposta. Protocolo 3 e RPCs V4 obrigatórios para propostas; protocolo 2 continua formulário apenas. A confirmação de recebimento permanece excluída, submit não enfileira mensagens. Fila privada, bridge em loopback autenticado e worker na Railway; Mac somente como backup desativado; falha após início fica indeterminada sem repetição automática. A publicação habilita somente os lembretes de proposta por clique; a flag do formulário continua desligada. SQLs incrementais manuais `whatsapp-lembrete-copy.sql` e `whatsapp-lembretes-proposta.sql`; preservar histórico e sessões. O observador guarda somente hashes e horários no volume privado da Railway, exige observação contínua de 5/15 dias e perde a comprovação de cobertura após reinício/desconexão/interrupção; a migração reiniciou essa janela. Proposta inicial mantém o fluxo aprovado pela Mel. Exceção aprovada pelo owner (18/08/2026): notificação interna de lead novo via CallMeBot (`lib/notifica/`), em que a Mel só RECEBE de um gateway; conteúdo mínimo (sem e-mail nem telefone do lead na mensagem), falha nunca quebra o submit (`after()` + try/catch), e sem `NOTIFICA_WHATSAPP_APIKEY` é no-op. Essa exceção também retira a notificação de lead novo do escopo v2 proibido da regra 8. **A única env obrigatória é a apikey**: o número vem de `MEL_WHATSAPP`, e `NOTIFICA_WHATSAPP_FONE` só existe para mandar o aviso a um aparelho diferente. Pedir o mesmo telefone em duas variáveis já deixou a notificação muda em produção (20/08/2026, apikey configurada e fone não). A notificação dispara **no submit** (`incompleto` → `aguardando_revisao`), não na criação do lead: avisar na criação significaria uma mensagem para cada pessoa que escolheu a categoria e desistiu.
 4. Human-in-the-loop: nenhum e-mail sai para o lead sem ação explícita da Mel no painel. Não criar envio automático pós-submit.
 5. Formulário renderizado 100% a partir de `lib/form/arvore.json`. Perguntas nunca hardcoded em componentes. Nova pergunta = mudança no JSON.
 5b. **A tela de abertura tem DUAS portas**, decisão do owner em 03/09/2026: "Falar com a Mel" (esquerda, link `wa.me` com a primeira mensagem já escrita) e "Quero um orçamento" (direita, o formulário de sempre). O problema era gente que não preenchia o formulário E não chamava no WhatsApp — sem porta de saída rápida, quem não queria responder oito perguntas simplesmente fechava a aba. As duas caixas têm a mesma forma e a mesma altura mínima (`PORTA`, em `FormularioClient.tsx`): são alternativas de peso igual, e uma mais baixa leria como opção secundária. A mensagem pré-escrita (`mensagemPrimeiroContato`, `lib/whatsapp.ts`) não é enfeite — caixa de texto vazia para um número desconhecido é exatamente onde a pessoa desiste. Sem `MEL_WHATSAPP` a porta da esquerda some e a da direita ocupa a linha inteira: link `wa.me` sem número abre o seletor de conversas do próprio lead, que não leva a lugar nenhum.

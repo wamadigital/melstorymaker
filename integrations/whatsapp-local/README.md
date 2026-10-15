@@ -1,14 +1,29 @@
-# WhatsApp local da Mel
+# Código WhatsApp compartilhado e recuperação do Mac
 
-**Situação da publicação de 15/10/2026:** confirmação ao concluir formulário
+**Situação após a migração de 15/10/2026:** bridge, observador, MCP stdio e worker
+executam na Railway Hobby, no projeto privado `mel-whatsapp`. A implantação
+`47e5370d-dd0b-4d9b-a57a-e482a6974b4a` confirmou conexão autenticada e worker em
+execução. O Mac pode ficar desligado. Confirmação ao concluir formulário
 permanece removida. Habilitados somente os lembretes de proposta por clique
 nos botões de 7/30 dias. Flag própria do formulário permanece desligada.
-O worker local processa a fila manual e o observador registra a cobertura;
-ambos dependem do Mac ligado e conectado. Preservar histórico e sessão.
+Preservar histórico, sessão, ledger e ACKs. A cobertura contínua de 5/15 dias
+reiniciou na reconexão da nuvem e não é restaurada pelo banco importado.
 
-Instalação no Mac Apple Silicon do Henrique, autorizada em 14/10/2026.
-O sistema continua na Vercel; o Mac busca a fila privada por HTTPS e envia pelo
-MCP. Não existe túnel, porta pública ou credencial de banco entregue ao worker.
+A cópia em `~/Library/Application Support/MelStorymaker/WhatsApp` é somente
+backup. Os dois LaunchAgents próprios foram descarregados e desabilitados;
+o worker local tem `enabled:false`, com registro privado `cloud-migration.json`.
+Não iniciar a origem, `connect.command`, bridge, worker ou instaladores locais
+enquanto a nuvem estiver ativa. Os procedimentos antigos abaixo foram
+preservados somente para recuperação acompanhada. Primeiro parar a nuvem e
+recuperar seu estado mais recente, inclusive ledger/ACKs; nunca conectar a mesma
+sessão em dois hosts nem restaurar ledger antigo sobre o atual.
+
+O sistema web continua na Vercel; o worker da Railway busca a fila privada por
+HTTPS e envia pelo MCP stdio. Não há túnel, domínio público, TCP proxy ou
+credencial de banco entregue ao worker. Migração e limites de orçamento ficam
+em [`../whatsapp-railway/README.md`](../whatsapp-railway/README.md). O owner
+autorizou hard limits de US$ 10 compute e US$ 0 Railway Agent no workspace,
+aplicados mantendo o Hobby; isso não garante uma fatura mensal fixa.
 
 Os envios autorizados são o lembrete automático de formulário incompleto e os
 lembretes de proposta acionados pelo botão da Mel. Copy e pausas são fechadas;
@@ -19,11 +34,16 @@ Proposta exige aprovação da Mel e permanece no fluxo atual do painel.
 | Componente | Local |
 |---|---|
 | Formulário, fila e rotas privadas | Vercel + Supabase |
-| Bridge autenticado | `127.0.0.1:18281` no Mac |
-| MCP stdio, apenas `send_message` | `.codex/config.toml` deste projeto |
-| Sessão, tokens e recibos | `.whatsapp-local/state/`, privada e fora do Git/deploy |
+| Bridge autenticado | `127.0.0.1:18281` dentro do container Railway |
+| MCP stdio, apenas `send_message` | Processo interno iniciado pelo worker Railway |
+| Sessão, tokens, metadados e recibos | `/data/state/`, no volume privado Railway, fora do Git/imagem |
+| Cópias do Mac e configuração MCP local anterior | Backup para recuperação acompanhada; não executar enquanto a nuvem estiver ativa |
 
-## Instalação e conexão
+## Histórico: instalação e conexão no Mac
+
+Instalação original no Mac Apple Silicon, autorizada em 14/10/2026. Estes
+comandos não fazem parte da operação atual. Executar somente em recuperação
+acompanhada, com a nuvem parada e o estado remoto mais recente preservado.
 
 ```bash
 bash integrations/whatsapp-local/install.sh
@@ -45,9 +65,9 @@ bash integrations/whatsapp-local/run-worker.sh
 O Mac precisa ficar ligado, acordado e conectado. Fechar o processo para os
 envios. A instalação não altera as configurações de energia do macOS.
 
-## Início automático no login
+## Histórico: início automático no login do Mac
 
-O runtime canônico dos serviços fica em
+Antes da migração para a Railway, o runtime canônico dos serviços ficava em
 `~/Library/Application Support/MelStorymaker/WhatsApp`. LaunchAgents não usam o
 checkout em `Documents`: o macOS bloqueia esse acesso em segundo plano (TCC).
 Não é necessário conceder Acesso Total ao Disco.
@@ -73,10 +93,11 @@ pacotes instalados, refaz a venv sem links para `Documents` e testa os imports
 offline. Não copia logs, QR, histórico, caches, Go ou o upstream. O bridge novo
 precisa confirmar uma sessão autenticada antes de iniciar o worker.
 
-A origem permanece como backup. **Após sucesso, desativar `enabled` na
+A origem da antiga realocação local permanecia como backup. **Naquele procedimento, após sucesso, desativar `enabled` na
 configuração da origem e nunca iniciar o `connect.command`, bridge ou worker
 antigos**: a sessão e os recibos passarão a evoluir somente em Application
-Support. Manutenção e pareamentos futuros usam exclusivamente essa cópia:
+Support. A instrução seguinte também é histórica: hoje Application Support é
+backup desativado e a execução canônica está na Railway.
 
 ```bash
 cd "$HOME/Library/Application Support/MelStorymaker/WhatsApp"
@@ -98,7 +119,10 @@ Os serviços reutilizam a sessão, sem `--pair`, e os logs ficam privados em
 `.whatsapp-local/state/` da cópia canônica. Entrar no Mac inicia os serviços; o Mac
 continua precisando estar ligado, acordado e conectado.
 
-## Ativação
+## Histórico: ativação local
+
+Não executar estes passos sobre o backup do Mac com a nuvem ativa. A implantação
+atual já usa as flags aprovadas e não requer outra ativação ou mudança de SQL.
 
 1. Aplicar `supabase/whatsapp-outbox.sql` manualmente no SQL Editor da conta da Mel.
 2. Publicar as rotas privadas, mantendo todas as flags desativadas até validar.
@@ -137,18 +161,19 @@ idade, telefone e ativação. O link retoma as respostas salvas da própria pess
 Há um único lembrete por lead, composto das quatro partes, separado da
 confirmação de conclusão. As partes e as pausas são um snapshot na fila. O envio
 não muda status nem carimbos manuais de “já chamei”, e não exige e-mail ou nome.
-O worker busca os itens elegíveis da fila a cada 60 segundos. O Mac precisa
-estar acordado e conectado. As pausas começam após o retorno de sucesso da
+O worker da Railway busca os itens elegíveis da fila a cada 60 segundos, sem
+dependência de energia ou conexão do Mac. As pausas começam após o retorno de sucesso da
 mensagem anterior; as verificações e a rede também ocupam tempo.
 
 O worker atualizado anuncia `X-Mel-Worker-Protocol: 3`; o backend preserva
 protocolo 2 apenas para formulário. O protocolo 3 permite também as duas
-sequências de proposta, com comprovação local de inatividade. Falha, timeout,
+sequências de proposta, com comprovação de inatividade no bridge da nuvem. Falha, timeout,
 interrupção ou recusa após o início encerra a sequência como indeterminada,
 sem repetição de partes. Um ACK perdido é reconciliado sem reenviar mensagens.
 `sent` exige sucesso de todas as chamadas ao MCP, sem afirmar leitura no celular.
-Para ativar, aplicar manualmente `supabase/whatsapp-lembrete-formulario.sql`
-no SQL Editor, atualizar o worker canônico em Application Support e publicar o
+O lembrete de formulário continua desativado; qualquer ativação futura exige
+nova orientação específica do owner. Nesse caso, aplicar manualmente `supabase/whatsapp-lembrete-formulario.sql`
+no SQL Editor, atualizar o worker canônico na Railway e publicar o
 backend. Configurar `WHATSAPP_LEMBRETE_FORMULARIO_ATIVO=true` e
 `WHATSAPP_LEMBRETE_FORMULARIO_INICIO_EM` com o instante de ativação em ISO com
 fuso; `APP_URL` precisa ser HTTPS. O corte inclui apenas leads criados a partir
@@ -163,7 +188,7 @@ A fila tem RLS e acesso exclusivo ao backend. O worker reserva um item e precisa
 receber a autorização de início do servidor antes de chamar o MCP. O servidor
 revalida prazo, status do lead e telefone. A fila expira em 24 horas.
 
-O Mac guarda ID, hash, estado e ACK pendente em SQLite, sem texto ou telefone.
+O volume privado da Railway guarda ID, hash, estado e ACK pendente em SQLite, sem texto ou telefone.
 Se WhatsApp tiver sido chamado e o resultado ficar desconhecido, não existe
 reenvio automático. O worker pode reenviar o ACK ao servidor sem enviar outra
 mensagem. Um retorno de envio confirma aceitação pelo cliente do WhatsApp;
@@ -181,11 +206,12 @@ atualização da terceira frase (`whatsapp-lembrete-copy.sql`). Atualizar bridge
 MCP e worker da cópia canônica antes de ativar `WHATSAPP_LEMBRETE_PROPOSTA_ATIVO`.
 O preparo do código não instala o runtime nem ativa qualquer flag.
 
-Em 15/10/2026, o observador e o worker atualizados foram instalados no runtime
-canônico, com a sessão preservada e o bridge autenticado. A cobertura começou
-às 10h28 de São Paulo. O worker desta publicação atende somente a fila criada pelos botões. Os SQLs
+No primeiro preparo de 15/10/2026, o observador e o worker foram instalados no
+runtime então canônico do Mac, e a cobertura começou às 10h28 de São Paulo.
+Essa cobertura não vale após a migração: a janela de 5/15 dias reiniciou na
+conexão da Railway. O worker atual atende somente a fila criada pelos botões. Os SQLs
 incrementais são aplicados na conta da Mel antes da publicação do backend;
-a observação local, sozinha, não ativa mensagens.
+a observação do bridge, sozinha, não ativa mensagens.
 
 | Fluxo | Prazo desde a proposta | Silêncio mínimo | Sequência |
 |---|---|---|---|
@@ -206,7 +232,7 @@ O bridge antigo não registra conversas. O novo observador guarda somente hashes
 privados dos identificadores e horários de mensagens/chamadas individuais,
 sem texto, mídia ou nomes. A cobertura começa depois da conexão e sincronização
 de mensagens offline; é necessário observar continuamente a janela inteira.
-Reinício, desconexão, suspensão do Mac ou identidade PN/LID sem correspondência
+Reinício, desconexão, interrupção da observação ou identidade PN/LID sem correspondência
 bloqueiam o envio. Não assumir silêncio com histórico vazio ou incompleto.
 
 A verificação ocorre antes de cada parte. Só as partes da própria tentativa são
@@ -220,8 +246,12 @@ automática para falta de histórico ou interação recente.
 
 Upstream fixado: `lharries/whatsapp-mcp@7d6a06dcdce1f01dfb24f60e1030d5efba9f3b88`.
 SDK atualizado: `whatsmeow@v0.0.0-20261014094007-f16f9ca30d6a`.
-Go oficial 1.27.2, Python 3.12.14 e MCP 1.30.0. Locks em `dependencies/`.
+Go oficial 1.27.2 e MCP 1.30.0. A cópia original do Mac usa Python 3.12.14;
+a imagem Railway usa Python 3.12.15. Locks compartilhados em `dependencies/`.
 Os checksums e o manifesto impedem compilar um preparo parcial ou alterado.
+
+Os comandos seguintes são de desenvolvimento/recuperação isolada. Não iniciar
+nenhum bridge real nem MCP local contra o backup enquanto a nuvem estiver ativa.
 
 ```bash
 python3 integrations/whatsapp-local/prepare.py --verify
