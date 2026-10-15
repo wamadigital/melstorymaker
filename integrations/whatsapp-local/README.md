@@ -1,10 +1,17 @@
 # WhatsApp local da Mel
 
+**Interrompido em 15/10/2026 por determinação do owner:** confirmação ao concluir
+o formulário removida do submit. `WHATSAPP_AUTOMACAO_ATIVA=false` em produção e
+no ambiente local; worker parado, `enabled:false` e início pelo launchd desativado.
+O lembrete de formulário também fica pausado enquanto o serviço estiver parado.
+Não reativar nem tratar autorização de instalação como aprovação de mensagem.
+Preservar os registros históricos de envios; não apagar confirmações já enviadas.
+
 Instalação no Mac Apple Silicon do Henrique, autorizada em 14/10/2026.
 O sistema continua na Vercel; o Mac busca a fila privada por HTTPS e envia pelo
 MCP. Não existe túnel, porta pública ou credencial de banco entregue ao worker.
 
-O primeiro fluxo é uma confirmação na primeira conclusão do formulário:
+O fluxo anterior de confirmação utilizava este texto, agora retirado de operação:
 
 > Oi! Recebi as informações do seu evento 💛
 >

@@ -54,15 +54,6 @@ export async function enfileirarComDependencias(
   }
 }
 
-export async function enfileirarConfirmacaoWhatsApp(confirmacao: NovaConfirmacao): Promise<void> {
-  await enfileirarComDependencias(confirmacao, {
-    ativo: automacaoAtiva,
-    agora: Date.now,
-    falha: () => console.error("[whatsapp] nao consegui registrar a confirmacao; formulario preservado"),
-    registrar: (registro) => criarRepositorioWhatsApp(supabaseAdmin()).registrar(registro),
-  });
-}
-
 type ContextoRepositorioWhatsApp = {
   ambiente?: AmbienteWhatsApp;
   agora?: () => number;

@@ -59,6 +59,18 @@ assets/fonts           Fontes da marca (.ttf)
 supabase/schema.sql    Schema completo (crm-outbox.sql e quadro-tempo-real.sql são blocos dele, para aplicar sozinhos)
 ```
 
+## Interrupção do WhatsApp em 15/10/2026
+
+Determinação vigente do owner: retirar a confirmação automática ao concluir o
+formulário, cujo texto não recebeu aprovação específica. O submit não enfileira
+essa mensagem. `WHATSAPP_AUTOMACAO_ATIVA=false` em produção e no ambiente local;
+worker parado, `enabled:false` e inicialização pelo launchd desativada. O lembrete
+de formulário também está pausado enquanto o serviço estiver interrompido.
+Não reativar os envios sem nova orientação do owner. Preservar o histórico e os
+ACKs anteriores; cancelar somente confirmações pendentes/reservadas, sem apagar
+leads nem ocultar os envios que já ocorreram. A regra 3 abaixo descreve a
+implementação histórica e não constitui autorização vigente para a confirmação.
+
 ## Decisões travadas (NUNCA reabrir nem "melhorar")
 
 1. PDF gerado com pdf-lib sobre os PDFs base do Figma. Nunca Puppeteer, Chromium, headless browser ou API do Figma em runtime.

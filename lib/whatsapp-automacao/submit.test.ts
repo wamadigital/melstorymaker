@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { mock, test } from "node:test";
 import type { Respostas } from "@/lib/form/types";
-import { MENSAGEM_CONFIRMACAO } from "./contrato";
 
 // Processo de teste isolado; nenhum .env.local, after executado ou host real.
 Object.assign(process.env, {
@@ -52,31 +51,29 @@ const req = (ip: string) => new Request(`https://crm.invalid/api/leads/${ID}/sub
   method: "POST", headers: { "x-forwarded-for": ip },
 });
 
-test("dois submits concorrentes registram confirmacao apenas pelo CAS vencedor", async () => {
+test("dois submits concorrentes concluem uma vez sem enfileirar confirmação no WhatsApp", async () => {
   const banco = instalar();
   try {
     const { POST } = await import("@/app/api/leads/[id]/submit/route");
     const respostas = await Promise.all([POST(req("concorrencia-whatsapp"), contexto), POST(req("concorrencia-whatsapp"), contexto)]);
     assert.deepEqual(respostas.map((r) => r.status), [200, 200]);
-    assert.equal(banco.escritas(), 1); assert.equal(banco.registros.length, 1);
-    assert.equal(banco.registros[0].p_mensagem, MENSAGEM_CONFIRMACAO);
-    assert.equal(banco.registros[0].p_ocorrido_em, banco.atual().updated_at);
-    assert.equal(banco.registros[0].p_destinatario, "5519988887777");
+    assert.equal(banco.escritas(), 1); assert.equal(banco.registros.length, 0);
     await POST(req("concorrencia-whatsapp"), contexto);
-    assert.equal(banco.registros.length, 1, "ACK perdido/reenvio nao registra historico");
+    assert.equal(banco.registros.length, 0, "nem a repetição do submit cria confirmação");
     assert.equal(banco.atual().status, "aguardando_revisao");
     assert.equal(banco.atual().enviado_em, undefined);
   } finally { banco.restaurar(); }
 });
 
-test("erro de enqueue preserva sucesso/estado do formulario", async () => {
+test("confirmação segue removida mesmo com automação ativa e serviço de registro indisponível", async () => {
   const banco = instalar("incompleto", true);
   try {
     const { POST } = await import("@/app/api/leads/[id]/submit/route");
     const r = await POST(req("falha-whatsapp"), contexto);
     assert.equal(r.status, 200);
     assert.deepEqual(await r.json(), { ok: true, status: "aguardando_revisao" });
-    assert.equal(banco.registros.length, 1); assert.equal(banco.escritas(), 1);
+    assert.equal(process.env.WHATSAPP_AUTOMACAO_ATIVA, "1");
+    assert.equal(banco.registros.length, 0); assert.equal(banco.escritas(), 1);
   } finally { banco.restaurar(); }
 });
 
