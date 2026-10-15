@@ -25,7 +25,9 @@ LOG = logging.getLogger("mel-whatsapp-worker")
 
 def unexpired(job: dict, now: datetime | None = None) -> bool:
     expires = datetime.fromisoformat(job["expiresAt"].replace("Z", "+00:00"))
-    return expires.tzinfo is not None and expires > (now or datetime.now(timezone.utc))
+    current = now or datetime.now(timezone.utc)
+    return (expires.tzinfo is not None and expires > current
+            and ("testLeadId" not in job or current < OWNER_TEST_DEADLINE))
 
 
 LEGACY_JOB_FIELDS = ("id", "leaseToken", "recipient", "message", "expiresAt")
@@ -48,12 +50,28 @@ PROPOSAL_TEXTS = {
     ),
 }
 PROPOSAL_DELAYS = {"lembrete_proposta_7d": (0, 2, 3, 2), "lembrete_proposta_30d": (0, 4, 4, 3, 5)}
+OWNER_TEST_RECIPIENT = "5519988763916"
+OWNER_TEST_DEADLINE = datetime(2026, 10, 17, 18, tzinfo=timezone.utc)
+OWNER_TEST_LEADS = {
+    "01b985e2-6bff-4e9c-bb5e-2f1cc280edf7": "lembrete_proposta_7d",
+    "d459193f-9e7c-4b2c-995d-7f829a0936bd": "lembrete_proposta_7d",
+    "13e49741-9d35-404c-ae54-42fe93e55c66": "lembrete_proposta_7d",
+    "abf88ff2-ea34-4e32-994d-f7dc75df599b": "lembrete_proposta_30d",
+    "9263d823-d059-4e0a-b759-9184035dec89": "lembrete_proposta_30d",
+}
+
+
+def valid_owner_test(job: dict) -> bool:
+    lead = job.get("testLeadId")
+    return (isinstance(lead, str) and lead in OWNER_TEST_LEADS
+            and job.get("tipo") == OWNER_TEST_LEADS[lead]
+            and job.get("recipient") == OWNER_TEST_RECIPIENT)
 
 
 def message_parts(job: dict) -> list[dict]:
     """Valida o contrato inteiro antes de autorizar qualquer chamada de envio."""
     if not isinstance(job, dict) or not set(LEGACY_JOB_FIELDS).issubset(job) or set(job) - {
-        *LEGACY_JOB_FIELDS, "messagesSequence", "tipo"
+        *LEGACY_JOB_FIELDS, "messagesSequence", "tipo", "testLeadId"
     }:
         raise ValueError("invalid_job")
     for field in ("id", "leaseToken"):
@@ -84,6 +102,8 @@ def message_parts(job: dict) -> list[dict]:
         raise ValueError("invalid_job")
     kind = job.get("tipo")
     if kind is not None and kind not in JOB_TYPES:
+        raise ValueError("invalid_job")
+    if "testLeadId" in job and not valid_owner_test(job):
         raise ValueError("invalid_job")
     if "messagesSequence" not in job:
         if kind is not None:
@@ -129,6 +149,8 @@ class Ledger:
             ]])
         if "tipo" in job:
             value.extend(["job_type_v3", job["tipo"]])
+        if "testLeadId" in job:
+            value.extend(["owner_test_lead_v1", job["testLeadId"]])
         return hashlib.sha256(json.dumps(value, ensure_ascii=False).encode()).hexdigest()
 
     def get(self, job: dict) -> str | None:
@@ -216,6 +238,10 @@ class LocalMCP:
         arguments = {"recipient": job["recipient"], "message": job["message"]}
         if job.get("tipo") in PROPOSAL_TYPES:
             arguments["automation_job_id"] = job["id"]
+        if "testLeadId" in job:
+            if not valid_owner_test(job):
+                raise ValueError("invalid_job")
+            arguments["automation_test_lead_id"] = job["testLeadId"]
         result = await asyncio.wait_for(self.session.call_tool("send_message", arguments), timeout=35)
         if result.isError or not result.content:
             return False
@@ -228,9 +254,14 @@ class LocalMCP:
             direct.trust_env = False
             token = (STATE / "bridge-token").read_text().strip()
             try:
+                body = {"recipient": job["recipient"], "jobId": job["id"], "days": PROPOSAL_TYPES[job["tipo"]]}
+                if "testLeadId" in job:
+                    if not valid_owner_test(job):
+                        raise ValueError("invalid_job")
+                    body["testLeadId"] = job["testLeadId"]
                 response = direct.post("http://127.0.0.1:18281/api/activity-check",
                     headers={"Authorization": "Bearer " + token},
-                    json={"recipient": job["recipient"], "jobId": job["id"], "days": PROPOSAL_TYPES[job["tipo"]]},
+                    json=body,
                     timeout=(3, 5), allow_redirects=False)
                 response.raise_for_status()
                 return response.json()
@@ -259,6 +290,24 @@ def verified_activity(value: object, days: int, now: datetime) -> dict | None:
     except (AttributeError, ValueError, TypeError, OverflowError):
         return None
     return proof
+
+
+def verified_owner_test(value: object, job: dict, now: datetime) -> bool:
+    """Exceção explícita vinculada ao job; nunca simula histórico de conversa."""
+    if (not valid_owner_test(job) or now >= OWNER_TEST_DEADLINE or not isinstance(value, dict)
+            or set(value) != {"allowed", "code", "testLeadId", "jobId", "recipient", "checkedAt"}
+            or value.get("allowed") is not True or value.get("code") != "owner_test_authorized"
+            or value.get("testLeadId") != job["testLeadId"] or value.get("jobId") != job["id"]
+            or value.get("recipient") != job["recipient"]):
+        return False
+    try:
+        checked = datetime.fromisoformat(value["checkedAt"].replace("Z", "+00:00"))
+        if checked.tzinfo is None:
+            return False
+        age = (now - checked).total_seconds()
+        return -5 <= age <= 30 and checked < OWNER_TEST_DEADLINE
+    except (AttributeError, ValueError, TypeError, OverflowError):
+        return False
 
 
 async def report_ack(api, ledger: Ledger, ack: dict) -> bool:
@@ -313,7 +362,10 @@ async def process(api, mcp, ledger: Ledger, job: dict, *, sleep=asyncio.sleep, c
             return None, None
         try:
             value = await mcp.activity(job)
-            proof = verified_activity(value, days, clock() if clock is not None else datetime.now(timezone.utc))
+            checked_now = clock() if clock is not None else datetime.now(timezone.utc)
+            if "testLeadId" in job:
+                return (None, None) if verified_owner_test(value, job, checked_now) else (None, "inactivity_unverified")
+            proof = verified_activity(value, days, checked_now)
             if proof is not None:
                 return proof, None
             code = "inactivity_recent" if isinstance(value, dict) and value.get("code") == "inactivity_recent" else "inactivity_unverified"
@@ -356,6 +408,8 @@ async def process(api, mcp, ledger: Ledger, job: dict, *, sleep=asyncio.sleep, c
             single = {field: job[field] for field in LEGACY_JOB_FIELDS}
             if "tipo" in job:
                 single["tipo"] = job["tipo"]
+            if "testLeadId" in job:
+                single["testLeadId"] = job["testLeadId"]
             single["message"] = part["message"]
             sent = await mcp.send(single) is True
     except asyncio.CancelledError:

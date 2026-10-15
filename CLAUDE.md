@@ -284,3 +284,26 @@ Pedida pelo owner em 01/10/2026: destino dos anúncios pagos de casamento no Ins
 - O Gmail REESCREVE o remetente para a conta autenticada: `MAIL_FROM` precisa usar o mesmo endereço de `GMAIL_USER`. Só o nome de exibição sobrevive.
 - Nunca transformar o formulário em página única com todos os campos. Uma pergunta por tela é requisito de produto.
 - Nunca remover o autosave. **Lead parcial continua sendo lead** — o corte nunca é o término do formulário; é ter como falar com a pessoa.
+
+
+## Testes de recebimento autorizados em 15/10/2026
+
+O owner pediu cinco cards `TESTE HENRIQUE` que permitam testar os recebimentos
+imediatamente no telefone dele. A exceção temporária vale até **17/10/2026 às
+15h de São Paulo**, somente para os cinco UUIDs em `testes.ts` e para o número
+aprovado. Três cards testam a sequência de 7 dias; dois, a de 30 dias. A
+allowlist privada `whatsapp_testes_owner` prende cada permissão à revisão e ao
+link da proposta. Não há histórico ou ACK fabricado: somente nesses testes
+são dispensadas a cobertura/interação de 5/15 dias e a dependência do primeiro
+lembrete para a sequência de 30 dias. O prazo de 7/30 dias da proposta, clique
+autenticado, copy/pausas, conexão, aprovação do servidor a cada parte, ACK e
+deduplicação permanecem obrigatórios. Cada card continua de uso único.
+
+SQL manual incremental `supabase/whatsapp-testes-owner.sql`, também incluído
+no final de `schema.sql`. Instalar bridge/MCP/worker atualizados e backend
+antes de liberar os cliques. A resposta local de teste é explícita e vinculada
+a card/job/telefone; nunca simula prova de histórico. A autorização local
+expira em 30 segundos e é renovada antes de cada parte. O quadro recebe
+somente marco/prazo do card visível, sem publicar a allowlist no bundle.
+Os eventos de teste da Meta permanecem encerrados. Nenhum fluxo de formulário
+é ativado e nenhuma mensagem é disparada pelo preparo dos cards.

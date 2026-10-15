@@ -51,4 +51,6 @@ export type LeadCartao = Pick<
   /** Resumo da fila privada, enriquecido no servidor depois da leitura das raias. */
   disparos_whatsapp?: DisparoWhatsApp[];
   solicitacoes_whatsapp?: SolicitacaoWhatsApp[];
+  /** Somente o teste visível, sem levar a allowlist ou o telefone do owner ao bundle. */
+  teste_whatsapp?: { marco: 7 | 30; expiraEm: string };
 };

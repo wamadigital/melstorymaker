@@ -60,7 +60,7 @@ export function criarRepositorioWhatsApp(db: SupabaseClient, contexto: ContextoR
         } : { p_lembrete_ativo: true, p_inicio_em: config!.inicioEm })
         .abortSignal(AbortSignal.timeout(5_000));
       if (error) throw new Error("claim_whatsapp");
-      return data?.[0] ? envelopeJob(data[0], protocolo) : null;
+      return data?.[0] ? envelopeJob(data[0], protocolo, agora()) : null;
     },
     resultado: async (id: string, resultado: ResultadoWorker, protocolo = protocoloPadrao): Promise<string | null> => {
       const config = configAtual(protocolo);

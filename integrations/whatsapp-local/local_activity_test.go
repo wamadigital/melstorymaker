@@ -15,6 +15,12 @@ import (
 
 const activityJob = "52a44790-8d33-42a1-a61a-11a399ab75f1"
 const activityOtherJob = "94cc3918-bd8b-494d-a13f-63da5c811b63"
+const ownerTestLead = "01b985e2-6bff-4e9c-bb5e-2f1cc280edf7"
+const ownerOtherTestLead = "d459193f-9e7c-4b2c-995d-7f829a0936bd"
+
+func ownerTestTime() time.Time {
+	return time.Date(2026, time.October, 15, 18, 0, 0, 0, time.UTC)
+}
 
 func activityFixture(t *testing.T) (*localActivityStore, []types.JID, time.Time) {
 	t.Helper()
@@ -161,6 +167,102 @@ func TestActivityDatabaseFailureCannotAllow(t *testing.T) {
 	s.db.Close()
 	if s.decision(ids, activityJob, 5, now).Allowed {
 		t.Fatal("database failure must fail closed")
+	}
+}
+
+func TestOwnerTestAuthorizationDoesNotInventInactivityProof(t *testing.T) {
+	s, ids, _ := activityFixture(t)
+	now := ownerTestTime()
+	s.beginCoverage(now)
+	if s.canSendOwnerTest(localOwnerTestRecipient, ownerTestLead, activityJob, now) {
+		t.Fatal("test sends need a fresh explicit activity-check authorization")
+	}
+	decision := s.authorizeOwnerTest(localOwnerTestRecipient, ownerTestLead, activityJob, now)
+	if !decision.Allowed || decision.Code != "owner_test_authorized" || decision.Activity != nil || decision.CheckedAt == nil || !decision.CheckedAt.Equal(now) || decision.JobID != activityJob || decision.Recipient != localOwnerTestRecipient || decision.TestLeadID != ownerTestLead {
+		t.Fatal("owner test authorization must be explicit and bound to the exact request")
+	}
+	encoded, err := json.Marshal(decision)
+	if err != nil || strings.Contains(string(encoded), `"activity"`) || strings.Contains(string(encoded), "coverageStartedAt") {
+		t.Fatal("owner tests must not fabricate a normal inactivity proof")
+	}
+	if !s.canSendOwnerTest(localOwnerTestRecipient, ownerTestLead, activityJob, now.Add(time.Second)) {
+		t.Fatal("matching fresh owner test authorization should permit receipt testing")
+	}
+	if s.canSend(ids, activityJob, now.Add(time.Second)) || s.decision(ids, activityOtherJob, 5, now.Add(time.Second)).Allowed {
+		t.Fatal("owner test authorization must not authorize a normal-client send")
+	}
+}
+
+func TestOwnerTestAllowlistRecipientAndDeadlineAreExact(t *testing.T) {
+	s, _, _ := activityFixture(t)
+	now := ownerTestTime()
+	for _, lead := range []string{
+		ownerTestLead, ownerOtherTestLead,
+		"13e49741-9d35-404c-ae54-42fe93e55c66", "abf88ff2-ea34-4e32-994d-f7dc75df599b", "9263d823-d059-4e0a-b759-9184035dec89",
+	} {
+		if !s.authorizeOwnerTest(localOwnerTestRecipient, lead, activityJob, now).Allowed {
+			t.Fatal("all five explicitly authorized test cards should pass")
+		}
+	}
+	for _, test := range []struct {
+		recipient, lead, job string
+		at                   time.Time
+	}{
+		{"5511999999999", ownerTestLead, activityJob, now},
+		{"19988763916", ownerTestLead, activityJob, now},
+		{localOwnerTestRecipient, activityOtherJob, activityJob, now},
+		{localOwnerTestRecipient, strings.ToUpper(ownerTestLead), activityJob, now},
+		{localOwnerTestRecipient, ownerTestLead, "bad-job", now},
+		{localOwnerTestRecipient, ownerTestLead, activityJob, localOwnerTestExpiresAt},
+		{localOwnerTestRecipient, ownerTestLead, activityJob, localOwnerTestExpiresAt.Add(time.Second)},
+	} {
+		result := s.authorizeOwnerTest(test.recipient, test.lead, test.job, test.at)
+		if result.Allowed || result.Activity != nil || result.Code != "owner_test_denied" || s.canSendOwnerTest(test.recipient, test.lead, test.job, test.at) {
+			t.Fatal("unauthorized recipient, lead, job, or expired test must fail closed")
+		}
+	}
+}
+
+func TestOwnerTestAuthorizationCannotBeReplayedForAnotherPairOrAfterDisconnect(t *testing.T) {
+	s, _, _ := activityFixture(t)
+	now := ownerTestTime()
+	s.authorizeOwnerTest(localOwnerTestRecipient, ownerTestLead, activityJob, now)
+	if s.canSendOwnerTest(localOwnerTestRecipient, ownerOtherTestLead, activityJob, now) ||
+		s.canSendOwnerTest(localOwnerTestRecipient, ownerTestLead, activityOtherJob, now) ||
+		s.canSendOwnerTest("5511999999999", ownerTestLead, activityJob, now) ||
+		s.canSendOwnerTest(localOwnerTestRecipient, ownerTestLead, activityJob, now.Add(31*time.Second)) ||
+		s.canSendOwnerTest(localOwnerTestRecipient, ownerTestLead, activityJob, now.Add(-time.Second)) {
+		t.Fatal("an authorization is limited to its exact pair and thirty-second lease")
+	}
+	s.authorizeOwnerTest(localOwnerTestRecipient, ownerTestLead, activityJob, localOwnerTestExpiresAt.Add(-time.Second))
+	if s.canSendOwnerTest(localOwnerTestRecipient, ownerTestLead, activityJob, localOwnerTestExpiresAt) {
+		t.Fatal("the absolute test deadline also applies to an earlier authorization")
+	}
+	s.authorizeOwnerTest(localOwnerTestRecipient, ownerTestLead, activityJob, now)
+	s.invalidate()
+	if s.canSendOwnerTest(localOwnerTestRecipient, ownerTestLead, activityJob, now.Add(time.Second)) {
+		t.Fatal("disconnect must revoke all in-memory owner test authorizations")
+	}
+}
+
+func TestOwnerTestMessageMetadataStillBlocksOtherNormalJobs(t *testing.T) {
+	s, ids, now := activityFixture(t)
+	s.record(ids, "owner-test-sdk-id", activityJob, now.Add(-time.Second))
+	if decision := s.decision(ids, activityOtherJob, 5, now); decision.Allowed || decision.Code != "inactivity_recent" || decision.Activity.LastInteractionAt == nil {
+		t.Fatal("test messages remain real interactions for every other normal job")
+	}
+}
+
+func TestOwnerTestActivityEndpointRequiresConnectedWhatsApp(t *testing.T) {
+	s, _, _ := activityFixture(t)
+	handler, err := newLocalRESTHandler(nil, localTestToken, s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := localTestRequest(http.MethodPost, "/api/activity-check", `{"recipient":"`+localOwnerTestRecipient+`","jobId":"`+activityJob+`","days":5,"testLeadId":"`+ownerTestLead+`"}`)
+	response := localTestRun(t, handler, request, http.StatusOK, "owner_test_denied")
+	if strings.Contains(response.Body.String(), `"activity"`) || s.canSendOwnerTest(localOwnerTestRecipient, ownerTestLead, activityJob, ownerTestTime()) {
+		t.Fatal("simulation and disconnected bridges cannot authorize owner tests")
 	}
 }
 

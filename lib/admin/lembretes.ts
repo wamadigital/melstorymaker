@@ -48,6 +48,8 @@ export const SEM_LEMBRETE: EstadoLembrete = {
 
 type CamposLembrete = Pick<Lead, "enviado_em" | "lembrete_7_em" | "lembrete_30_em"> & {
   disparos_whatsapp?: DisparoWhatsApp[];
+  /** Metadado privado validado e produzido no servidor; não autoriza o envio. */
+  teste_whatsapp?: { marco: 7 | 30; expiraEm: string };
 };
 
 /** As colunas em que existe cobranca: quem recebeu a proposta e ainda nao respondeu. */
@@ -106,11 +108,13 @@ export function estadoLembrete(
   const cobrado7 = nesteEnvio("lembrete_proposta_7d");
   const cobrado30 = nesteEnvio("lembrete_proposta_30d");
   const cobrado: Marco | null = cobrado30 ? 30 : cobrado7 ? 7 : null;
+  const marcoTeste = lead.teste_whatsapp && Date.parse(lead.teste_whatsapp.expiraEm) > agoraMs
+    ? lead.teste_whatsapp.marco : null;
 
   // Mesmo aos 40 dias, o primeiro lembrete vem antes da última tentativa.
   // Nenhum dos textos afirma há quantos dias a proposta foi enviada.
   const marco: Marco | null =
-    dias >= DIAS_LEMBRETE_2 && cobrado7 ? 30 : dias >= DIAS_LEMBRETE_1 ? 7 : null;
+    dias >= DIAS_LEMBRETE_2 && (cobrado7 || cobrado30 || marcoTeste === 30) ? 30 : dias >= DIAS_LEMBRETE_1 ? 7 : null;
 
   const jaCobrado = marco === 30 ? cobrado30 : marco === 7 ? cobrado7 : true;
 

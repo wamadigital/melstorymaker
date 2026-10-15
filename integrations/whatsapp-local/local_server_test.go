@@ -159,6 +159,18 @@ func TestLocalBridgeRejectsMalformedJSONUnknownFieldsAndMediaPaths(t *testing.T)
 	localTestRun(t, handler, localTestRequest(http.MethodPost, "/api/send", invalidUTF8), http.StatusBadRequest, "invalid_payload")
 }
 
+func TestLocalBridgeOwnerTestMarkerRequiresValidJobCardAndExactPhone(t *testing.T) {
+	handler := localTestHandler(t, nil)
+	for _, body := range []string{
+		`{"recipient":"5519988763916","message":"fixture","automation_test_lead_id":"` + ownerTestLead + `"}`,
+		`{"recipient":"5519988763916","message":"fixture","automation_job_id":"` + activityJob + `","automation_test_lead_id":""}`,
+		`{"recipient":"5519988763916","message":"fixture","automation_job_id":"` + activityJob + `","automation_test_lead_id":"` + activityOtherJob + `"}`,
+		`{"recipient":"5511999999999","message":"fixture","automation_job_id":"` + activityJob + `","automation_test_lead_id":"` + ownerTestLead + `"}`,
+	} {
+		localTestRun(t, handler, localTestRequest(http.MethodPost, "/api/send", body), http.StatusBadRequest, "invalid_payload")
+	}
+}
+
 func TestLocalBridgeRequiresUTF8JSONContentType(t *testing.T) {
 	handler := localTestHandler(t, nil)
 	body := localTestPayload(t, localTestRecipient, "fixture")

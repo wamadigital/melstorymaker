@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { MENSAGENS_LEMBRETE_FORMULARIO } from "./lembrete-formulario";
 import { validarSequenciaProposta, type ParteMensagem } from "./lembretes-proposta";
+import { marcoTesteOwner, testeOwnerPropostaValido } from "./testes";
 export type ProtocoloWorker = 1 | 2 | 3;
 export type TipoJobWhatsApp = "lembrete_formulario_24h" | "lembrete_proposta_7d" | "lembrete_proposta_30d";
 export const HEADER_PROTOCOLO_WORKER = "X-Mel-Worker-Protocol";
@@ -13,6 +14,9 @@ export const jobSchema = z.object({
   expira_em: z.string().datetime({ offset: true }),
   tipo: z.enum(["lembrete_formulario_24h", "lembrete_proposta_7d", "lembrete_proposta_30d"]),
   sequencia: z.unknown().optional(),
+  lead_id: z.unknown().optional(),
+  proposta_enviado_em: z.unknown().optional(),
+  teste_owner_expira_em: z.string().datetime({ offset: true }).nullish(),
 });
 const textoSequencia = z.string().min(1).max(2000).refine((texto) => texto.trim().length > 0);
 const parte = <T extends number>(delay: T) => z.object({
@@ -29,6 +33,8 @@ export type JobWhatsApp = {
   messagesSequence?: SequenciaMensagens;
   /** Obrigatório no protocolo 3; protocolo 2 continua restrito ao formulário. */
   tipo?: TipoJobWhatsApp;
+  /** Somente os cinco testes temporários validados no banco e no envelope. */
+  testLeadId?: string;
 };
 
 function linkIndividual(texto: string): boolean {
@@ -52,8 +58,14 @@ export function validarSequenciaMensagens(sequencia: unknown, mensagem: string):
 }
 
 /** Tambem usado na fronteira HTTP para nunca liberar sequencia a worker V1. */
-export function validarJobWorker(job: JobWhatsApp, protocolo: ProtocoloWorker): JobWhatsApp {
+export function validarJobWorker(job: JobWhatsApp, protocolo: ProtocoloWorker, agoraMs = Date.now()): JobWhatsApp {
   if (job.messagesSequence === undefined) throw new Error("mensagem_nao_autorizada");
+  if (job.testLeadId !== undefined) {
+    const marco = marcoTesteOwner({ leadId: job.testLeadId, nome: "TESTE HENRIQUE", destinatario: job.recipient }, agoraMs);
+    if (protocolo !== 3 || !marco || job.tipo !== `lembrete_proposta_${marco}d`) {
+      throw new Error("teste_whatsapp_nao_autorizado");
+    }
+  }
   if (protocolo === 3) {
     if (!job.tipo) throw new Error("tipo_ausente");
     if (job.tipo === "lembrete_proposta_7d" || job.tipo === "lembrete_proposta_30d") {
@@ -66,12 +78,19 @@ export function validarJobWorker(job: JobWhatsApp, protocolo: ProtocoloWorker): 
   return { ...job, messagesSequence: validarSequenciaMensagens(job.messagesSequence, job.message) };
 }
 
-export function envelopeJob(linha: unknown, protocolo: ProtocoloWorker = 1): JobWhatsApp {
+export function envelopeJob(linha: unknown, protocolo: ProtocoloWorker = 1, agoraMs = Date.now()): JobWhatsApp {
   const job = jobSchema.parse(linha);
   const envelope: JobWhatsApp = {
     id: job.id, leaseToken: job.lease_token, recipient: job.destinatario,
     message: job.mensagem, expiresAt: job.expira_em,
   };
+  if (job.teste_owner_expira_em != null) {
+    if (protocolo !== 3 || !testeOwnerPropostaValido({
+      leadId: job.lead_id, tipo: job.tipo, recipient: job.destinatario,
+      expiresAt: job.teste_owner_expira_em,
+    }, agoraMs)) throw new Error("teste_whatsapp_nao_autorizado");
+    envelope.testLeadId = job.lead_id as string;
+  }
   if (protocolo === 3) {
     envelope.tipo = job.tipo;
     envelope.messagesSequence = job.tipo === "lembrete_formulario_24h"
@@ -81,7 +100,7 @@ export function envelopeJob(linha: unknown, protocolo: ProtocoloWorker = 1): Job
     if (protocolo !== 2 || job.tipo !== "lembrete_formulario_24h") throw new Error("worker_sem_protocolo_sequencia");
     envelope.messagesSequence = validarSequenciaMensagens(job.sequencia, job.mensagem);
   }
-  return validarJobWorker(envelope, protocolo);
+  return validarJobWorker(envelope, protocolo, agoraMs);
 }
 
 export const atividadeSchema = z.object({

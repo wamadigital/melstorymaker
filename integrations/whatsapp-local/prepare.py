@@ -140,6 +140,32 @@ def patch_history_download(text: str) -> str:
 ''')
 
 
+def patch_mcp_send_arguments(main: str, whatsapp: str) -> tuple[str, str]:
+    """Propaga a referência restrita de teste sem criar outra ferramenta de envio."""
+    main = replace_once(main, '''def send_message(
+    recipient: str,
+    message: str
+)''', '''def send_message(
+    recipient: str,
+    message: str,
+    automation_job_id: Optional[str] = None,
+    automation_test_lead_id: Optional[str] = None
+)''')
+    main = replace_once(
+        main, 'whatsapp_send_message(recipient, message)',
+        'whatsapp_send_message(recipient, message, automation_job_id, automation_test_lead_id)',
+    )
+    whatsapp = replace_once(
+        whatsapp, 'def send_message(recipient: str, message: str)',
+        'def send_message(recipient: str, message: str, automation_job_id: Optional[str] = None, automation_test_lead_id: Optional[str] = None)',
+    )
+    whatsapp = replace_once(
+        whatsapp, '            "message": message,\n        }\n        \n        response = _local_post(url, payload)',
+        '            "message": message,\n        }\n        if automation_job_id is not None:\n            payload["automation_job_id"] = automation_job_id\n        if automation_test_lead_id is not None:\n            payload["automation_test_lead_id"] = automation_test_lead_id\n        \n        response = _local_post(url, payload)',
+    )
+    return main, whatsapp
+
+
 def _patch_app(app: Path) -> None:
     go_file = app / "whatsapp-bridge/main.go"
     go = go_file.read_text()
@@ -215,22 +241,10 @@ def mel_tool():
         return function
     return register''')
     main = main.replace("@mcp.tool()", "@mel_tool()")
-    main = replace_once(main, '''def send_message(
-    recipient: str,
-    message: str
-)''', '''def send_message(
-    recipient: str,
-    message: str,
-    automation_job_id: Optional[str] = None
-)''')
-    main = replace_once(main, 'whatsapp_send_message(recipient, message)', 'whatsapp_send_message(recipient, message, automation_job_id)')
-    main_file.write_text(main)
     whatsapp_file = app / "whatsapp-mcp-server/whatsapp.py"
     whatsapp = patch_whatsapp(whatsapp_file.read_text())
-    whatsapp = replace_once(whatsapp, 'def send_message(recipient: str, message: str)', 'def send_message(recipient: str, message: str, automation_job_id: Optional[str] = None)')
-    whatsapp = replace_once(whatsapp,
-        '            "message": message,\n        }\n        \n        response = _local_post(url, payload)',
-        '            "message": message,\n        }\n        if automation_job_id is not None:\n            payload["automation_job_id"] = automation_job_id\n        \n        response = _local_post(url, payload)')
+    main, whatsapp = patch_mcp_send_arguments(main, whatsapp)
+    main_file.write_text(main)
     whatsapp_file.write_text(whatsapp)
 
 

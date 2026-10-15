@@ -56,7 +56,7 @@ export async function tratarReivindicacao(req: Request, deps = reais()): Promise
   if (!config && !propostas) return resposta({ active: false, job: null, ...detalhes });
   try {
     const job = await deps.reivindicar(protocolo);
-    return resposta({ active: true, job: job ? validarJobWorker(job, protocolo) : null, ...detalhes });
+    return resposta({ active: true, job: job ? validarJobWorker(job, protocolo, (deps.agora ?? Date.now)()) : null, ...detalhes });
   } catch {
     console.error("[whatsapp] nao consegui reivindicar a fila");
     return resposta({ erro: "Fila indisponivel", ...detalhes }, 503);

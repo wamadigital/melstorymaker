@@ -11,6 +11,7 @@ import sys
 import tempfile
 import unittest
 from unittest.mock import patch
+from typing import Optional
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -180,6 +181,45 @@ func main() {
 '''
         with self.assertRaisesRegex(RuntimeError, "Upstream divergente"):
             prepare.patch_history_download(constructor + constructor)
+
+    def test_generated_mcp_forwards_test_reference_without_changing_normal_sends(self):
+        main = '''def send_message(
+    recipient: str,
+    message: str
+):
+    return whatsapp_send_message(recipient, message)
+'''
+        whatsapp = '''def send_message(recipient: str, message: str):
+        payload = {
+            "recipient": recipient,
+            "message": message,
+        }
+
+        response = _local_post(url, payload)
+        return response
+'''
+        main, whatsapp = prepare.patch_mcp_send_arguments(main, whatsapp)
+        captured = []
+        wrapper_scope = {
+            "Optional": Optional, "url": "http://127.0.0.1/fixture",
+            "_local_post": lambda url, payload: captured.append(payload) or payload,
+        }
+        exec(compile(whatsapp, "fixture-whatsapp.py", "exec"), wrapper_scope)
+        main_scope = {"Optional": Optional, "whatsapp_send_message": wrapper_scope["send_message"]}
+        exec(compile(main, "fixture-main.py", "exec"), main_scope)
+        send = main_scope["send_message"]
+        self.assertEqual(send("fixture", "text"), {"recipient": "fixture", "message": "text"})
+        self.assertEqual(send("fixture", "text", "job"), {
+            "recipient": "fixture", "message": "text", "automation_job_id": "job",
+        })
+        self.assertEqual(send("fixture", "text", "job", "lead"), {
+            "recipient": "fixture", "message": "text", "automation_job_id": "job", "automation_test_lead_id": "lead",
+        })
+        self.assertEqual(len(captured), 3)
+
+    def test_generated_mcp_refuses_divergent_upstream_signatures(self):
+        with self.assertRaisesRegex(RuntimeError, "Upstream divergente"):
+            prepare.patch_mcp_send_arguments("def send_message(): pass", "")
 
     def test_unexpected_go_source_is_rejected(self):
         self.copyApp()

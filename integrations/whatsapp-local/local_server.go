@@ -27,9 +27,10 @@ import (
 const localBridgeMaxBodyBytes int64 = 64 * 1024
 
 type localSendRequest struct {
-	Recipient       string `json:"recipient"`
-	Message         string `json:"message"`
-	AutomationJobID string `json:"automation_job_id,omitempty"`
+	Recipient            string  `json:"recipient"`
+	Message              string  `json:"message"`
+	AutomationJobID      string  `json:"automation_job_id,omitempty"`
+	AutomationTestLeadID *string `json:"automation_test_lead_id,omitempty"`
 }
 
 type localBridgeResponse struct {
@@ -111,9 +112,10 @@ func newLocalRESTHandler(client *whatsmeow.Client, token string, activities ...*
 			return
 		}
 		var request struct {
-			Recipient string `json:"recipient"`
-			JobID     string `json:"jobId"`
-			Days      int    `json:"days"`
+			Recipient  string  `json:"recipient"`
+			JobID      string  `json:"jobId"`
+			Days       int     `json:"days"`
+			TestLeadID *string `json:"testLeadId"`
 		}
 		decoder := json.NewDecoder(bytes.NewReader(data))
 		decoder.DisallowUnknownFields()
@@ -126,8 +128,13 @@ func newLocalRESTHandler(client *whatsmeow.Client, token string, activities ...*
 			writeLocalError(w, http.StatusBadRequest, "invalid_payload", "Invalid activity payload.")
 			return
 		}
-		decision := localActivityDecision{Code: "inactivity_unverified", Activity: localActivityProof{CheckedAt: time.Now()}}
-		if activity != nil && localClientConnected(client) {
+		decision := localActivityDecision{Code: "inactivity_unverified", Activity: &localActivityProof{CheckedAt: time.Now()}}
+		if request.TestLeadID != nil {
+			decision = localActivityDecision{Code: "owner_test_denied"}
+			if activity != nil && localClientConnected(client) {
+				decision = activity.authorizeOwnerTest(request.Recipient, *request.TestLeadID, request.JobID, time.Now())
+			}
+		} else if activity != nil && localClientConnected(client) {
 			ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 			defer cancel()
 			if keys, err := localActivityIdentity(ctx, client, request.Recipient); err == nil {
@@ -203,6 +210,10 @@ func newLocalRESTHandler(client *whatsmeow.Client, token string, activities ...*
 			writeLocalError(w, http.StatusBadRequest, "invalid_payload", "Invalid automation reference.")
 			return
 		}
+		if request.AutomationTestLeadID != nil && (request.AutomationJobID == "" || !validLocalOwnerTest(request.Recipient, *request.AutomationTestLeadID, time.Now())) {
+			writeLocalError(w, http.StatusBadRequest, "invalid_payload", "Invalid owner test reference.")
+			return
+		}
 		if client == nil {
 			writeLocalError(w, http.StatusOK, "simulation_no_send", "Simulation does not send messages.")
 			return
@@ -219,7 +230,15 @@ func newLocalRESTHandler(client *whatsmeow.Client, token string, activities ...*
 		if mapped, err := localActivityIdentity(ctx, client, request.Recipient); err == nil {
 			keys = mapped
 		}
-		if request.AutomationJobID != "" && (activity == nil || !activity.canSend(keys, request.AutomationJobID, time.Now())) {
+		automationAllowed := request.AutomationJobID == ""
+		if activity != nil && request.AutomationJobID != "" {
+			if request.AutomationTestLeadID != nil {
+				automationAllowed = activity.canSendOwnerTest(request.Recipient, *request.AutomationTestLeadID, request.AutomationJobID, time.Now())
+			} else {
+				automationAllowed = activity.canSend(keys, request.AutomationJobID, time.Now())
+			}
+		}
+		if !automationAllowed {
 			writeLocalError(w, http.StatusConflict, "inactivity_unverified", "The proposal activity guard did not authorize this send.")
 			return
 		}

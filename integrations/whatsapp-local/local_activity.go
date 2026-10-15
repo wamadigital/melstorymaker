@@ -26,25 +26,88 @@ type localActivityProof struct {
 }
 
 type localActivityDecision struct {
-	Allowed  bool               `json:"allowed"`
-	Code     string             `json:"code"`
-	Activity localActivityProof `json:"activity"`
+	Allowed    bool                `json:"allowed"`
+	Code       string              `json:"code"`
+	Activity   *localActivityProof `json:"activity,omitempty"`
+	TestLeadID string              `json:"testLeadId,omitempty"`
+	JobID      string              `json:"jobId,omitempty"`
+	Recipient  string              `json:"recipient,omitempty"`
+	CheckedAt  *time.Time          `json:"checkedAt,omitempty"`
 }
 
 type localActivityStore struct {
-	mu             sync.Mutex
-	db             *sql.DB
-	secret         []byte
-	coverage       time.Time
-	healthy        bool
-	broken         bool
-	lastCheck      time.Time
-	authorizations map[string]localActivityAuthorization
+	mu                      sync.Mutex
+	db                      *sql.DB
+	secret                  []byte
+	coverage                time.Time
+	healthy                 bool
+	broken                  bool
+	lastCheck               time.Time
+	authorizations          map[string]localActivityAuthorization
+	ownerTestAuthorizations map[string]localOwnerTestAuthorization
 }
 
 type localActivityAuthorization struct {
 	days      int
 	checkedAt time.Time
+}
+
+type localOwnerTestAuthorization struct {
+	leadHash      string
+	recipientHash string
+	checkedAt     time.Time
+}
+
+// Henrique explicitly authorized immediate receipt tests for these five cards.
+// This short-lived exception is independent of, and never fabricates, observed
+// inactivity. It cannot authorize another number, card, or a real-client job.
+const localOwnerTestRecipient = "5519988763916"
+
+var localOwnerTestExpiresAt = time.Date(2026, time.October, 17, 18, 0, 0, 0, time.UTC)
+
+func validLocalOwnerTest(recipient, leadID string, now time.Time) bool {
+	if recipient != localOwnerTestRecipient || !now.Before(localOwnerTestExpiresAt) {
+		return false
+	}
+	switch leadID {
+	case "01b985e2-6bff-4e9c-bb5e-2f1cc280edf7",
+		"d459193f-9e7c-4b2c-995d-7f829a0936bd",
+		"13e49741-9d35-404c-ae54-42fe93e55c66",
+		"abf88ff2-ea34-4e32-994d-f7dc75df599b",
+		"9263d823-d059-4e0a-b759-9184035dec89":
+		return true
+	default:
+		return false
+	}
+}
+
+func (s *localActivityStore) authorizeOwnerTest(recipient, leadID, jobID string, now time.Time) localActivityDecision {
+	denied := localActivityDecision{Code: "owner_test_denied"}
+	if !validLocalOwnerTest(recipient, leadID, now) || !validLocalJobID(jobID) {
+		return denied
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for key, authorization := range s.ownerTestAuthorizations {
+		if now.Before(authorization.checkedAt) || now.Sub(authorization.checkedAt) > 30*time.Second {
+			delete(s.ownerTestAuthorizations, key)
+		}
+	}
+	s.ownerTestAuthorizations[s.hash("job", jobID)] = localOwnerTestAuthorization{
+		leadHash: s.hash("lead", leadID), recipientHash: s.hash("recipient", recipient), checkedAt: now,
+	}
+	return localActivityDecision{Allowed: true, Code: "owner_test_authorized", TestLeadID: leadID, JobID: jobID, Recipient: recipient, CheckedAt: &now}
+}
+
+func (s *localActivityStore) canSendOwnerTest(recipient, leadID, jobID string, now time.Time) bool {
+	if !validLocalOwnerTest(recipient, leadID, now) || !validLocalJobID(jobID) {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	authorization, found := s.ownerTestAuthorizations[s.hash("job", jobID)]
+	return found && !now.Before(authorization.checkedAt) && now.Sub(authorization.checkedAt) <= 30*time.Second &&
+		authorization.leadHash == s.hash("lead", leadID) && authorization.recipientHash == s.hash("recipient", recipient)
 }
 
 var localActivityRecorder *localActivityStore
@@ -69,7 +132,7 @@ func newLocalActivityStore(path, secret string) (*localActivityStore, error) {
 	}
 	// Coverage intentionally is not restored from disk: without a verified history
 	// bootstrap, a restart/disconnect cannot prove silence during the missing time.
-	return &localActivityStore{db: db, secret: []byte(secret), authorizations: make(map[string]localActivityAuthorization)}, nil
+	return &localActivityStore{db: db, secret: []byte(secret), authorizations: make(map[string]localActivityAuthorization), ownerTestAuthorizations: make(map[string]localOwnerTestAuthorization)}, nil
 }
 
 func (s *localActivityStore) hash(kind, value string) string {
@@ -87,6 +150,7 @@ func (s *localActivityStore) invalidate() {
 	defer s.mu.Unlock()
 	s.healthy = false
 	s.coverage = time.Time{}
+	clear(s.ownerTestAuthorizations)
 }
 
 func (s *localActivityStore) beginCoverage(now time.Time) {
@@ -196,7 +260,7 @@ func (s *localActivityStore) decision(keys []types.JID, jobID string, days int, 
 	}
 	s.lastCheck = now
 	proof := localActivityProof{CheckedAt: now, CoverageStartedAt: s.coverage}
-	denied := func(code string) localActivityDecision { return localActivityDecision{Code: code, Activity: proof} }
+	denied := func(code string) localActivityDecision { return localActivityDecision{Code: code, Activity: &proof} }
 	if !s.healthy || s.broken || s.coverage.IsZero() || len(keys) < 2 || (days != 5 && days != 15) {
 		return denied("inactivity_unverified")
 	}
@@ -233,7 +297,7 @@ func (s *localActivityStore) decision(keys []types.JID, jobID string, days int, 
 		}
 	}
 	s.authorizations[s.hash("job", jobID)] = localActivityAuthorization{days: days, checkedAt: now}
-	return localActivityDecision{Allowed: true, Code: "inactivity_clear", Activity: proof}
+	return localActivityDecision{Allowed: true, Code: "inactivity_clear", Activity: &proof}
 }
 
 func (s *localActivityStore) canSend(keys []types.JID, jobID string, now time.Time) bool {

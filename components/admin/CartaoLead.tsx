@@ -132,6 +132,11 @@ export function CartaoLead({
           <p className="truncate text-sm font-medium">
             {nome || <span className="text-muted-foreground">Sem nome</span>}
           </p>
+          {lead.teste_whatsapp && Date.parse(lead.teste_whatsapp.expiraEm) > agoraMs && (
+            <p className="text-[0.6875rem] font-medium text-amber-800">
+              Teste de envio · {lead.teste_whatsapp.marco} dias
+            </p>
+          )}
           <p className="truncate text-xs text-muted-foreground">
             {rotuloCategoria(lead.categoria)}
             {lead.data_evento && <> · {dataCurta(lead.data_evento)}</>}

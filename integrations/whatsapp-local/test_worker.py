@@ -631,6 +631,166 @@ class WorkerTests(unittest.TestCase):
         session.call_tool.assert_awaited_once_with("send_message", {
             "recipient": self.job["recipient"], "message": self.job["message"], "automation_job_id": self.job["id"]})
 
+    def owner_test(self, lead="01b985e2-6bff-4e9c-bb5e-2f1cc280edf7"):
+        self.proposal(worker.OWNER_TEST_LEADS[lead])
+        self.now = datetime(2026, 10, 15, 15, tzinfo=timezone.utc)
+        self.job["expiresAt"] = (self.now + timedelta(hours=1)).isoformat()
+        self.job["recipient"] = worker.OWNER_TEST_RECIPIENT
+        self.job["testLeadId"] = lead
+
+    def owner_test_proof(self):
+        return {"allowed": True, "code": "owner_test_authorized", "testLeadId": self.job["testLeadId"],
+                "jobId": self.job["id"], "recipient": self.job["recipient"], "checkedAt": self.now.isoformat()}
+
+    def owner_test_mcp(self):
+        mcp = FakeMCP()
+        mcp.activity_calls = []
+        async def check(job):
+            mcp.activity_calls.append(deepcopy(job))
+            return self.owner_test_proof()
+        mcp.activity = check
+        return mcp
+
+    def test_five_owner_cards_require_explicit_proof_and_keep_exact_sequences_and_deduplication(self):
+        for index, lead in enumerate(worker.OWNER_TEST_LEADS):
+            with self.subTest(lead=lead):
+                self.owner_test(lead)
+                self.job["id"] = "c350bc94-24f1-4359-9e92-eac5f1a76e4" + str(index)
+                api, mcp = FakeAPI(), self.owner_test_mcp()
+                self.assertEqual(self.run_sequence(api, mcp), "sent")
+                self.assertEqual([job["message"] for job in mcp.jobs], self.texts)
+                self.assertTrue(all(job["testLeadId"] == lead for job in mcp.jobs))
+                self.assertEqual(len(mcp.activity_calls), len(self.texts))
+                self.assertEqual(api.activities, [], "Teste não deve inventar prova de inatividade")
+                self.assertEqual(self.sleeps, list(worker.PROPOSAL_DELAYS[self.job["tipo"]][1:]))
+                self.assertEqual(self.run_sequence(FakeAPI(), mcp), "reconciled")
+                self.assertEqual(mcp.calls, len(self.texts))
+
+    def test_owner_test_rejects_other_leads_phones_types_and_null_marker_before_any_call(self):
+        self.owner_test()
+        valid = deepcopy(self.job)
+        for field, value in (("testLeadId", "c350bc94-24f1-4359-9e92-eac5f1a76e44"),
+                             ("testLeadId", None), ("testLeadId", []),
+                             ("recipient", "5511999999999"),
+                             ("tipo", "lembrete_proposta_30d"), ("tipo", "lembrete_formulario_24h")):
+            with self.subTest(field=field, value=value):
+                self.job = {**deepcopy(valid), field: value}
+                api, mcp = FakeAPI(), self.owner_test_mcp()
+                self.assertEqual(self.run_sequence(api, mcp), "invalid_job")
+                self.assertEqual(api.calls, [])
+                self.assertEqual(mcp.activity_calls, [])
+                self.assertEqual(mcp.calls, 0)
+
+    def test_owner_proof_requires_job_lead_phone_freshness_and_never_accepts_normal_activity(self):
+        self.owner_test()
+        proof = self.owner_test_proof()
+        bad = [
+            {**proof, "allowed": False}, {**proof, "allowed": 1},
+            {**proof, "jobId": "a8c7f5bc-66f3-41ba-9f2c-93d5e0d94369"},
+            {**proof, "recipient": "5511999999999"},
+            {**proof, "testLeadId": "d459193f-9e7c-4b2c-995d-7f829a0936bd"},
+            {**proof, "code": "inactivity_clear"},
+            {**proof, "checkedAt": (self.now-timedelta(seconds=31)).isoformat()},
+            {**proof, "checkedAt": (self.now+timedelta(seconds=6)).isoformat()},
+            {**proof, "checkedAt": "2026-10-15T15:00:00"},
+            {**proof, "checkedAt": None},
+            {**proof, "activity": self.activity_proof()},
+            {"allowed": True, "activity": self.activity_proof()},
+        ]
+        for value in bad:
+            api, mcp = FakeAPI(), self.proposal_mcp([value])
+            self.assertEqual(self.run_sequence(api, mcp), "inactivity_unverified")
+            self.assertEqual(api.calls, [("failed", "inactivity_unverified")])
+            self.assertEqual(mcp.calls, 0)
+            self.assertIsNone(self.ledger.get(self.job))
+
+    def test_owner_test_proof_cannot_replace_real_customer_history(self):
+        self.owner_test()
+        test_proof = self.owner_test_proof()
+        del self.job["testLeadId"]
+        api, mcp = FakeAPI(), self.proposal_mcp([test_proof])
+        self.assertEqual(self.run_sequence(api, mcp), "inactivity_unverified")
+        self.assertEqual(mcp.calls, 0)
+
+    def test_owner_test_expiry_blocks_first_and_each_subsequent_part(self):
+        self.owner_test()
+        self.now = worker.OWNER_TEST_DEADLINE
+        self.job["expiresAt"] = (self.now+timedelta(hours=1)).isoformat()
+        api, mcp = FakeAPI(), self.owner_test_mcp()
+        self.assertEqual(self.run_sequence(api, mcp), "expired")
+        self.assertEqual(api.calls, [])
+        self.assertEqual(mcp.calls, 0)
+        self.now -= timedelta(seconds=1)
+        self.assertEqual(self.run_sequence(api, mcp), "indeterminate")
+        self.assertEqual(mcp.calls, 1)
+        self.assertEqual(api.calls, [("started", None), ("indeterminate", None)])
+        self.assertEqual(len(mcp.activity_calls), 1)
+
+    def test_owner_expiry_during_cloud_authorization_never_reaches_mcp(self):
+        self.owner_test()
+        self.now = worker.OWNER_TEST_DEADLINE - timedelta(seconds=1)
+        self.job["expiresAt"] = (self.now+timedelta(hours=1)).isoformat()
+        test = self
+        class SlowAPI(FakeAPI):
+            async def result(self, job, outcome, code=None, activity=None):
+                result = await super().result(job, outcome, code, activity)
+                if outcome == "started":
+                    test.now = worker.OWNER_TEST_DEADLINE
+                return result
+        api, mcp = SlowAPI(), self.owner_test_mcp()
+        self.assertEqual(self.run_sequence(api, mcp), "expired_after_start")
+        self.assertEqual(mcp.calls, 0)
+        self.assertEqual(self.ledger.get(self.job), "indeterminate")
+
+    def test_owner_test_disconnected_bridge_or_revoked_proof_stops_without_retry(self):
+        self.owner_test()
+        api, mcp = FakeAPI(), self.owner_test_mcp()
+        mcp.connected = False
+        self.assertEqual(self.run_sequence(api, mcp), "not_connected")
+        self.assertEqual(mcp.activity_calls, [])
+        self.assertEqual(mcp.calls, 0)
+        api, mcp = FakeAPI(), self.proposal_mcp([
+            self.owner_test_proof(), {"allowed": False, "code": "inactivity_unverified"}])
+        self.assertEqual(self.run_sequence(api, mcp), "indeterminate")
+        self.assertEqual(mcp.calls, 1)
+        self.assertEqual(self.run_sequence(FakeAPI(), mcp), "reconciled")
+        self.assertEqual(mcp.calls, 1)
+
+    def test_owner_test_marker_changes_ledger_digest_without_altering_legacy_digest(self):
+        self.owner_test()
+        digest = Ledger.digest(self.job)
+        ordinary = deepcopy(self.job)
+        del ordinary["testLeadId"]
+        self.assertNotEqual(digest, Ledger.digest(ordinary))
+        self.ledger.set(self.job, "sent")
+        self.assertEqual(self.ledger.get(ordinary), "indeterminate")
+
+    def test_owner_test_marker_reaches_mcp_and_activity_http_without_public_network(self):
+        self.owner_test()
+        session = SimpleNamespace(call_tool=AsyncMock(return_value=SimpleNamespace(
+            isError=False, content=[SimpleNamespace(text='{"success":true}')])) )
+        local = worker.LocalMCP(session)
+        self.assertTrue(asyncio.run(local.send(self.job)))
+        session.call_tool.assert_awaited_once_with("send_message", {
+            "recipient": self.job["recipient"], "message": self.job["message"],
+            "automation_job_id": self.job["id"], "automation_test_lead_id": self.job["testLeadId"]})
+        state = Path(self.tmp.name)
+        (state / "bridge-token").write_text("token-ficticio-da-ponte-para-teste")
+        calls = []
+        proof = self.owner_test_proof()
+        class Session:
+            def post(self, url, **options):
+                calls.append((url, options))
+                return SimpleNamespace(raise_for_status=lambda: None, json=lambda: proof)
+            def close(self):
+                pass
+        with patch.object(worker, "STATE", state), patch.object(worker.requests, "Session", return_value=Session()):
+            self.assertEqual(asyncio.run(local.activity(self.job)), proof)
+        self.assertEqual(calls[0][0], "http://127.0.0.1:18281/api/activity-check")
+        self.assertEqual(calls[0][1]["json"], {"recipient": self.job["recipient"], "jobId": self.job["id"],
+            "days": 5, "testLeadId": self.job["testLeadId"]})
+        self.assertFalse(calls[0][1]["allow_redirects"])
+
     def test_network_claim_rejects_old_protocol_or_unknown_job_kind(self):
         api = worker.API("token-ficticio-com-mais-de-trinta-e-dois-caracteres")
         self.addCleanup(api.session.close)

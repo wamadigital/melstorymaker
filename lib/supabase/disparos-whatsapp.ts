@@ -17,6 +17,7 @@ const MOTIVOS: Readonly<Record<string, string>> = {
   historico_incompleto: "O histórico disponível ainda não cobre o período necessário.",
   historico_obsoleto: "É necessário atualizar a verificação do histórico do WhatsApp.",
   proposta_condicao_alterada: "A proposta ou as condições deste lembrete mudaram.",
+  teste_owner_expirado: "O período autorizado para este teste terminou ou os dados do teste mudaram.",
 };
 const ESTADOS = ["pendente", "reservado", "enviando", "enviado", "indeterminado", "expirado", "cancelado"] as const;
 

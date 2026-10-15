@@ -6,6 +6,7 @@ import { QuadroLeads, type Coluna } from "@/components/admin/QuadroLeads";
 import { lerComRetentativa } from "@/lib/supabase/consulta";
 import { esfriarParados } from "@/lib/supabase/esfriar";
 import { lerDisparosWhatsApp } from "@/lib/supabase/disparos-whatsapp";
+import { lerTestesWhatsApp } from "@/lib/supabase/testes-whatsapp";
 import { FRASE_PERIODO, ehPeriodo, inicioDoPeriodo } from "@/lib/admin/periodo";
 
 type Busca = { q?: string; categoria?: string; periodo?: string };
@@ -73,7 +74,10 @@ export default async function PaginaLeads({ searchParams }: { searchParams: Prom
 
   const idsVisiveis = respostas.flatMap(({ data }) =>
     ((data ?? []) as unknown as LeadCartao[]).map(({ id }) => id));
-  const disparos = await lerDisparosWhatsApp(idsVisiveis);
+  const [disparos, testes] = await Promise.all([
+    lerDisparosWhatsApp(idsVisiveis),
+    lerTestesWhatsApp(respostas.flatMap(({ data }) => (data ?? []) as unknown as LeadCartao[]), agoraMs),
+  ]);
 
   const colunas = Object.fromEntries(
     STATUS.map((status, i) => {
@@ -84,6 +88,7 @@ export default async function PaginaLeads({ searchParams }: { searchParams: Prom
           cartoes: ((data ?? []) as unknown as LeadCartao[]).map((lead) => ({
             ...lead, disparos_whatsapp: disparos.porLead.get(lead.id) ?? [],
             solicitacoes_whatsapp: disparos.solicitacoesPorLead.get(lead.id) ?? [],
+            teste_whatsapp: testes.get(lead.id),
           })),
           total: count ?? 0,
           // Erro por coluna, e nao da pagina inteira: uma raia que falhou nao
