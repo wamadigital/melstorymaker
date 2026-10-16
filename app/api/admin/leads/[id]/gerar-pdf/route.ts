@@ -58,7 +58,7 @@ export async function POST(_req: Request, { params }: Ctx) {
 
     const { error: erroUpdate } = await supabaseAdmin()
       .from("leads")
-      .update({ pdf_url, pdf_gerado_em })
+      .update({ pdf_url, pdf_gerado_em, pdf_storage_path: null })
       .eq("id", id);
 
     if (erroUpdate) throw new Error(erroUpdate.message);

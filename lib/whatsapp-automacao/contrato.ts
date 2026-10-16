@@ -2,8 +2,9 @@ import { z } from "zod";
 import { MENSAGENS_LEMBRETE_FORMULARIO } from "./lembrete-formulario";
 import { validarSequenciaProposta, type ParteMensagem } from "./lembretes-proposta";
 import { marcoTesteOwner, testeOwnerPropostaValido } from "./testes";
-export type ProtocoloWorker = 1 | 2 | 3;
-export type TipoJobWhatsApp = "lembrete_formulario_24h" | "lembrete_proposta_7d" | "lembrete_proposta_30d";
+import { validarSequenciaPropostaInicial } from "./proposta-inicial";
+export type ProtocoloWorker = 1 | 2 | 3 | 4;
+export type TipoJobWhatsApp = "lembrete_formulario_24h" | "lembrete_proposta_7d" | "lembrete_proposta_30d" | "proposta_inicial_15m";
 export const HEADER_PROTOCOLO_WORKER = "X-Mel-Worker-Protocol";
 
 export const jobSchema = z.object({
@@ -12,7 +13,7 @@ export const jobSchema = z.object({
   destinatario: z.string().regex(/^55\d{10,11}$/),
   mensagem: z.string().min(1).max(2000),
   expira_em: z.string().datetime({ offset: true }),
-  tipo: z.enum(["lembrete_formulario_24h", "lembrete_proposta_7d", "lembrete_proposta_30d"]),
+  tipo: z.enum(["lembrete_formulario_24h", "lembrete_proposta_7d", "lembrete_proposta_30d", "proposta_inicial_15m"]),
   sequencia: z.unknown().optional(),
   lead_id: z.unknown().optional(),
   proposta_enviado_em: z.unknown().optional(),
@@ -62,11 +63,15 @@ export function validarJobWorker(job: JobWhatsApp, protocolo: ProtocoloWorker, a
   if (job.messagesSequence === undefined) throw new Error("mensagem_nao_autorizada");
   if (job.testLeadId !== undefined) {
     const marco = marcoTesteOwner({ leadId: job.testLeadId, nome: "TESTE HENRIQUE", destinatario: job.recipient }, agoraMs);
-    if (protocolo !== 3 || !marco || job.tipo !== `lembrete_proposta_${marco}d`) {
+    if (protocolo < 3 || !marco || job.tipo !== `lembrete_proposta_${marco}d`) {
       throw new Error("teste_whatsapp_nao_autorizado");
     }
   }
-  if (protocolo === 3) {
+  if (job.tipo === "proposta_inicial_15m") {
+    if (protocolo !== 4) throw new Error("worker_sem_protocolo_proposta_inicial");
+    return { ...job, messagesSequence: validarSequenciaPropostaInicial(job.messagesSequence, job.message) };
+  }
+  if (protocolo >= 3) {
     if (!job.tipo) throw new Error("tipo_ausente");
     if (job.tipo === "lembrete_proposta_7d" || job.tipo === "lembrete_proposta_30d") {
       return { ...job, messagesSequence: validarSequenciaProposta(job.tipo, job.messagesSequence, job.message) };
@@ -85,17 +90,19 @@ export function envelopeJob(linha: unknown, protocolo: ProtocoloWorker = 1, agor
     message: job.mensagem, expiresAt: job.expira_em,
   };
   if (job.teste_owner_expira_em != null) {
-    if (protocolo !== 3 || !testeOwnerPropostaValido({
+    if (protocolo < 3 || !testeOwnerPropostaValido({
       leadId: job.lead_id, tipo: job.tipo, recipient: job.destinatario,
       expiresAt: job.teste_owner_expira_em,
     }, agoraMs)) throw new Error("teste_whatsapp_nao_autorizado");
     envelope.testLeadId = job.lead_id as string;
   }
-  if (protocolo === 3) {
+  if (protocolo >= 3) {
     envelope.tipo = job.tipo;
     envelope.messagesSequence = job.tipo === "lembrete_formulario_24h"
       ? validarSequenciaMensagens(job.sequencia, job.mensagem)
-      : validarSequenciaProposta(job.tipo, job.sequencia, job.mensagem);
+      : job.tipo === "proposta_inicial_15m"
+        ? validarSequenciaPropostaInicial(job.sequencia, job.mensagem)
+        : validarSequenciaProposta(job.tipo, job.sequencia, job.mensagem);
   } else {
     if (protocolo !== 2 || job.tipo !== "lembrete_formulario_24h") throw new Error("worker_sem_protocolo_sequencia");
     envelope.messagesSequence = validarSequenciaMensagens(job.sequencia, job.mensagem);

@@ -47,8 +47,7 @@ export function urlPublicaProposta(slug: string): string {
  * corrida entre duas geracoes simultaneas), grava e deixa o UNIQUE do Postgres
  * decidir: violacao 23505 e sinal para sortear de novo, nao erro.
  */
-export async function garantirSlug(leadId: string): Promise<string> {
-  const db = supabaseAdmin();
+export async function garantirSlug(leadId: string, db: SupabaseClient = supabaseAdmin()): Promise<string> {
 
   const { data: atual } = await db.from("leads").select("slug").eq("id", leadId).maybeSingle();
   if (atual?.slug) return atual.slug;

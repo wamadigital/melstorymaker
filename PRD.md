@@ -20,17 +20,17 @@ Isso gera três problemas: tempo gasto por lead, risco de erro na personalizaç�
 
 ## 2. Objetivo do MVP
 
-Automatizar o caminho entre "lead interessado" e "proposta na caixa de entrada", mantendo a Mel no controle da aprovação final.
+Automatizar o caminho entre "lead interessado" e a primeira proposta no WhatsApp, mantendo as respostas e os documentos disponíveis para a Mel no painel.
 
-Fluxo alvo: Mel envia 1 link pelo WhatsApp > lead preenche formulário em menos de 2 minutos > sistema gera PDF fiel à arte do Figma > Mel revisa e aprova em 2 cliques > proposta chega no e-mail do lead.
+Fluxo alvo: lead conclui o formulário > entra em Aguardando revisão > após 15 minutos, sistema revalida os dados, gera o PDF fiel à arte do Figma e envia as quatro mensagens aprovadas pelo WhatsApp > confirmação completa move para Enviado. O envio por e-mail continua manual.
 
 ## 3. Decisões de produto travadas
 
 Estas decisões já foram tomadas e não devem ser reabertas durante o desenvolvimento:
 
 1. **Figma é fonte de arte, não runtime.** A arte de cada categoria é exportada do Figma como PDF base. O texto dinâmico é aplicado por cima via `pdf-lib` usando coordenadas fixas. Fidelidade 1:1 com o design original, zero dependência de API do Figma.
-2. **Human-in-the-loop obrigatório.** Nenhuma proposta sai sem a Mel aprovar no painel admin.
-3. **Envio da proposta por e-mail e WhatsApp manual.** O botão `wa.me` no painel encaminha o link do PDF pelo WhatsApp da Mel. **Confirmação automática ao concluir o formulário retirada por determinação do owner em 15/10/2026:** o texto não teve aprovação específica e o submit não deve registrar esse disparo. O sistema mantém o histórico privado dos envios anteriores. O lembrete único para quem continua em Novo após mais de 24 horas tem texto e sequência de quatro mensagens definidos pelo owner em 15/10/2026 (RF-25); é o único envio sem clique autorizado. As cobranças da proposta de 7/30 dias exigem o clique da Mel e as condições de RF-20. A publicação de 15/10/2026 habilita apenas as cobranças por clique dos botões; o lembrete automático de formulário permanece pausado e a confirmação continua removida.
+2. **Primeira proposta por WhatsApp automática, autorizada em 15/10/2026 (RF-28).** A revisão manual deixa de ser pré-requisito somente para esse primeiro envio, após 15 minutos contínuos em Aguardando revisão. A Mel continua podendo editar os dados ou mover o card durante a espera. E-mail, contrato e assinatura mantêm suas aprovações atuais.
+3. **E-mail manual; WhatsApp inicial pelo MCP da Railway.** O botão `wa.me` continua como alternativa manual. O novo tipo `proposta_inicial_15m` não reativa a antiga confirmação de recebimento: sua copy própria é a de RF-28. Só o primeiro envio é automático; `enviado_em` preenchido ou tentativa inicial já iniciada impede novo disparo quando o card volta à revisão. As cobranças de 7/30 dias continuam exigindo clique e as condições de RF-20. Lembrete do formulário permanece pausado e a confirmação antiga continua removida.
 4. **E-mail pelo Gmail da Mel, via SMTP.** Nodemailer + App Password, atrás da interface `MailAdapter`. Sem serviço transacional: a conta Google Workspace entrega 2.000 destinatários/dia, muito acima do volume da Mel, e não custa nada. O Google reescreve o remetente para a conta autenticada, então a proposta chega do endereço configurado em `GMAIL_USER`.
 5. **Form engine próprio com árvore declarativa em JSON.** Uma pergunta por tela, estilo Typeform, mobile-first. Sem Typeform/mensalidade.
 6. **Contato em duas etapas obrigatórias.** WhatsApp com DDD é a primeira pergunta de todo fluxo, para permitir contato mesmo em caso de abandono. O e-mail validado é a última pergunta, necessário para enviar a proposta por e-mail.
@@ -50,7 +50,7 @@ Estas decisões já foram tomadas e não devem ser reabertas durante o desenvolv
 7. Botão de envio via WhatsApp (`wa.me` com mensagem pronta e link do PDF)
 8. Edição das respostas do lead pelo painel antes de gerar/regerar o PDF
 9. Landing page de venda de casamento em `/casamento` (pedido do owner em 01/10/2026), destino dos anúncios do Instagram: os Reels de casamento da Mel como prova, pacotes sem preço, FAQ e CTA para o formulário em modo casamento (`/formulario?evento=casamento`). Regras em "LP de venda" no CLAUDE.md
-10. Histórico de envios anteriores do WhatsApp no painel. **A confirmação automática ao concluir o formulário foi retirada em 15/10/2026:** concluir ou reenviar o formulário não enfileira mensagens ao cliente, inclusive com a flag geral ativa. Os registros enviados permanecem visíveis no histórico.
+10. Histórico de envios anteriores do WhatsApp no painel. A confirmação automática antiga foi retirada em 15/10/2026; seus registros permanecem preservados. O primeiro envio da proposta é outro tipo, definido em RF-28, e só pode começar após a espera e a validação completas.
 11. Lembrete pelo WhatsApp para quem começou o formulário e permanece em Novo por mais de 24 horas (pedido do owner em 14/10/2026). Texto aprovado em 15/10/2026: quatro mensagens separadas, com pausas de 2, 3 e 2 segundos após o sucesso da anterior. Um lembrete por lead, link individual sozinho na quarta mensagem, WhatsApp válido e nova conferência da coluna antes de cada parte. Uma falha interrompe o restante e não autoriza repetir partes já enviadas. O prazo usa `created_at`: nenhum status volta para Novo e o autosave não reinicia o relógio. A ativação exige flag própria e corte de criação explícito; o padrão é somente novos formulários a partir da ativação, sem disparar para o histórico. O envio não altera a coluna nem os carimbos de contato manual.
 
 ### Fora do MVP (v2)
@@ -87,12 +87,15 @@ E-mail
         v
 Tela de confirmação        (status: aguardando_revisao)
         v
-[Mel no /admin] vê o lead novo > confere/edita respostas > "Gerar proposta"
-        v                    (PDF gerado, salvo no Storage, preview no painel)
-Mel revisa o PDF > "Enviar por e-mail" e/ou "Enviar via WhatsApp"
-        v                    (e-mail marca enviado; WhatsApp só abre a conversa,
-                              e a Mel marca como enviado no painel)
-[Lead] recebe e-mail com PDF anexo + link
+[Espera de 15 minutos contínuos na coluna amarela]
+        v
+Revalida formulário, coluna, telefone e ausência de envio anterior
+        v
+Gera PDF > publica link > MCP envia as quatro partes (pausas 3/2/4s)
+        v                    (falha parcial interrompe e bloqueia repetição)
+ACK completo > card em Enviado, com enviado_em e indicador de WhatsApp
+        v
+[Mel no /admin] acompanha; e-mail e correções continuam disponíveis manualmente
 ```
 
 ## 6. Formulário: árvore de perguntas
@@ -208,13 +211,25 @@ Regras do engine:
 | RF-22 | Botão "Chamar no WhatsApp" no lead de "Novo" que deixou telefone | Aparece no cartão do quadro e no detalhe do lead; abre a conversa do lead com a caixa vazia — a Mel escreve manualmente. Some sem telefone, fora de "Novo", e no detalhe quando já há proposta gerada. No cartão do quadro, ao lado do botão, uma caixa "já chamei": a Mel marca depois de chamar, o botão apaga e fica sem link até ela desmarcar |
 | RF-23 | Botão "Lembrar por e-mail" no lead de "Novo" que deixou e-mail | Fica no cartão do quadro, embaixo do "Chamar no WhatsApp". O clique da Mel envia na hora um e-mail com o link para continuar o formulário de onde o lead parou (e o WhatsApp da Mel), e o botão trava por 7 dias com "Lembrete enviado · Libera de novo em N dias" — a trava também é conferida no servidor. Nunca sai sem o clique. Some sem e-mail e fora de "Novo" |
 | RF-24 | Coluna "Esfriou" (cinza) entre "Virou cliente" e "Lead perdido" | O lead fica no máximo 7 dias em "Enviado": passou disso sem update, vai sozinho para "Esfriou", com "Relembrar cliente"; aos 30 dias do envio o cartão fica vermelho com "Última tentativa". A Mel pode trazê-lo de volta para "Enviado" (ganha mais 7 dias), fechar ou marcar como perdido |
-| RF-25 | Lembrete automático de formulário incompleto após mais de 24 horas em Novo | Um único WhatsApp por lead elegível, com link `/continuar/{id}`; `status = incompleto`, `created_at < agora − 24h` e telefone conferidos na reserva e novamente antes do envio. Quatro mensagens com pausas de 2/3/2 segundos, conforme texto do owner em 15/10/2026; flag exclusiva desativada por padrão e corte de ativação obrigatório. Único disparo sem clique permitido: API aceita somente os textos aprovados e protocolo 2/3; os dois lembretes de proposta exigem clique autenticado e protocolo 3, e a RPC de confirmação permanece inerte. RPCs V3 e revalidação antes de cada parte; interrupção não reenvia a sequência. Nenhuma mudança de status, `enviado_em` ou “já chamei” |
-| RF-26 | Indicador de mensagens no WhatsApp no cartão do Kanban | Ícone verde somente após envio confirmado de pelo menos uma das três mensagens atuais. Hover, clique ou teclado abrem exatamente três linhas: Finalize o formulário, Lembrete após 7 dias e Lembrete após 30 dias. Enviado tem bolinha verde e texto verde tachado; não enviado tem bolinha e texto cinza. Sem datas/origens ou botão desabilitado de substituição. Marcações manuais e a antiga confirmação não contam como envio; histórico persistido permanece intacto. ACK atualiza o quadro ao vivo sem expor conteúdo da fila |
+| RF-25 | Lembrete automático de formulário incompleto após mais de 24 horas em Novo | Um único WhatsApp por lead elegível, com link `/continuar/{id}`; `status = incompleto`, `created_at < agora − 24h` e telefone conferidos na reserva e novamente antes do envio. Quatro mensagens com pausas de 2/3/2 segundos, conforme texto do owner em 15/10/2026; flag exclusiva desativada por padrão e corte de ativação obrigatório. Disparo de formulário sem clique: API aceita somente os textos aprovados e protocolo 2/3/4; os dois lembretes de proposta exigem clique autenticado e protocolo 3, e a RPC de confirmação permanece inerte. RPCs V3 e revalidação antes de cada parte; interrupção não reenvia a sequência. Nenhuma mudança de status, `enviado_em` ou “já chamei” |
+| RF-26 | Indicador de mensagens no WhatsApp no cartão do Kanban | Ícone verde somente após envio confirmado de pelo menos uma das quatro mensagens atuais. Hover, clique ou teclado abrem quatro linhas: Finalize o formulário, Proposta comercial, Lembrete após 7 dias e Lembrete após 30 dias. Enviado tem bolinha verde e texto verde tachado; não enviado tem bolinha e texto cinza. Sem datas/origens ou botão desabilitado de substituição. Marcações manuais e a antiga confirmação não contam como envio; histórico persistido permanece intacto. ACK atualiza o quadro ao vivo sem expor conteúdo da fila |
 | RF-27 | Padronização de nomes por IA após concluir o formulário | Somente o submit vencedor agenda uma chamada à API Anthropic, modelo `claude-haiku-5-5`, com saída JSON estruturada e prazo total de 20s, sem retentativa automática. `nome` nas quatro categorias e `noivos` em casamento perdem sobrenomes e mantêm prenomes compostos. Duas pessoas usam ` & `; mulher primeiro quando os nomes permitem identificar a ordem com segurança. Nome ambíguo/casal do mesmo gênero mantém a ordem informada; uma pessoa permanece sozinha, sem completar com outro campo. Correção persiste no jsonb e `nome_display` sob CAS de status/revisão: edição posterior da Mel ou mudança de status não é sobrescrita. Só os dois campos de nome atravessam a API, sem telefone/e-mail/documentos. Modelo não pode criar nomes nem apagar uma das pessoas. Erro/recusa/ambiguidade preserva o original; não bloqueia conclusão, não envia mensagem, não altera contrato nem corrige leads antigos em lote |
+| RF-28 | Primeira proposta automática pelo WhatsApp após 15 minutos | Nas quatro categorias/cinco artes, registra a entrada em Aguardando revisão no banco, sem depender do navegador. Depois de pelo menos 15 minutos, revalida todos os passos, telefone, coluna e ausência de envio anterior, gera o PDF e publica uma versão própria sem sobrescrever geração manual concorrente. Usa `nome` de quem respondeu, mantendo nomes compostos. Quatro partes com pausas 3/2/4s conforme copy abaixo, worker protocolo 4, RPCs V5 e flag `WHATSAPP_PROPOSTA_INICIAL_ATIVA`. Revalidação antes de cada parte; só ACK completo registra `enviado_em`, indicador e move o card para Enviado. Resultado parcial/desconhecido não é repetido. Inclui os cards atuais ainda sem envio, usando `updated_at` como limite conservador para a espera; novas entradas usam o instante exato. Voltar à revisão após envio não reenvia. Geração, envio, CRM e Kanban funcionam na nuvem, sem Mac ligado |
+
+### Copy da primeira proposta automática — RF-28
+
+| Parte | Mensagem | Pausa antes |
+|---|---|---|
+| 1 | Oi, {nome} tudo bem? Aqui é a Mel Storymaker ✨ | Nenhuma |
+| 2 | Você solicitou um orçamento através do meu site. | 3 segundos após sucesso da parte 1 |
+| 3 | Segue a sua proposta:<br>🤍 {link_da_proposta} | 2 segundos após sucesso da parte 2 |
+| 4 | Qualquer dúvida, é só me chamar. Ok?<br>Fico à disposição para te ajudar no que precisar! | 4 segundos após sucesso da parte 3 |
+
+`nome` é o contato que preencheu, já salvo nas respostas; não o casal, aniversariante ou empresa. O link continua em `/p/{slug}`. O objeto automático no Storage é imutável por reserva e só se torna atual após CAS da categoria/respostas/telefone/PDF. Correção ou geração manual concorrente impede publicar ou enviar o snapshot antigo. O botão manual de gerar proposta continua disponível.
 
 ### Execução dos lembretes na nuvem — 15/10/2026
 
-Bridge autenticado, observador, MCP stdio e worker têm execução canônica na Railway Hobby, independente do Mac. O backend web e a fila privada permanecem na Vercel/Supabase. A migração preservou sessão, metadados de interação, ledger e ACKs; não criou textos, gatilhos ou envios. Somente os lembretes de proposta por clique estão habilitados: `WHATSAPP_AUTOMACAO_ATIVA=true`, `WHATSAPP_LEMBRETE_PROPOSTA_ATIVO=true` e `WHATSAPP_LEMBRETE_FORMULARIO_ATIVO=false`; confirmação de recebimento permanece removida.
+Bridge autenticado, observador, MCP stdio e worker têm execução canônica na Railway Hobby, independente do Mac. O backend web e a fila privada permanecem na Vercel/Supabase. A migração preservou sessão, metadados de interação, ledger e ACKs; não criou textos, gatilhos ou envios. A migração inicial habilitou somente os lembretes de proposta por clique: `WHATSAPP_AUTOMACAO_ATIVA=true`, `WHATSAPP_LEMBRETE_PROPOSTA_ATIVO=true` e `WHATSAPP_LEMBRETE_FORMULARIO_ATIVO=false`; confirmação de recebimento permanece removida.
 
 As condições de RF-20 e RF-25, textos e pausas permanecem iguais. A cobertura de silêncio de 5/15 dias reinicia após a reconexão na Railway, mesmo com banco importado; contatos reais aguardam a observação contínua completa. A exceção temporária dos cinco cards do owner mantém seu prazo original. O Mac é somente backup, com LaunchAgents próprios descarregados/desabilitados e worker local desativado; não iniciar a origem enquanto a nuvem estiver ativa. Recuperação exige a versão mais recente do estado remoto, inclusive ledger/ACKs.
 

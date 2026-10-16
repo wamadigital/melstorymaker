@@ -8,6 +8,7 @@ import { nomeContato, nomeDisplay } from "@/lib/leads";
 import { linkWhatsAppMel } from "@/lib/whatsapp";
 import type { Lead } from "@/lib/form/types";
 import { enviarEventoDeStatus } from "@/lib/meta/lead";
+import { arquivoProposta } from "@/lib/pdf/arquivo";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -30,14 +31,14 @@ export async function POST(_req: Request, { params }: Ctx) {
 
   const { data } = await supabaseAdmin()
     .from("leads")
-    .select("id, categoria, status, respostas, nome_display, email, pdf_url")
+    .select("id, categoria, status, respostas, nome_display, email, pdf_url, pdf_storage_path")
     .eq("id", id)
     .maybeSingle();
 
   const lead = data as Pick<
     Lead,
     "id" | "categoria" | "status" | "respostas" | "nome_display" | "email" | "pdf_url"
-  > | null;
+  > & { pdf_storage_path?: string | null } | null;
 
   if (!lead) {
     return NextResponse.json({ erro: "Lead não encontrado." }, { status: 404 });
@@ -54,7 +55,7 @@ export async function POST(_req: Request, { params }: Ctx) {
     // ao PDF que a Mel acabou de conferir no preview e ao que esta no link.
     const { data: arquivo, error: erroDownload } = await supabaseAdmin()
       .storage.from(BUCKET_PROPOSTAS)
-      .download(`${id}.pdf`);
+      .download(arquivoProposta(id, lead.pdf_storage_path));
 
     if (erroDownload || !arquivo) {
       throw new Error(`Não encontrei o PDF no Storage: ${erroDownload?.message ?? "sem arquivo"}`);

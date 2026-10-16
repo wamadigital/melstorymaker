@@ -142,7 +142,7 @@ test("lê somente metadados dos envios confirmados em uma consulta para todos os
   assert.equal(url.searchParams.get("select"), "lead_id,tipo,enviado_em,estado,ocorrido_em,proposta_enviado_em,ultimo_codigo,iniciado_em");
   assert.equal(url.searchParams.get("estado"), "in.(pendente,reservado,enviando,enviado,indeterminado,expirado,cancelado)");
   assert.equal(url.searchParams.get("lead_id"), `in.(${ID},${OUTRO})`);
-  assert.equal(url.searchParams.get("tipo"), "in.(confirmacao_recebimento,lembrete_formulario_24h,lembrete_proposta_7d,lembrete_proposta_30d)");
+  assert.equal(url.searchParams.get("tipo"), "in.(confirmacao_recebimento,lembrete_formulario_24h,lembrete_proposta_7d,lembrete_proposta_30d,proposta_inicial_15m)");
   assert.deepEqual(resultado.porLead.get(ID), [
     { tipo: "confirmacao_recebimento", enviado_em: ANTIGO },
     { tipo: "lembrete_formulario_24h", enviado_em: RECENTE },

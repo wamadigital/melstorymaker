@@ -7,6 +7,8 @@ import fcntl
 import json
 import logging
 import os
+import re
+import unicodedata
 from pathlib import Path
 import sqlite3
 from datetime import datetime, timezone, timedelta
@@ -33,7 +35,8 @@ def unexpired(job: dict, now: datetime | None = None) -> bool:
 LEGACY_JOB_FIELDS = ("id", "leaseToken", "recipient", "message", "expiresAt")
 SEQUENCE_DELAYS = (0, 2, 3, 2)
 PROPOSAL_TYPES = {"lembrete_proposta_7d": 5, "lembrete_proposta_30d": 15}
-JOB_TYPES = {"lembrete_formulario_24h", *PROPOSAL_TYPES}
+INITIAL_PROPOSAL_TYPE = "proposta_inicial_15m"
+JOB_TYPES = {"lembrete_formulario_24h", INITIAL_PROPOSAL_TYPE, *PROPOSAL_TYPES}
 PROPOSAL_TEXTS = {
     "lembrete_proposta_7d": (
         "Olá, como vai?!",
@@ -50,6 +53,7 @@ PROPOSAL_TEXTS = {
     ),
 }
 PROPOSAL_DELAYS = {"lembrete_proposta_7d": (0, 2, 3, 2), "lembrete_proposta_30d": (0, 4, 4, 3, 5)}
+INITIAL_PROPOSAL_DELAYS = (0, 3, 2, 4)
 OWNER_TEST_RECIPIENT = "5519988763916"
 OWNER_TEST_DEADLINE = datetime(2026, 10, 17, 18, tzinfo=timezone.utc)
 OWNER_TEST_LEADS = {
@@ -110,7 +114,7 @@ def message_parts(job: dict) -> list[dict]:
             raise ValueError("invalid_sequence")
         return [{"message": job["message"], "delayBeforeSeconds": 0}]
     sequence = job["messagesSequence"]
-    delays = PROPOSAL_DELAYS.get(kind, SEQUENCE_DELAYS)
+    delays = INITIAL_PROPOSAL_DELAYS if kind == INITIAL_PROPOSAL_TYPE else PROPOSAL_DELAYS.get(kind, SEQUENCE_DELAYS)
     if not isinstance(sequence, list) or len(sequence) != len(delays):
         raise ValueError("invalid_sequence")
     for index, (part, delay) in enumerate(zip(sequence, delays)):
@@ -128,6 +132,19 @@ def message_parts(job: dict) -> list[dict]:
                 if (url.scheme != "https" or not url.hostname or url.username or url.password
                         or part["message"].strip() != part["message"] or any(c.isspace() for c in part["message"])):
                     raise ValueError("invalid_sequence")
+    if kind == INITIAL_PROPOSAL_TYPE:
+        greeting = re.fullmatch(r"Oi, (.+) tudo bem\? Aqui é a Mel Storymaker ✨", sequence[0]["message"])
+        link = re.fullmatch(r"Segue a sua proposta:\n🤍 (https://[^\s/?#\\@]+/p/[a-z0-9]{4})", sequence[2]["message"])
+        if not greeting or not link:
+            raise ValueError("invalid_initial_proposal")
+        name = greeting[1]
+        words = re.split(r"[ '\u2019.-]", name)
+        if (not 1 <= len(name) <= 120 or not all(words)
+                or any(unicodedata.category(c)[0] not in ("L", "M") for word in words for c in word)
+                or sequence[1]["message"] != "Você solicitou um orçamento através do meu site."
+                or sequence[3]["message"] != "Qualquer dúvida, é só me chamar. Ok?\nFico à disposição para te ajudar no que precisar!"
+                or "\n\n".join(part["message"] for part in sequence) != job["message"]):
+            raise ValueError("invalid_initial_proposal")
     return sequence
 
 
@@ -189,18 +206,19 @@ class API:
         self.session = requests.Session()
         self.session.trust_env = False
         self.session.headers["Authorization"] = "Bearer " + token
-        self.session.headers["X-Mel-Worker-Protocol"] = "3"
+        self.session.headers["X-Mel-Worker-Protocol"] = "4"
 
     async def post(self, path: str, body: dict) -> dict:
         def request():
-            response = self.session.post(ORIGIN + path, json=body, timeout=(5, 20), allow_redirects=False)
+            timeout = 55 if path.endswith("/reivindicar") else 20
+            response = self.session.post(ORIGIN + path, json=body, timeout=(5, timeout), allow_redirects=False)
             response.raise_for_status()
             return response.json()
         return await asyncio.to_thread(request)
 
     async def claim(self) -> dict:
         response = await self.post("/api/integracoes/whatsapp/reivindicar", {})
-        if response.get("protocolVersion") != 3:
+        if response.get("protocolVersion") != 4:
             raise ValueError("invalid_worker_protocol")
         job = response.get("job")
         if job is not None and (not isinstance(job, dict) or job.get("tipo") not in JOB_TYPES):

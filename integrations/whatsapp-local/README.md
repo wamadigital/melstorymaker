@@ -4,8 +4,8 @@
 executam na Railway Hobby, no projeto privado `mel-whatsapp`. A implantação
 `47e5370d-dd0b-4d9b-a57a-e482a6974b4a` confirmou conexão autenticada e worker em
 execução. O Mac pode ficar desligado. Confirmação ao concluir formulário
-permanece removida. Habilitados somente os lembretes de proposta por clique
-nos botões de 7/30 dias. Flag própria do formulário permanece desligada.
+permanece removida. Habilitados os lembretes de proposta por clique nos botões de 7/30 dias;
+a orientação posterior RF-28 autoriza também o primeiro envio após 15 minutos. Flag própria do formulário permanece desligada.
 Preservar histórico, sessão, ledger e ACKs. A cobertura contínua de 5/15 dias
 reiniciou na reconexão da nuvem e não é restaurada pelo banco importado.
 
@@ -25,11 +25,14 @@ em [`../whatsapp-railway/README.md`](../whatsapp-railway/README.md). O owner
 autorizou hard limits de US$ 10 compute e US$ 0 Railway Agent no workspace,
 aplicados mantendo o Hobby; isso não garante uma fatura mensal fixa.
 
-Os envios autorizados são o lembrete automático de formulário incompleto e os
-lembretes de proposta acionados pelo botão da Mel. Copy e pausas são fechadas;
+Os envios autorizados são o primeiro orçamento automático após 15 minutos, o
+lembrete de formulário incompleto (pausado) e os lembretes de proposta por clique. Copy e pausas são fechadas;
 a confirmação de recebimento permanece removida. Flags, histórico de envios e
-sessão não devem ser alterados para executar testes. Somente os lembretes de proposta por clique são habilitados nesta publicação.
-Proposta exige aprovação da Mel e permanece no fluxo atual do painel.
+sessão não devem ser alterados para executar testes. A publicação inicial habilitou os lembretes de proposta por clique; RF-28 acrescenta o orçamento automático.
+A primeira proposta agora segue RF-28: espera de 15 minutos, validação completa,
+gerador na Vercel e quatro partes com pausas 3/2/4s pelo worker protocolo 4.
+Só ACK completo move para Enviado. Cliente que já recebeu não é reenviado ao
+voltar à revisão. O Mac permanece desligável; e-mail e contratos seguem manuais.
 
 | Componente | Local |
 |---|---|
@@ -224,7 +227,7 @@ O primeiro lembrete conta como interação para o segundo. Se for enviado no dia
 essas cobranças por conta própria: cada tentativa exige o clique no card. O botão
 faz a solicitação somente após o prazo de 7/30 dias e fica bloqueado durante
 a fila/envio. Desde o clique, o botão fica oculto, inclusive depois do ACK
-completo; o ícone resume as três mensagens com estados verde/cinza. Não há
+completo; o ícone resume as quatro mensagens com estados verde/cinza. Não há
 botão desabilitado substituto. O bloqueio também existe no banco para o mesmo lembrete da mesma
 proposta: outra aba, clique duplo e POST direto não criam um segundo disparo.
 
