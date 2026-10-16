@@ -231,7 +231,24 @@ Regras do engine:
 
 Bridge autenticado, observador, MCP stdio e worker têm execução canônica na Railway Hobby, independente do Mac. O backend web e a fila privada permanecem na Vercel/Supabase. A migração preservou sessão, metadados de interação, ledger e ACKs; não criou textos, gatilhos ou envios. A migração inicial habilitou somente os lembretes de proposta por clique: `WHATSAPP_AUTOMACAO_ATIVA=true`, `WHATSAPP_LEMBRETE_PROPOSTA_ATIVO=true` e `WHATSAPP_LEMBRETE_FORMULARIO_ATIVO=false`; confirmação de recebimento permanece removida.
 
-Na migração de 15/10, as condições de RF-20 e RF-25, textos e pausas foram preservados. A revisão de RF-25 de 16/10 substitui somente o prazo e autoriza sua ativação com corte para novos formulários; textos, pausas e os gates de RF-20 permanecem. A cobertura de silêncio de 5/15 dias reinicia após a reconexão na Railway, mesmo com banco importado; contatos reais aguardam a observação contínua completa. A exceção temporária dos cinco cards do owner mantém seu prazo original. O Mac é somente backup, com LaunchAgents próprios descarregados/desabilitados e worker local desativado; não iniciar a origem enquanto a nuvem estiver ativa. Recuperação exige a versão mais recente do estado remoto, inclusive ledger/ACKs.
+Na migração de 15/10, as condições de RF-20 e RF-25, textos e pausas foram preservados. A revisão de RF-25 de 16/10 substitui somente o prazo e autoriza sua ativação com corte para novos formulários; textos, pausas e os gates de RF-20 permanecem. Na migração inicial, a cobertura de silêncio de 5/15 dias reiniciou; linhas importadas sem comprovação não a restauram. A correção de continuidade de 16/10 segue a regra abaixo. A exceção temporária dos cinco cards do owner mantém seu prazo original. O Mac é somente backup, com LaunchAgents próprios descarregados/desabilitados e worker local desativado; não iniciar a origem enquanto a nuvem estiver ativa. Recuperação exige a versão mais recente do estado remoto, inclusive ledger/ACKs.
+
+### Continuidade verificável dos lembretes — correção de 16/10/2026
+
+RF-20 mantém cinco/quinze dias sem interação, clique da Mel e confirmação prévia
+do primeiro lembrete. A cobertura comprovada é persistida com HMAC e identidade
+da sessão; reinício limpo ou reconexão de até 30 minutos só preserva o início
+anterior depois da sincronização completa dos eventos offline e validação de
+integridade. Crash, lacuna não verificável, sessão diferente e falha de registro
+continuam bloqueando. Histórico vazio, importado ou parcial não autoriza envio.
+A primeira implantação não fabrica cobertura anterior ao checkpoint.
+
+O motivo do bloqueio distingue sincronização pendente, cobertura incompleta,
+identidade não confirmada, erro de verificação e conversa recente. Cobertura
+incompleta com timestamps válidos mostra a previsão em Brasília para completar
+cinco/quinze dias. Outro clique só reabre a mesma tentativa cancelada antes de
+iniciar; confirmação parcial/desconhecida nunca repete. Esta previsão é diagnóstico,
+sem enviar automaticamente quando chegar a data.
 
 ### Horários do lembrete de formulário — regra de 16/10/2026
 

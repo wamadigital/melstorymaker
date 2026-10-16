@@ -36,6 +36,10 @@ def unexpired(job: dict, now: datetime | None = None) -> bool:
 LEGACY_JOB_FIELDS = ("id", "leaseToken", "recipient", "message", "expiresAt")
 SEQUENCE_DELAYS = (0, 2, 3, 2)
 PROPOSAL_TYPES = {"lembrete_proposta_7d": 5, "lembrete_proposta_30d": 15}
+ACTIVITY_BLOCK_CODES = {
+    "historico_em_sincronizacao", "historico_incompleto", "historico_indisponivel",
+    "identidade_nao_confirmada", "inactivity_recent", "inactivity_unverified",
+}
 INITIAL_PROPOSAL_TYPE = "proposta_inicial_15m"
 FORM_REMINDER_TYPE = "lembrete_formulario_24h"
 FORM_REMINDER_TIMEZONE = ZoneInfo("America/Sao_Paulo")
@@ -302,24 +306,56 @@ class LocalMCP:
         return await asyncio.to_thread(check)
 
 
-def verified_activity(value: object, days: int, now: datetime) -> dict | None:
-    """Bridge metadata must prove a complete, fresh window before every part."""
-    if not isinstance(value, dict) or value.get("allowed") is not True:
-        return None
-    proof = value.get("activity")
-    if not isinstance(proof, dict) or set(proof) != {"checkedAt", "coverageStartedAt", "lastInteractionAt", "complete"} or proof.get("complete") is not True:
+def activity_timestamps(proof: object, now: datetime) -> tuple[datetime, datetime, datetime | None] | None:
+    """Only dated, coherent bridge metadata can be passed to the private API."""
+    if (not isinstance(proof, dict)
+            or set(proof) != {"checkedAt", "coverageStartedAt", "lastInteractionAt", "complete"}
+            or type(proof.get("complete")) is not bool):
         return None
     try:
         checked = datetime.fromisoformat(proof["checkedAt"].replace("Z", "+00:00"))
         coverage = datetime.fromisoformat(proof["coverageStartedAt"].replace("Z", "+00:00"))
         last = None if proof["lastInteractionAt"] is None else datetime.fromisoformat(proof["lastInteractionAt"].replace("Z", "+00:00"))
-        if any(timestamp.tzinfo is None for timestamp in (checked, coverage, *([] if last is None else [last]))):
+        timestamps = (checked, coverage, *([] if last is None else [last]))
+        if any(timestamp.tzinfo is None for timestamp in timestamps):
             return None
         age = (now - checked).total_seconds()
-        cutoff = checked - timedelta(days=days)
-        if age < -5 or age > 30 or coverage > cutoff or (last is not None and last > cutoff):
+        epoch = datetime(1970, 1, 1, tzinfo=timezone.utc)
+        if (age < -5 or age > 30 or any(timestamp <= epoch for timestamp in timestamps)
+                or coverage > checked or (last is not None and last > checked)):
             return None
     except (AttributeError, ValueError, TypeError, OverflowError):
+        return None
+    return checked, coverage, last
+
+
+def verified_activity(value: object, days: int, now: datetime) -> dict | None:
+    """A complete, fresh window remains mandatory before every message part."""
+    if (not isinstance(value, dict) or value.get("allowed") is not True
+            or ("code" in value and value["code"] != "inactivity_clear")):
+        return None
+    proof = value.get("activity")
+    timestamps = activity_timestamps(proof, now)
+    if timestamps is None or proof["complete"] is not True:
+        return None
+    checked, coverage, last = timestamps
+    cutoff = checked - timedelta(days=days)
+    if coverage > cutoff or (last is not None and last > cutoff):
+        return None
+    return proof
+
+
+def incomplete_activity(value: object, days: int, now: datetime) -> dict | None:
+    """An incomplete proof explains a blocked job; it can never start a send."""
+    if (not isinstance(value, dict) or value.get("allowed") is not False
+            or value.get("code") != "historico_incompleto"):
+        return None
+    proof = value.get("activity")
+    timestamps = activity_timestamps(proof, now)
+    if timestamps is None or proof["complete"] is not False:
+        return None
+    checked, coverage, _ = timestamps
+    if coverage <= checked - timedelta(days=days):
         return None
     return proof
 
@@ -406,14 +442,19 @@ async def process(api, mcp, ledger: Ledger, job: dict, *, sleep=asyncio.sleep, c
             proof = verified_activity(value, days, checked_now)
             if proof is not None:
                 return proof, None
-            code = "inactivity_recent" if isinstance(value, dict) and value.get("code") == "inactivity_recent" else "inactivity_unverified"
-            return None, code
+            code = value.get("code") if isinstance(value, dict) and value.get("allowed") is False else None
+            if not isinstance(code, str) or code not in ACTIVITY_BLOCK_CODES:
+                return None, "inactivity_unverified"
+            return incomplete_activity(value, days, checked_now), code
         except Exception:
             return None, "inactivity_unverified"
 
     proof, blocked = await activity_gate()
     if blocked is not None:
-        await api.result(job, "failed", blocked)
+        if proof is not None:
+            await api.result(job, "failed", blocked, activity=proof)
+        else:
+            await api.result(job, "failed", blocked)
         return blocked
     # O preflight pode atravessar 21h. Sem início/ledger, a nuvem adia às 9h.
     if quiet_hours():

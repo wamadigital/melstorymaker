@@ -139,7 +139,7 @@ test("lê somente metadados dos envios confirmados em uma consulta para todos os
   const { url, metodo } = pedidos[0];
   assert.equal(metodo, "GET");
   assert.equal(url.pathname, "/rest/v1/whatsapp_outbox");
-  assert.equal(url.searchParams.get("select"), "lead_id,tipo,enviado_em,estado,ocorrido_em,proposta_enviado_em,ultimo_codigo,iniciado_em");
+  assert.equal(url.searchParams.get("select"), "lead_id,tipo,enviado_em,estado,ocorrido_em,proposta_enviado_em,ultimo_codigo,iniciado_em,historico_verificado_em,historico_cobertura_inicio_em,ultima_interacao_em");
   assert.equal(url.searchParams.get("estado"), "in.(pendente,reservado,enviando,enviado,indeterminado,expirado,cancelado)");
   assert.equal(url.searchParams.get("lead_id"), `in.(${ID},${OUTRO})`);
   assert.equal(url.searchParams.get("tipo"), "in.(confirmacao_recebimento,lembrete_formulario_24h,lembrete_proposta_7d,lembrete_proposta_30d,proposta_inicial_15m)");
@@ -189,8 +189,9 @@ test("status da solicitação não inventa envio e só publica motivo de lista f
   assert.ok(!JSON.stringify([...resultado.solicitacoesPorLead]).includes("privado"));
 });
 
-test("nova tentativa só é liberada para os três cancelamentos seguros antes do início", async () => {
-  const codigosPermitidos = ["inactivity_recent", "inactivity_unverified", "proposta_condicao_alterada"];
+test("nova tentativa só é liberada para cancelamentos seguros antes do início", async () => {
+  const codigosPermitidos = ["inactivity_recent", "inactivity_unverified", "proposta_condicao_alterada",
+    "historico_em_sincronizacao", "historico_incompleto", "historico_indisponivel", "identidade_nao_confirmada"];
   const casos = ["pendente", "reservado", "enviando", "enviado", "indeterminado", "expirado", "cancelado"]
     .flatMap((estado) => [...codigosPermitidos, "teste_owner_expirado", "codigo-privado", null]
       .flatMap((ultimo_codigo) => [null, RECENTE, undefined].map((iniciado_em) => ({ estado, ultimo_codigo, iniciado_em }))));
@@ -210,6 +211,72 @@ test("nova tentativa só é liberada para os três cancelamentos seguros antes d
     assert.equal(Object.hasOwn(solicitacoes[indice], "ultimo_codigo"), false);
   });
   assert.ok(!JSON.stringify([...resultado.solicitacoesPorLead]).includes("codigo-privado"));
+});
+
+test("distingue sincronização, cobertura incompleta, indisponibilidade e identidade sem publicar dados privados", async () => {
+  const codigos = ["historico_em_sincronizacao", "historico_incompleto", "historico_indisponivel",
+    "identidade_nao_confirmada", "inactivity_unverified", "inactivity_recent"];
+  const { db } = bancoFicticio(() => json(codigos.map((ultimo_codigo) => ({
+    lead_id: ID, tipo: "lembrete_proposta_7d", estado: "cancelado", iniciado_em: null,
+    ocorrido_em: RECENTE, proposta_enviado_em: ANTIGO, ultimo_codigo,
+    mensagem: "conteúdo privado", destinatario: "telefone privado",
+  }))));
+  const resultado = await lerDisparosWhatsApp([ID], db);
+  const solicitacoes = resultado.solicitacoesPorLead.get(ID)!;
+  assert.deepEqual(solicitacoes.map(({ motivo }) => motivo), [
+    "O WhatsApp ainda está sincronizando o histórico. Tente novamente após a sincronização.",
+    "Histórico em validação. Ainda falta completar o período mínimo de observação.",
+    "A verificação do histórico do WhatsApp está indisponível. O envio foi bloqueado por segurança.",
+    "Ainda não foi possível confirmar a identidade deste contato no WhatsApp.",
+    "O histórico do WhatsApp não pôde ser verificado. Isso não confirma uma interação recente.",
+    "Houve interação recente com este contato no WhatsApp.",
+  ]);
+  assert.equal(resultado.porLead.size, 0);
+  assert.ok(solicitacoes.every(({ reenvioPermitido }) => reenvioPermitido));
+  assert.ok(!JSON.stringify(solicitacoes).includes("privado"));
+});
+
+test("cobertura incompleta prevê cinco ou quinze dias no fuso de São Paulo sem prometer envio", async (t) => {
+  t.mock.method(Date, "now", () => Date.parse("2026-10-16T12:00:00Z"));
+  const { db } = bancoFicticio(() => json(["lembrete_proposta_7d", "lembrete_proposta_30d"].map((tipo) => ({
+    lead_id: ID, tipo, estado: "cancelado", iniciado_em: null,
+    ocorrido_em: RECENTE, proposta_enviado_em: ANTIGO, ultimo_codigo: "historico_incompleto",
+    historico_verificado_em: "2026-10-16T11:59:00Z", historico_cobertura_inicio_em: "2026-10-15T02:45:00Z",
+    ultima_interacao_em: null,
+  }))));
+  const resultado = await lerDisparosWhatsApp([ID], db);
+  const solicitacoes = resultado.solicitacoesPorLead.get(ID)!;
+  assert.deepEqual(solicitacoes.map(({ motivo }) => motivo), [
+    "Histórico em validação. Período mínimo previsto para 19.10 às 23h45, enquanto a verificação continuar válida.",
+    "Histórico em validação. Período mínimo previsto para 29.10 às 23h45, enquanto a verificação continuar válida.",
+  ]);
+  assert.ok(solicitacoes.every((solicitacao) => !Object.hasOwn(solicitacao, "ultima_interacao_em") &&
+    !Object.hasOwn(solicitacao, "historico_cobertura_inicio_em") && !Object.hasOwn(solicitacao, "historico_verificado_em")));
+});
+
+test("datas ausentes, inválidas, futuras ou incoerentes não inventam previsão para o histórico", async (t) => {
+  t.mock.method(Date, "now", () => Date.parse("2026-10-16T12:00:00Z"));
+  const base = {
+    lead_id: ID, tipo: "lembrete_proposta_7d", estado: "cancelado", iniciado_em: null,
+    ocorrido_em: RECENTE, proposta_enviado_em: ANTIGO, ultimo_codigo: "historico_incompleto",
+    historico_verificado_em: "2026-10-16T11:59:00Z", historico_cobertura_inicio_em: "2026-10-15T02:45:00Z",
+    ultima_interacao_em: null,
+  };
+  const casos = [
+    { historico_verificado_em: undefined }, { historico_verificado_em: "invalid" },
+    { historico_verificado_em: "2026-10-16T12:00:06Z" },
+    { historico_cobertura_inicio_em: null }, { historico_cobertura_inicio_em: "Infinity" },
+    { historico_cobertura_inicio_em: "2026-02-30T00:00:00Z" },
+    { historico_cobertura_inicio_em: "1970-01-01T00:00:00Z" },
+    { historico_cobertura_inicio_em: "2026-10-16T12:00:00Z" },
+    { historico_cobertura_inicio_em: "2026-10-01T00:00:00Z" },
+    { ultima_interacao_em: undefined }, { ultima_interacao_em: "NaN" },
+    { ultima_interacao_em: "2026-10-16T11:59:01Z" }, { ultima_interacao_em: "1970-01-01T00:00:00Z" },
+  ];
+  const { db } = bancoFicticio(() => json(casos.map((caso) => ({ ...base, ...caso }))));
+  const resultado = await lerDisparosWhatsApp([ID], db);
+  assert.ok(resultado.solicitacoesPorLead.get(ID)!.every(({ motivo }) =>
+    motivo === "Histórico em validação. Ainda falta completar o período mínimo de observação."));
 });
 
 test("quadro sem cartões não consulta a fila", async () => {

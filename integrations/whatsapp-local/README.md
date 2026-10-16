@@ -257,12 +257,19 @@ completo; o ícone resume as quatro mensagens com estados verde/cinza. Não há
 botão desabilitado substituto. O bloqueio também existe no banco para o mesmo lembrete da mesma
 proposta: outra aba, clique duplo e POST direto não criam um segundo disparo.
 
-O bridge antigo não registra conversas. O novo observador guarda somente hashes
-privados dos identificadores e horários de mensagens/chamadas individuais,
-sem texto, mídia ou nomes. A cobertura começa depois da conexão e sincronização
-de mensagens offline; é necessário observar continuamente a janela inteira.
-Reinício, desconexão, interrupção da observação ou identidade PN/LID sem correspondência
-bloqueiam o envio. Não assumir silêncio com histórico vazio ou incompleto.
+O observador guarda somente hashes privados e horários de mensagens/chamadas,
+sem texto, mídia ou nomes, e um checkpoint HMAC vinculado à sessão em `activity.db`.
+A cobertura começa após sincronizar os eventos offline. Reinício limpo ou
+reconexão de até 30 minutos preserva o início comprovado somente após a nova
+barreira de sincronização e validação da assinatura, sessão e relógio. SQLite
+WAL/FULL e ACK síncrono preservam a ordem dos registros. Crash, falha de registro,
+lacuna não comprovada e identidade PN/LID desconhecida bloqueiam. A primeira
+implantação do checkpoint não retroage linhas antigas a uma prova de silêncio.
+Os gates permanecem em cinco/quinze dias. Não assumir silêncio com histórico vazio.
+
+O painel diferencia as causas do bloqueio e mostra a previsão em Brasília quando
+há prova parcial válida. Essa prova é apenas diagnóstico: STARTED ainda exige a
+janela completa. SQL manual: `supabase/whatsapp-historico-feedback.sql`.
 
 A verificação ocorre antes de cada parte. Só as partes da própria tentativa são
 excluídas da consulta; resposta do lead, mensagem da Mel em outro aparelho ou

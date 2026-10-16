@@ -9,8 +9,12 @@ import (
 	"testing"
 	"time"
 
+	"go.mau.fi/whatsmeow"
+	"go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
+	"go.mau.fi/whatsmeow/util/keys"
+	waLog "go.mau.fi/whatsmeow/util/log"
 )
 
 const activityJob = "52a44790-8d33-42a1-a61a-11a399ab75f1"
@@ -292,7 +296,7 @@ func TestActivityEndpointSimulationIsPrivateAndFailsClosed(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &decision); err != nil {
 		t.Fatal(err)
 	}
-	if decision.Allowed || decision.Activity.Complete || decision.Code != "inactivity_unverified" {
+	if decision.Allowed || decision.Activity.Complete || decision.Code != "historico_em_sincronizacao" {
 		t.Fatal("simulation must not prove contact silence")
 	}
 	if strings.Contains(response.Body.String(), localTestRecipient) || strings.Contains(response.Body.String(), activityJob) {
@@ -300,5 +304,319 @@ func TestActivityEndpointSimulationIsPrivateAndFailsClosed(t *testing.T) {
 	}
 	for _, body := range []string{`{}`, `{"recipient":"` + localTestRecipient + `","jobId":"` + activityJob + `","days":1}`, `{"recipient":"` + localTestRecipient + `","jobId":"bad","days":5}`} {
 		localTestRun(t, handler, localTestRequest(http.MethodPost, "/api/activity-check", body), http.StatusBadRequest, "invalid_payload")
+	}
+}
+
+func TestActivityCleanRestartRequiresAuthenticatedSessionAndSyncBarrier(t *testing.T) {
+	s, ids, now := activityFixture(t)
+	var path string
+	if err := s.db.QueryRow("SELECT file FROM pragma_database_list WHERE name='main'").Scan(&path); err != nil {
+		t.Fatal(err)
+	}
+	s.sessionHash = s.hash("session", "fixture-device")
+	original := s.coverage
+	s.closeClean(now)
+	reopened, err := newLocalActivityStore(path, localTestToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.db.Close()
+	reopened.bindSession(s.sessionHash, now.Add(time.Minute))
+	if d := reopened.decision(ids, activityJob, 15, now.Add(time.Minute)); d.Allowed || d.Code != "historico_em_sincronizacao" {
+		t.Fatalf("checkpoint alone cannot prove completed sync: %+v", d)
+	}
+	reopened.completeSync(now.Add(2 * time.Minute))
+	if !reopened.coverage.Equal(original) {
+		t.Fatal("a verified short clean restart must keep the original observation start")
+	}
+	if !reopened.decision(ids, activityJob, 15, now.Add(2*time.Minute)).Allowed {
+		t.Fatal("covered inactivity should survive clean restart")
+	}
+	// A second graceful restart proves the marker is rewritten, not merely consumed.
+	reopened.closeClean(now.Add(2 * time.Minute))
+	second, err := newLocalActivityStore(path, localTestToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer second.db.Close()
+	second.bindSession(s.sessionHash, now.Add(3*time.Minute))
+	second.completeSync(now.Add(3 * time.Minute))
+	if !second.coverage.Equal(original) || !second.decision(ids, activityJob, 15, now.Add(3*time.Minute)).Allowed {
+		t.Fatal("two clean restarts must preserve the same proof")
+	}
+}
+
+func TestActivitySameProcessReconnectRequiresCompletionAndKeepsKnownInteractions(t *testing.T) {
+	s, ids, now := activityFixture(t)
+	original := s.coverage
+	s.pause(now)
+	if d := s.decision(ids, activityJob, 5, now); d.Allowed || d.Code != "historico_em_sincronizacao" {
+		t.Fatal("offline period must deny sends")
+	}
+	s.record(ids, "queued-during-offline", "", now.Add(time.Second))
+	s.completeSync(now.Add(time.Minute))
+	d := s.decision(ids, activityJob, 5, now.Add(time.Minute))
+	if !s.coverage.Equal(original) || d.Allowed || d.Code != "inactivity_recent" || !d.Activity.Complete {
+		t.Fatal("backlog interaction must survive a restored coverage checkpoint")
+	}
+}
+
+func TestActivityDirtyShutdownStaleCheckpointAndDifferentSessionStartFresh(t *testing.T) {
+	for _, kind := range []string{"dirty", "stale", "different-session", "backwards"} {
+		t.Run(kind, func(t *testing.T) {
+			s, ids, now := activityFixture(t)
+			var path string
+			s.db.QueryRow("SELECT file FROM pragma_database_list WHERE name='main'").Scan(&path)
+			s.sessionHash = s.hash("session", "fixture-device")
+			s.heartbeat(now)
+			if kind != "dirty" {
+				s.closeClean(now)
+			} else {
+				s.db.Close()
+			}
+			reopened, err := newLocalActivityStore(path, localTestToken)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer reopened.db.Close()
+			at := now.Add(time.Minute)
+			binding := s.sessionHash
+			if kind == "stale" {
+				at = now.Add(localActivityMaxOffline + time.Second)
+			}
+			if kind == "backwards" {
+				at = now.Add(-time.Minute)
+			}
+			if kind == "different-session" {
+				binding = reopened.hash("session", "another-device")
+			}
+			reopened.bindSession(binding, at)
+			reopened.completeSync(at)
+			if d := reopened.decision(ids, activityJob, 5, at); d.Allowed || d.Code != "historico_incompleto" || !reopened.coverage.Equal(at) {
+				t.Fatalf("unverified old proof must start fresh: %+v", d)
+			}
+		})
+	}
+}
+
+func TestActivitySignedCheckpointTamperingAndSecretRotationFailClosed(t *testing.T) {
+	for _, kind := range []string{"timestamp", "signature", "version", "secret"} {
+		t.Run(kind, func(t *testing.T) {
+			s, ids, now := activityFixture(t)
+			var path string
+			s.db.QueryRow("SELECT file FROM pragma_database_list WHERE name='main'").Scan(&path)
+			s.sessionHash = s.hash("session", "fixture-device")
+			s.checkpointLocked(now, true)
+			if kind == "timestamp" {
+				s.db.Exec("UPDATE activity_checkpoint SET coverage_start=coverage_start-1")
+			}
+			if kind == "signature" {
+				s.db.Exec("UPDATE activity_checkpoint SET signature='bad'")
+			}
+			if kind == "version" {
+				s.db.Exec("UPDATE activity_checkpoint SET version=2")
+			}
+			s.db.Close()
+			secret := localTestToken
+			if kind == "secret" {
+				secret = strings.Repeat("x", 64)
+			}
+			reopened, err := newLocalActivityStore(path, secret)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer reopened.db.Close()
+			reopened.bindSession(s.sessionHash, now.Add(time.Minute))
+			reopened.completeSync(now.Add(time.Minute))
+			if d := reopened.decision(ids, activityJob, 5, now.Add(time.Minute)); d.Allowed || d.Code != "historico_indisponivel" {
+				t.Fatalf("modified checkpoint cannot establish proof: %+v", d)
+			}
+		})
+	}
+}
+
+func TestActivityStartupConsumesCleanMarkerBeforeAnyEvent(t *testing.T) {
+	s, _, now := activityFixture(t)
+	var path string
+	s.db.QueryRow("SELECT file FROM pragma_database_list WHERE name='main'").Scan(&path)
+	s.sessionHash = s.hash("session", "fixture-device")
+	s.closeClean(now)
+	reopened, err := newLocalActivityStore(path, localTestToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reopened.bindSession(s.sessionHash, now.Add(time.Minute))
+	reopened.db.Close()
+	crashed, err := newLocalActivityStore(path, localTestToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer crashed.db.Close()
+	crashed.bindSession(s.sessionHash, now.Add(2*time.Minute))
+	crashed.completeSync(now.Add(2 * time.Minute))
+	if !crashed.coverage.Equal(now.Add(2 * time.Minute)) {
+		t.Fatal("crash after loading a clean checkpoint cannot replay its proof")
+	}
+}
+
+func TestActivityLegacyRowsAndHistorySyncNeverInventCoverage(t *testing.T) {
+	s, ids, now := activityFixture(t)
+	s.record(ids, "historical-legacy-row", "", now.Add(-10*24*time.Hour))
+	s.coverage = time.Time{}
+	s.healthy = false
+	s.sessionHash = ""
+	s.bindSession(s.hash("session", "fixture-device"), now)
+	original := localActivityRecorder
+	localActivityRecorder = s
+	defer func() { localActivityRecorder = original }()
+	recordLocalActivityEvent(nil, &events.HistorySync{})
+	if d := s.decision(ids, activityJob, 5, now); d.Allowed || d.Code != "historico_em_sincronizacao" {
+		t.Fatal("history blob is not a temporal completeness guarantee")
+	}
+	s.completeSync(now)
+	if d := s.decision(ids, activityJob, 5, now); d.Allowed || d.Code != "historico_incompleto" {
+		t.Fatal("legacy activity rows cannot backdate initial coverage")
+	}
+}
+
+func TestActivityFailureSignalsCannotRestoreOldCoverage(t *testing.T) {
+	for _, marker := range []string{"Handler queue is full, message ordering is no longer guaranteed", "Continuing handling of %s in background as it's taking too long", "Closing handler queue loop in the middle of handling %s", "Handler queue wait channel not closed after 5 seconds", "Failed to parse message: %v", "Failed to decompress frame: %v", "Event handler panicked while handling a %T: %v"} {
+		t.Run(marker, func(t *testing.T) {
+			s, ids, now := activityFixture(t)
+			s.pause(now)
+			logger := localActivityLogger{waLog.Noop, s}
+			logger.Warnf(marker, "fixture")
+			s.completeSync(time.Now())
+			if s.decision(ids, activityJob, 5, time.Now()).Allowed {
+				t.Fatal("an incomplete SDK event stream cannot restore old proof")
+			}
+		})
+	}
+}
+
+func TestActivityReplayWithoutDurableMetadataResetsButKnownReplayDoesNot(t *testing.T) {
+	s, ids, now := activityFixture(t)
+	logger := localActivityLogger{waLog.Noop, s}
+	s.record(ids, "known-message", "", now.Add(-6*24*time.Hour))
+	original := s.coverage
+	logger.Debugf("Ignoring message %s from %s: %v", "known-message", ids[0].String(), "already processed")
+	if !s.coverage.Equal(original) {
+		t.Fatal("known durable duplicates must not restart observation")
+	}
+	logger.Debugf("Ignoring message %s from %s: %v", "unknown-message", ids[0].String(), "already processed")
+	if s.decision(ids, activityJob, 5, time.Now()).Allowed {
+		t.Fatal("crypto dedup without durable metadata leaves a coverage gap")
+	}
+}
+
+func TestActivityRecentInteractionReportedWhileWindowIsIncomplete(t *testing.T) {
+	s, ids, now := activityFixture(t)
+	s.beginCoverage(now)
+	s.record(ids, "recent-while-warming", "", now.Add(-time.Hour))
+	d := s.decision(ids, activityJob, 5, now)
+	if d.Allowed || d.Code != "inactivity_recent" || d.Activity.Complete || d.Activity.LastInteractionAt == nil {
+		t.Fatal("report known recent interaction without fabricating full coverage")
+	}
+}
+
+func TestActivityGroupReplayDoesNotResetIndividualCoverage(t *testing.T) {
+	s, _, _ := activityFixture(t)
+	original := s.coverage
+	logger := localActivityLogger{waLog.Noop, s}
+	logger.Debugf("Ignoring message %s from %s: %v", "unknown-group-message", "sender@s.whatsapp.net in group@g.us", "already processed")
+	if !s.coverage.Equal(original) {
+		t.Fatal("nonindividual duplicate replay is outside the inactivity gate")
+	}
+}
+
+func TestActivityStorageFailureIsStickyThroughSyncAndHeartbeat(t *testing.T) {
+	s, ids, now := activityFixture(t)
+	s.db.Exec("DROP TABLE activity")
+	s.record(ids, "storage-failure", "", now)
+	s.completeSync(now)
+	s.heartbeat(now)
+	if d := s.decision(ids, activityJob, 5, now); d.Allowed || d.Code != "historico_indisponivel" {
+		t.Fatal("a later sync marker must never clear a durable recording failure")
+	}
+}
+
+func TestActivityClockRollbackInvalidatesRememberedReconnectCandidate(t *testing.T) {
+	s, ids, now := activityFixture(t)
+	s.pause(now)
+	s.heartbeat(now.Add(-time.Minute))
+	s.completeSync(now.Add(time.Minute))
+	if s.decision(ids, activityJob, 5, now.Add(time.Minute)).Allowed {
+		t.Fatal("a clock rollback must invalidate a pending reconnect candidate")
+	}
+}
+
+func TestActivityUnknownCallCannotResumeEarlierCoverage(t *testing.T) {
+	s, ids, now := activityFixture(t)
+	s.pause(now)
+	original := localActivityRecorder
+	localActivityRecorder = s
+	defer func() { localActivityRecorder = original }()
+	recordLocalActivityEvent(nil, &events.UnknownCallEvent{})
+	s.completeSync(now.Add(time.Minute))
+	if s.decision(ids, activityJob, 5, now.Add(time.Minute)).Allowed {
+		t.Fatal("unassignable interaction cannot inherit the earlier window")
+	}
+}
+
+func TestActivityReplayProofIsBoundToTheExactContact(t *testing.T) {
+	s, ids, now := activityFixture(t)
+	s.record(ids, "colliding-id", "", now.Add(-6*24*time.Hour))
+	logger := localActivityLogger{waLog.Noop, s}
+	logger.Debugf("Ignoring message %s from %s: %v", "colliding-id", "5511999999999@s.whatsapp.net", "already processed")
+	if s.decision(ids, activityJob, 5, time.Now()).Allowed {
+		t.Fatal("a matching message ID in another chat is not metadata proof for this replay")
+	}
+}
+
+func TestActivityDelayedConnectedDoesNotEraseCompletedSync(t *testing.T) {
+	s, ids, now := activityFixture(t)
+	deviceID := types.NewJID("fixture-device", types.DefaultUserServer)
+	publicKey := [32]byte{1, 2, 3}
+	client := whatsmeow.NewClient(&store.Device{ID: &deviceID, IdentityKey: &keys.KeyPair{Pub: &publicKey}, RegistrationID: 42}, waLog.Noop)
+	s.sessionHash = localSessionBinding(client, s)
+	s.pause(now)
+	original := s.candidateCoverage
+	originalRecorder := localActivityRecorder
+	localActivityRecorder = s
+	defer func() { localActivityRecorder = originalRecorder }()
+	recordLocalActivityEvent(client, &events.OfflineSyncCompleted{})
+	recordLocalActivityEvent(client, &events.Connected{})
+	if !s.healthy || !s.coverage.Equal(original) || !s.decision(ids, activityJob, 5, time.Now()).Allowed {
+		t.Fatal("a delayed Connected callback cannot erase a completed backlog barrier")
+	}
+}
+
+func TestActivitySynchronousTransportPausePrecedesAsyncEvents(t *testing.T) {
+	s, ids, now := activityFixture(t)
+	logger := localActivityLogger{waLog.Noop, s}
+	original := s.coverage
+	logger.Debugf("Emitting Disconnected event")
+	if s.healthy || s.decision(ids, activityJob, 5, now).Allowed {
+		t.Fatal("transport loss must block before the asynchronous event runs")
+	}
+	logger.Debugf("Automatically reconnecting after %v", time.Second)
+	s.completeSync(now.Add(time.Minute))
+	if !s.healthy || !s.coverage.Equal(original) {
+		t.Fatal("a completed bounded reconnect must preserve observation")
+	}
+}
+
+func TestActivityMissingLedgerCannotBecomeAnEmptyCoveredHistory(t *testing.T) {
+	s, _, now := activityFixture(t)
+	var path string
+	s.db.QueryRow("SELECT file FROM pragma_database_list WHERE name='main'").Scan(&path)
+	s.sessionHash = s.hash("session", "fixture-device")
+	s.checkpointLocked(now, true)
+	s.db.Exec("DROP TABLE activity")
+	s.db.Close()
+	reopened, err := newLocalActivityStore(path, localTestToken)
+	if err == nil {
+		reopened.db.Close()
+		t.Fatal("a checkpoint without its original ledger cannot assert empty activity")
 	}
 }

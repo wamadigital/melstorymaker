@@ -557,13 +557,86 @@ class WorkerTests(unittest.TestCase):
                 self.assertTrue(all(proof["complete"] for proof in api.activities))
 
     def test_recent_or_unverified_activity_blocks_before_first_part_without_ledger(self):
-        for code in ("inactivity_recent", "inactivity_unverified"):
+        for code in worker.ACTIVITY_BLOCK_CODES:
             self.proposal()
             api, mcp = FakeAPI(), self.proposal_mcp([{"allowed": False, "code": code}])
             self.assertEqual(self.run_sequence(api, mcp), code)
             self.assertEqual(api.calls, [("failed", code)])
             self.assertEqual(mcp.calls, 0)
             self.assertIsNone(self.ledger.get(self.job))
+
+    def test_only_closed_denial_codes_are_forwarded_and_never_authorize_messages(self):
+        self.proposal()
+        invalid = [
+            {"allowed": False, "code": "private diagnostic with contact"},
+            {"allowed": False, "code": ["historico_incompleto"]},
+            {"allowed": False, "code": None},
+            {"allowed": 0, "code": "inactivity_recent"},
+            {"allowed": 1, "code": "historico_em_sincronizacao"},
+            {"allowed": True, "code": "historico_incompleto", "activity": self.activity_proof()},
+            {"allowed": True, "code": "inactivity_recent", "activity": self.activity_proof()},
+        ]
+        for value in invalid:
+            with self.subTest(value=value):
+                api, mcp = FakeAPI(), self.proposal_mcp([value])
+                self.assertEqual(self.run_sequence(api, mcp), "inactivity_unverified")
+                self.assertEqual(api.calls, [("failed", "inactivity_unverified")])
+                self.assertEqual(api.activities, [])
+                self.assertEqual(mcp.calls, 0)
+                self.assertIsNone(self.ledger.get(self.job))
+
+    def test_incomplete_proof_is_forwarded_only_as_a_failure_for_both_windows(self):
+        for kind in worker.PROPOSAL_TYPES:
+            with self.subTest(kind=kind):
+                self.proposal(kind)
+                proof = {**self.activity_proof(), "complete": False,
+                         "coverageStartedAt": (self.now - timedelta(days=1)).isoformat()}
+                api, mcp = FakeAPI(), self.proposal_mcp([
+                    {"allowed": False, "code": "historico_incompleto", "activity": proof}])
+                self.assertEqual(self.run_sequence(api, mcp), "historico_incompleto")
+                self.assertEqual(api.calls, [("failed", "historico_incompleto")])
+                self.assertEqual(api.activities, [proof])
+                self.assertEqual(mcp.calls, 0)
+                self.assertIsNone(self.ledger.get(self.job))
+
+    def test_incomplete_evidence_rejects_stale_forged_or_incoherent_metadata(self):
+        self.proposal()
+        proof = {**self.activity_proof(), "complete": False,
+                 "coverageStartedAt": (self.now - timedelta(days=1)).isoformat()}
+        malformed = [
+            None, {}, {**proof, "private": "discard"},
+            {**proof, "complete": True}, {**proof, "complete": 0},
+            {**proof, "checkedAt": (self.now - timedelta(seconds=31)).isoformat()},
+            {**proof, "checkedAt": (self.now + timedelta(seconds=6)).isoformat()},
+            {**proof, "checkedAt": self.now.replace(tzinfo=None).isoformat()},
+            {**proof, "coverageStartedAt": "1970-01-01T00:00:00Z"},
+            {**proof, "coverageStartedAt": "0001-01-01T00:00:00Z"},
+            {**proof, "coverageStartedAt": (self.now + timedelta(seconds=1)).isoformat()},
+            {**proof, "coverageStartedAt": (self.now - timedelta(days=5)).isoformat()},
+            {**proof, "coverageStartedAt": None},
+            {**proof, "lastInteractionAt": (self.now + timedelta(seconds=1)).isoformat()},
+            {**proof, "lastInteractionAt": "invalid"},
+            {**proof, "lastInteractionAt": "1970-01-01T00:00:00Z"},
+        ]
+        for evidence in malformed:
+            with self.subTest(evidence=evidence):
+                api, mcp = FakeAPI(), self.proposal_mcp([
+                    {"allowed": False, "code": "historico_incompleto", "activity": evidence}])
+                self.assertEqual(self.run_sequence(api, mcp), "historico_incompleto")
+                self.assertEqual(api.calls, [("failed", "historico_incompleto")])
+                self.assertEqual(api.activities, [], "invalid metadata must not leave the worker")
+                self.assertEqual(mcp.calls, 0)
+                self.assertIsNone(self.ledger.get(self.job))
+
+    def test_incomplete_metadata_is_not_forwarded_with_other_denial_causes(self):
+        self.proposal()
+        proof = {**self.activity_proof(), "complete": False,
+                 "coverageStartedAt": (self.now - timedelta(days=1)).isoformat()}
+        for code in worker.ACTIVITY_BLOCK_CODES - {"historico_incompleto"}:
+            api, mcp = FakeAPI(), self.proposal_mcp([{"allowed": False, "code": code, "activity": proof}])
+            self.assertEqual(self.run_sequence(api, mcp), code)
+            self.assertEqual(api.activities, [])
+            self.assertEqual(mcp.calls, 0)
 
     def test_new_interaction_during_pause_stops_partial_job_without_resume(self):
         self.proposal()
@@ -576,6 +649,21 @@ class WorkerTests(unittest.TestCase):
         self.assertEqual(api.calls, [("started", None), ("indeterminate", None)])
         self.assertEqual(self.run_sequence(FakeAPI(), mcp), "reconciled")
         self.assertEqual(mcp.calls, 1)
+
+    def test_history_failures_after_first_ack_remain_indeterminate_without_resend(self):
+        for index, code in enumerate(sorted(worker.ACTIVITY_BLOCK_CODES - {"inactivity_recent", "inactivity_unverified"})):
+            with self.subTest(code=code):
+                self.proposal("lembrete_proposta_30d")
+                self.job["id"] = f"c350bc94-24f1-4359-9e92-eac5f1a76e4{index}"
+                api, mcp = FakeAPI(), self.proposal_mcp([
+                    {"allowed": True, "activity": self.activity_proof(), "code": "inactivity_clear"},
+                    {"allowed": False, "code": code}])
+                self.assertEqual(self.run_sequence(api, mcp), "indeterminate")
+                self.assertEqual(api.calls, [("started", None), ("indeterminate", None)])
+                self.assertEqual(mcp.calls, 1)
+                self.assertEqual(self.ledger.get(self.job), "indeterminate")
+                self.assertEqual(self.run_sequence(FakeAPI(), mcp), "reconciled")
+                self.assertEqual(mcp.calls, 1)
 
     def test_activity_transport_failure_fails_closed(self):
         self.proposal()
@@ -594,6 +682,9 @@ class WorkerTests(unittest.TestCase):
             ("checkedAt", (self.now-timedelta(seconds=31)).isoformat()),
             ("checkedAt", (self.now+timedelta(seconds=6)).isoformat()),
             ("coverageStartedAt", (self.now-timedelta(days=14)).isoformat()),
+            ("coverageStartedAt", "1970-01-01T00:00:00Z"),
+            ("coverageStartedAt", "0001-01-01T00:00:00Z"),
+            ("coverageStartedAt", (self.now+timedelta(seconds=1)).isoformat()),
             ("lastInteractionAt", (self.now-timedelta(days=15)+timedelta(seconds=1)).isoformat()),
             ("lastInteractionAt", self.now.isoformat()),
             ("lastInteractionAt", "not-a-timestamp"),

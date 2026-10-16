@@ -128,7 +128,7 @@ func newLocalRESTHandler(client *whatsmeow.Client, token string, activities ...*
 			writeLocalError(w, http.StatusBadRequest, "invalid_payload", "Invalid activity payload.")
 			return
 		}
-		decision := localActivityDecision{Code: "inactivity_unverified", Activity: &localActivityProof{CheckedAt: time.Now()}}
+		decision := localActivityDecision{Code: "historico_em_sincronizacao", Activity: &localActivityProof{CheckedAt: time.Now()}}
 		if request.TestLeadID != nil {
 			decision = localActivityDecision{Code: "owner_test_denied"}
 			if activity != nil && localClientConnected(client) {
@@ -139,6 +139,8 @@ func newLocalRESTHandler(client *whatsmeow.Client, token string, activities ...*
 			defer cancel()
 			if keys, err := localActivityIdentity(ctx, client, request.Recipient); err == nil {
 				decision = activity.decision(keys, request.JobID, request.Days, time.Now())
+			} else {
+				decision.Code = "identidade_nao_confirmada"
 			}
 		}
 		writeLocalJSON(w, http.StatusOK, decision)
