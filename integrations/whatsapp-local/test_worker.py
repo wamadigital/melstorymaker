@@ -1,5 +1,7 @@
 import asyncio
+import base64
 from copy import deepcopy
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone, timedelta
 import json
 from pathlib import Path
@@ -293,10 +295,10 @@ class WorkerTests(unittest.TestCase):
 
         def send(request, **kwargs):
             self.assertTrue(request.url.startswith("https://worker-ficticio.invalid/"))
-            self.assertEqual(request.headers["X-Mel-Worker-Protocol"], "5")
+            self.assertEqual(request.headers["X-Mel-Worker-Protocol"], "6")
             self.assertEqual(kwargs["allow_redirects"], False)
             requests.append(json.loads(request.body))
-            return SimpleNamespace(raise_for_status=lambda: None, json=lambda: {"accepted": True, "protocolVersion": 5})
+            return SimpleNamespace(raise_for_status=lambda: None, json=lambda: {"accepted": True, "protocolVersion": 6})
 
         with patch.object(worker, "ORIGIN", "https://worker-ficticio.invalid"), patch.object(api.session, "send", side_effect=send):
             asyncio.run(api.claim())
@@ -888,10 +890,302 @@ class WorkerTests(unittest.TestCase):
         for response in ({"protocolVersion": 2, "job": None},
                          {"protocolVersion": 3, "job": self.job},
                          {"protocolVersion": 4, "job": {**self.job, "tipo": worker.FORM_REMINDER_TYPE}},
-                         {"protocolVersion": 5, "job": {**self.job, "tipo": "confirmacao_recebimento"}}):
+                         {"protocolVersion": 5, "job": {**self.job, "tipo": worker.FORM_REMINDER_TYPE}},
+                         {"protocolVersion": 6, "job": {**self.job, "tipo": "confirmacao_recebimento"}}):
             with patch.object(api, "post", new=AsyncMock(return_value=response)):
                 with self.assertRaises(ValueError):
                     asyncio.run(api.claim())
+
+    def test_polling_accelerates_only_for_exact_authorized_api_cadence(self):
+        api = worker.API("token-ficticio-com-mais-de-trinta-e-dois-caracteres")
+        self.addCleanup(api.session.close)
+        self.assertEqual(api.poll_after_seconds, 60)
+        for value, expected in ((10, 10), (60, 60), (None, 60), (True, 60), (10.0, 60), (9, 60), ("10", 60), (0, 60)):
+            response = {"protocolVersion": 6, "job": None, "pollAfterSeconds": value}
+            with patch.object(api, "post", new=AsyncMock(return_value=response)):
+                asyncio.run(api.claim())
+            self.assertEqual(api.poll_after_seconds, expected)
+
+    def test_runtime_uses_the_private_api_cadence_without_changing_normal_default(self):
+        state = Path(self.tmp.name)
+        (state / "worker-config.json").write_text('{"enabled":true}')
+        (state / "worker-token").write_text("token-ficticio-do-worker-para-teste-local")
+        @asynccontextmanager
+        async def fake_stdio(_params):
+            yield None, None
+        @asynccontextmanager
+        async def fake_client(_read, _write):
+            yield SimpleNamespace(initialize=AsyncMock(), list_tools=AsyncMock(return_value=SimpleNamespace(
+                tools=[SimpleNamespace(name="send_message")])))
+        for seconds in (10, 60):
+            api = FakeAPI()
+            api.poll_after_seconds = seconds
+            api.session = SimpleNamespace(close=lambda: None)
+            sleep = AsyncMock(side_effect=asyncio.CancelledError())
+            with patch.object(worker, "STATE", state), patch.object(worker, "API", return_value=api), patch.object(
+                worker, "stdio_client", fake_stdio
+            ), patch.object(worker, "ClientSession", fake_client), patch.object(
+                worker, "iteration", new=AsyncMock(return_value="idle")
+            ), patch.object(worker.asyncio, "sleep", sleep):
+                with self.assertRaises(asyncio.CancelledError):
+                    asyncio.run(worker.run(once=False))
+            sleep.assert_awaited_once_with(seconds)
+
+
+class LegacyBatchTests(unittest.TestCase):
+    setUp = WorkerTests.setUp
+    tearDown = WorkerTests.tearDown
+    proposal = WorkerTests.proposal
+    fake_sleep = WorkerTests.fake_sleep
+    run_sequence = WorkerTests.run_sequence
+    activity_proof = WorkerTests.activity_proof
+    proposal_mcp = WorkerTests.proposal_mcp
+    restart_ledger = WorkerTests.restart_ledger
+
+    @staticmethod
+    def ticket(payload, mac=b"0" * 32):
+        def encode(value):
+            return base64.urlsafe_b64encode(value).decode().rstrip("=")
+        raw = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode()
+        return encode(raw) + "." + encode(mac)
+
+    def batch_job(self):
+        self.proposal()
+        self.job["legacyBatchId"] = "be95464f-236f-4612-bd7d-02d856a6495e"
+        self.payload = {
+            "batchId": self.job["legacyBatchId"], "jobId": self.job["id"],
+            "leadId": "348e7ddb-d815-4cd0-905a-a28f8c5b1b12",
+            "recipient": self.job["recipient"], "tipo": self.job["tipo"],
+            "expiresAt": (self.now + timedelta(minutes=4)).isoformat(), "messages": self.texts.copy(),
+        }
+        self.job["legacyAuthorization"] = self.ticket(self.payload)
+
+    def legacy_proof(self):
+        proof = {**self.activity_proof(), "complete": False,
+                 "coverageStartedAt": (self.now - timedelta(hours=1)).isoformat()}
+        return {"allowed": True, "code": "legacy_history_exception", "activity": proof,
+                "legacyBatchId": self.job["legacyBatchId"]}
+
+    def legacy_mcp(self, decisions=None):
+        mcp = self.proposal_mcp(decisions)
+        original = mcp.activity
+        async def check(job):
+            if decisions and len(mcp.activity_calls) < len(decisions):
+                return await original(job)
+            mcp.activity_calls.append(job["id"])
+            return self.legacy_proof()
+        mcp.activity = check
+        return mcp
+
+    def test_batch_sends_exact_approved_parts_and_truthful_incomplete_proof_each_time(self):
+        self.batch_job()
+        api, mcp = FakeAPI(), self.legacy_mcp()
+        self.assertEqual(self.run_sequence(api, mcp), "sent")
+        self.assertEqual(mcp.calls, 4)
+        self.assertEqual(len(mcp.activity_calls), 4)
+        self.assertEqual(api.calls, [("started", "legacy_history_exception")] * 4 + [("sent", None)])
+        self.assertEqual([job["message"] for job in mcp.jobs], self.texts)
+        self.assertEqual(self.sleeps, [2, 3, 2])
+        self.assertTrue(all(proof["complete"] is False for proof in api.activities))
+        for single in mcp.jobs:
+            self.assertEqual(single["legacyBatchId"], self.job["legacyBatchId"])
+            self.assertEqual(single["legacyAuthorization"], self.job["legacyAuthorization"])
+            self.assertNotIn("messagesSequence", single)
+        self.assertEqual(self.run_sequence(FakeAPI(), mcp), "reconciled")
+        self.assertEqual(mcp.calls, 4)
+
+    def test_ticket_scope_text_and_shape_must_match_before_any_external_call(self):
+        self.batch_job()
+        original = deepcopy(self.job)
+        malformed = []
+        for key, value in (("batchId", self.job["id"]), ("jobId", self.job["legacyBatchId"]),
+                           ("leadId", "not-uuid"), ("recipient", "5511888888888"),
+                           ("tipo", "lembrete_proposta_30d"), ("messages", self.texts[:3]),
+                           ("expiresAt", "2026-10-16T18:00:00"), ("extra", True)):
+            malformed.append({**original, "legacyAuthorization": self.ticket({**self.payload, key: value})})
+        for ticket in (None, "", "a.b", "a.b.c", "x" * 8193, original["legacyAuthorization"] + "=",
+                       self.ticket(self.payload, mac=b"short")):
+            malformed.append({**original, "legacyAuthorization": ticket})
+        for key in ("legacyBatchId", "legacyAuthorization"):
+            changed = deepcopy(original)
+            del changed[key]
+            malformed.append(changed)
+        malformed.extend([
+            {**original, "testLeadId": next(iter(worker.OWNER_TEST_LEADS))},
+            {**original, "tipo": "lembrete_proposta_30d"},
+            {**original, "tipo": worker.FORM_REMINDER_TYPE},
+            {**original, "messagesSequence": [{**part, "message": "alterado"} for part in original["messagesSequence"]]},
+        ])
+        for changed in malformed:
+            with self.subTest(changed=changed):
+                self.job = changed
+                api, mcp = FakeAPI(), self.legacy_mcp()
+                self.assertEqual(self.run_sequence(api, mcp), "invalid_job")
+                self.assertEqual(api.calls, [])
+                self.assertEqual(mcp.calls, 0)
+                self.assertEqual(mcp.activity_calls, [])
+
+    def test_duplicate_json_keys_and_noncanonical_base64_are_rejected(self):
+        self.batch_job()
+        ticket = self.job["legacyAuthorization"]
+        payload_segment, signature = ticket.split(".")
+        raw = base64.urlsafe_b64decode(payload_segment + "=" * (-len(payload_segment) % 4))
+        duplicate = raw[:-1] + b',"tipo":"lembrete_proposta_7d"}'
+        self.job["legacyAuthorization"] = base64.urlsafe_b64encode(duplicate).decode().rstrip("=") + "." + signature
+        self.assertIsNone(worker.legacy_authorization(self.job, self.now))
+
+    def test_expired_or_overlong_ticket_never_starts(self):
+        self.batch_job()
+        for expires in (self.now, self.now - timedelta(seconds=1), self.now + timedelta(minutes=5, seconds=1)):
+            self.job["legacyAuthorization"] = self.ticket({**self.payload, "expiresAt": expires.isoformat()})
+            api, mcp = FakeAPI(), self.legacy_mcp()
+            self.assertEqual(self.run_sequence(api, mcp), "expired")
+            self.assertEqual(api.calls, [])
+            self.assertEqual(mcp.calls, 0)
+
+    def test_known_recent_interaction_identity_sync_and_storage_errors_still_block(self):
+        self.batch_job()
+        for code in worker.ACTIVITY_BLOCK_CODES:
+            api, mcp = FakeAPI(), self.legacy_mcp([{"allowed": False, "code": code}])
+            self.assertEqual(self.run_sequence(api, mcp), code)
+            self.assertEqual(api.calls, [("failed", code)])
+            self.assertEqual(mcp.calls, 0)
+            self.assertIsNone(self.ledger.get(self.job))
+
+    def test_legacy_return_requires_exact_batch_fresh_truthful_metadata_and_old_last_interaction(self):
+        self.batch_job()
+        valid = self.legacy_proof()
+        invalid = [
+            {**valid, "allowed": 1}, {**valid, "allowed": False},
+            {**valid, "code": "inactivity_clear"}, {**valid, "legacyBatchId": self.job["id"]},
+            {**valid, "private": "not permitted"}, {**valid, "activity": None},
+        ]
+        for key, value in (("complete", True), ("complete", 0),
+                           ("checkedAt", (self.now - timedelta(seconds=31)).isoformat()),
+                           ("checkedAt", (self.now + timedelta(seconds=6)).isoformat()),
+                           ("coverageStartedAt", "1970-01-01T00:00:00Z"),
+                           ("lastInteractionAt", (self.now - timedelta(days=5) + timedelta(seconds=1)).isoformat()),
+                           ("lastInteractionAt", "invalid")):
+            invalid.append({**valid, "activity": {**valid["activity"], key: value}})
+        for decision in invalid:
+            with self.subTest(decision=decision):
+                api, mcp = FakeAPI(), self.legacy_mcp([decision])
+                self.assertEqual(self.run_sequence(api, mcp), "inactivity_unverified")
+                self.assertEqual(mcp.calls, 0)
+                self.assertEqual(api.activities, [])
+
+    def test_legacy_proof_cannot_enable_an_ordinary_job(self):
+        self.batch_job()
+        decision = self.legacy_proof()
+        del self.job["legacyBatchId"]
+        del self.job["legacyAuthorization"]
+        api, mcp = FakeAPI(), self.proposal_mcp([decision])
+        self.assertEqual(self.run_sequence(api, mcp), "inactivity_unverified")
+        self.assertEqual(mcp.calls, 0)
+
+    def test_recent_interaction_after_first_part_stops_without_retry(self):
+        self.batch_job()
+        api, mcp = FakeAPI(), self.legacy_mcp([
+            self.legacy_proof(), {"allowed": False, "code": "inactivity_recent"}])
+        self.assertEqual(self.run_sequence(api, mcp), "indeterminate")
+        self.assertEqual(mcp.calls, 1)
+
+        self.assertEqual(self.ledger.get(self.job), "indeterminate")
+        self.assertEqual(self.run_sequence(FakeAPI(), mcp), "reconciled")
+        self.assertEqual(mcp.calls, 1)
+
+    def test_a_known_interaction_older_than_five_days_is_not_erased_or_blocked(self):
+        self.batch_job()
+        value = self.legacy_proof()
+        value["activity"]["lastInteractionAt"] = (self.now - timedelta(days=6)).isoformat()
+        self.assertEqual(worker.verified_legacy_activity(value, self.job, self.now), value["activity"])
+
+    def test_partial_whatsapp_failure_never_counts_as_sent_or_restarts_the_sequence(self):
+        self.batch_job()
+        api, mcp = FakeAPI(), self.legacy_mcp()
+        mcp.outcomes = [True, TimeoutError("fixture: unknown delivery")]
+        self.assertEqual(self.run_sequence(api, mcp), "indeterminate")
+        self.assertEqual(mcp.calls, 2)
+        self.assertNotIn(("sent", None), api.calls)
+        self.assertEqual(api.calls[-1], ("indeterminate", None))
+        self.restart_ledger()
+        self.assertEqual(self.run_sequence(FakeAPI(), mcp), "reconciled")
+        self.assertEqual(mcp.calls, 2)
+
+    def test_ticket_expiry_during_pause_or_first_cloud_start_never_reaches_next_send(self):
+        self.batch_job()
+        self.job["legacyAuthorization"] = self.ticket({**self.payload, "expiresAt": (self.now + timedelta(seconds=1)).isoformat()})
+        api, mcp = FakeAPI(), self.legacy_mcp()
+        self.assertEqual(self.run_sequence(api, mcp), "indeterminate")
+        self.assertEqual(mcp.calls, 1)
+        self.assertEqual(len(mcp.activity_calls), 1)
+        self.job["id"] = "c350bc94-24f1-4359-9e92-eac5f1a76e45"
+        self.payload["jobId"] = self.job["id"]
+        self.job["legacyAuthorization"] = self.ticket({**self.payload, "expiresAt": (self.now + timedelta(seconds=1)).isoformat()})
+        test = self
+        class SlowAPI(FakeAPI):
+            async def result(self, job, outcome, code=None, activity=None):
+                result = await super().result(job, outcome, code, activity)
+                if outcome == "started":
+                    test.now += timedelta(seconds=1)
+                return result
+        api, mcp = SlowAPI(), self.legacy_mcp()
+        self.assertEqual(self.run_sequence(api, mcp), "expired_after_start")
+        self.assertEqual(mcp.calls, 0)
+
+    def test_ticket_renewal_preserves_receipt_but_batch_change_never_resends(self):
+        self.batch_job()
+        original_digest = Ledger.digest(self.job)
+        self.ledger.set(self.job, "sent")
+        self.job["legacyAuthorization"] = self.ticket({**self.payload, "expiresAt": (self.now + timedelta(minutes=3)).isoformat()})
+        self.assertEqual(Ledger.digest(self.job), original_digest)
+        self.now += timedelta(minutes=5)
+        api, mcp = FakeAPI(), self.legacy_mcp()
+        self.assertEqual(self.run_sequence(api, mcp), "reconciled")
+        self.assertEqual(api.calls, [("sent", None)])
+        self.assertEqual(mcp.calls, 0)
+        self.job["legacyBatchId"] = self.payload["leadId"]
+        self.job["legacyAuthorization"] = self.ticket({**self.payload, "batchId": self.job["legacyBatchId"]})
+        self.assertEqual(self.run_sequence(FakeAPI(), mcp), "reconciled")
+        self.assertEqual(self.ledger.get(self.job), "indeterminate")
+        self.assertEqual(mcp.calls, 0)
+
+    def test_lost_final_ack_reconciles_only_receipt_after_restart(self):
+        self.batch_job()
+        mcp = self.legacy_mcp()
+        with self.assertRaises(ConnectionError):
+            self.run_sequence(FakeAPI(fail_final=True), mcp)
+        self.assertEqual(mcp.calls, 4)
+        self.restart_ledger()
+        api = FakeAPI()
+        self.assertEqual(asyncio.run(iteration(api, mcp, self.ledger)), "idle")
+        self.assertEqual(api.calls, [("sent", None)])
+        self.assertEqual(mcp.calls, 4)
+
+    def test_legacy_authorization_reaches_both_local_bridge_boundaries(self):
+        self.batch_job()
+        session = SimpleNamespace(call_tool=AsyncMock(return_value=SimpleNamespace(
+            isError=False, content=[SimpleNamespace(text='{"success":true}')])) )
+        local = worker.LocalMCP(session)
+        self.assertTrue(asyncio.run(local.send(self.job)))
+        session.call_tool.assert_awaited_once_with("send_message", {
+            "recipient": self.job["recipient"], "message": self.job["message"],
+            "automation_job_id": self.job["id"], "automation_legacy_authorization": self.job["legacyAuthorization"]})
+        state = Path(self.tmp.name)
+        (state / "bridge-token").write_text("token-ficticio-da-ponte-para-teste")
+        calls = []
+        proof = self.legacy_proof()
+        class Session:
+            def post(self, url, **options):
+                calls.append((url, options))
+                return SimpleNamespace(raise_for_status=lambda: None, json=lambda: proof)
+            def close(self):
+                pass
+        with patch.object(worker, "STATE", state), patch.object(worker.requests, "Session", return_value=Session()):
+            self.assertEqual(asyncio.run(local.activity(self.job)), proof)
+        self.assertEqual(calls[0][1]["json"], {"recipient": self.job["recipient"], "jobId": self.job["id"],
+            "days": 5, "legacyAuthorization": self.job["legacyAuthorization"]})
+        self.assertFalse(calls[0][1]["allow_redirects"])
 
 
 class FormReminderQuietHoursTests(unittest.TestCase):

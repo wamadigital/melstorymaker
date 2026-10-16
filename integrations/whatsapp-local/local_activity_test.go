@@ -1,7 +1,11 @@
 package main
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -618,5 +622,320 @@ func TestActivityMissingLedgerCannotBecomeAnEmptyCoveredHistory(t *testing.T) {
 	if err == nil {
 		reopened.db.Close()
 		t.Fatal("a checkpoint without its original ledger cannot assert empty activity")
+	}
+}
+
+const legacyBatchFixture = "b8e8230e-4171-4f3f-b017-4252cc6f098d"
+const legacyWorkerFixture = "fictitious-worker-token-legacy-tests-only"
+
+func legacyPayloadFixture(now time.Time) localLegacyTicket {
+	return localLegacyTicket{BatchID: legacyBatchFixture, JobID: activityJob, LeadID: ownerTestLead, Recipient: localTestRecipient, Tipo: "lembrete_proposta_7d", ExpiresAt: now.Add(4 * time.Minute).Format(time.RFC3339Nano), Messages: []string{
+		"Olá, como vai?!",
+		"Passando só para saber se você conseguiu dar uma olhadinha na proposta que te enviei.",
+		"https://melstorymaker.com.br/p/fixture-proposta",
+		"Se ficou alguma dúvida, me chama que eu te explico. ✨",
+	}}
+}
+
+func signLegacyFixture(t *testing.T, payload any, secret string) string {
+	t.Helper()
+	data, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return signRawLegacyFixture(data, secret)
+}
+
+func signRawLegacyFixture(data []byte, secret string) string {
+	encoded := base64.RawURLEncoding.EncodeToString(data)
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte("mel-whatsapp-legacy-v1." + encoded))
+	return encoded + "." + base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+}
+
+func TestLegacyTicketRejectsForgedMismatchedExpiredOrUnexpectedScope(t *testing.T) {
+	now := time.Now().UTC()
+	good := legacyPayloadFixture(now)
+	valid := signLegacyFixture(t, good, legacyWorkerFixture)
+	if _, ok := decodeLocalLegacyTicket(valid, []byte(legacyWorkerFixture), localTestRecipient, activityJob, now); !ok {
+		t.Fatal("valid exact ticket should decode")
+	}
+	cases := map[string]func(*localLegacyTicket){
+		"expired": func(p *localLegacyTicket) { p.ExpiresAt = now.Format(time.RFC3339Nano) },
+		"future": func(p *localLegacyTicket) {
+			p.ExpiresAt = now.Add(5*time.Minute + time.Nanosecond).Format(time.RFC3339Nano)
+		},
+		"date":         func(p *localLegacyTicket) { p.ExpiresAt = "2026-10-16" },
+		"job":          func(p *localLegacyTicket) { p.JobID = activityOtherJob },
+		"recipient":    func(p *localLegacyTicket) { p.Recipient = localOwnerTestRecipient },
+		"lead":         func(p *localLegacyTicket) { p.LeadID = "bad" },
+		"batch":        func(p *localLegacyTicket) { p.BatchID = "bad" },
+		"type":         func(p *localLegacyTicket) { p.Tipo = "lembrete_proposta_30d" },
+		"message":      func(p *localLegacyTicket) { p.Messages[0] = "changed" },
+		"count":        func(p *localLegacyTicket) { p.Messages = p.Messages[:3] },
+		"url_query":    func(p *localLegacyTicket) { p.Messages[2] += "?query=1" },
+		"url_fragment": func(p *localLegacyTicket) { p.Messages[2] += "#fragment" },
+		"url_auth":     func(p *localLegacyTicket) { p.Messages[2] = "https://evil@example.invalid/a" },
+		"url_space":    func(p *localLegacyTicket) { p.Messages[2] = "https://example.invalid/a\u00a0" },
+		"url_http":     func(p *localLegacyTicket) { p.Messages[2] = "http://example.invalid/a" },
+	}
+	for name, mutate := range cases {
+		t.Run(name, func(t *testing.T) {
+			p := legacyPayloadFixture(now)
+			mutate(&p)
+			if _, ok := decodeLocalLegacyTicket(signLegacyFixture(t, p, legacyWorkerFixture), []byte(legacyWorkerFixture), localTestRecipient, activityJob, now); ok {
+				t.Fatal("bad scope accepted")
+			}
+		})
+	}
+	for _, ticket := range []string{valid + "x", valid + ".extra", signLegacyFixture(t, good, localTestToken), "bad.ticket"} {
+		if _, ok := decodeLocalLegacyTicket(ticket, []byte(legacyWorkerFixture), localTestRecipient, activityJob, now); ok {
+			t.Fatal("forged ticket accepted")
+		}
+	}
+	data, _ := json.Marshal(good)
+	for _, data := range [][]byte{
+		append(append([]byte{}, data[:len(data)-1]...), []byte(",\"unknown\":true}")...),
+		append(append([]byte{}, data[:len(data)-1]...), []byte(",\"leadId\":\""+ownerOtherTestLead+"\"}")...),
+		[]byte(strings.Replace(string(data), "batchId", "BATCHID", 1)),
+		[]byte("null"), []byte("[]"), []byte("{}"),
+	} {
+		if _, ok := decodeLocalLegacyTicket(signRawLegacyFixture(data, legacyWorkerFixture), []byte(legacyWorkerFixture), localTestRecipient, activityJob, now); ok {
+			t.Fatal("unexpected JSON accepted")
+		}
+	}
+}
+
+func TestLegacyExceptionPreservesIncompleteProofAndRequiresExactSequence(t *testing.T) {
+	s, ids, now := activityFixture(t)
+	s.coverage = now.Add(-time.Hour)
+	payload := legacyPayloadFixture(now)
+	ticket := signLegacyFixture(t, payload, legacyWorkerFixture)
+	if s.canSendLegacy(ids, localTestRecipient, activityJob, payload.Messages[0], ticket, []byte(legacyWorkerFixture), now) {
+		t.Fatal("send before authorization")
+	}
+	d := s.authorizeLegacy(ids, localTestRecipient, activityJob, ticket, []byte(legacyWorkerFixture), now)
+	if !d.Allowed || d.Code != "legacy_history_exception" || d.LegacyBatchID != legacyBatchFixture || d.Activity == nil || d.Activity.Complete || !d.Activity.CoverageStartedAt.Equal(s.coverage) {
+		t.Fatal("exception must be explicit and never forge coverage")
+	}
+	if s.canSend(ids, activityJob, now) {
+		t.Fatal("exception cannot authorize ordinary send")
+	}
+	if s.canSendLegacy(ids, localTestRecipient, activityJob, payload.Messages[1], ticket, []byte(legacyWorkerFixture), now) {
+		t.Fatal("out of order message accepted")
+	}
+	for index, message := range payload.Messages {
+		at := now.Add(time.Duration(index) * time.Second)
+		if !s.authorizeLegacy(ids, localTestRecipient, activityJob, ticket, []byte(legacyWorkerFixture), at).Allowed {
+			t.Fatal("same ticket recheck should retain sequence")
+		}
+		if !s.canSendLegacy(ids, localTestRecipient, activityJob, message, ticket, []byte(legacyWorkerFixture), at) {
+			t.Fatalf("message %d denied", index)
+		}
+		if s.canSendLegacy(ids, localTestRecipient, activityJob, message, ticket, []byte(legacyWorkerFixture), at) {
+			t.Fatal("message replay accepted")
+		}
+		s.record(ids, fmt.Sprintf("legacy-own-%d", index), activityJob, at)
+	}
+	if s.canSendLegacy(ids, localTestRecipient, activityJob, payload.Messages[0], ticket, []byte(legacyWorkerFixture), now.Add(5*time.Second)) {
+		t.Fatal("completed sequence replay accepted")
+	}
+	if s.authorizeLegacy(ids, localTestRecipient, activityOtherJob, signLegacyFixture(t, func() localLegacyTicket { p := legacyPayloadFixture(now); p.JobID = activityOtherJob; return p }(), legacyWorkerFixture), []byte(legacyWorkerFixture), now.Add(6*time.Second)).Allowed {
+		t.Fatal("another job must see own outgoing interaction")
+	}
+}
+
+func TestLegacyExceptionNeverBypassesRecentUnknownStorageSyncOrIdentityFailures(t *testing.T) {
+	for _, name := range []string{"recent_pn", "recent_lid", "unhealthy", "broken", "closed", "no_coverage", "future_coverage", "unknown_alias", "wrong_pn", "clock_rollback", "clock_gap", "uncertainty"} {
+		t.Run(name, func(t *testing.T) {
+			s, ids, now := activityFixture(t)
+			s.coverage = now.Add(-time.Hour)
+			switch name {
+			case "recent_pn":
+				s.record(ids[:1], "external", "", now.Add(-time.Hour))
+			case "recent_lid":
+				s.record(ids[1:], "external", "", now.Add(-time.Hour))
+			case "unhealthy":
+				s.healthy = false
+			case "broken":
+				s.broken = true
+			case "closed":
+				s.closed = true
+			case "no_coverage":
+				s.coverage = time.Time{}
+			case "future_coverage":
+				s.coverage = now.Add(time.Second)
+			case "unknown_alias":
+				ids = ids[:1]
+			case "wrong_pn":
+				ids[0] = types.NewJID(localOwnerTestRecipient, types.DefaultUserServer)
+			case "clock_rollback":
+				s.lastCheck = now.Add(time.Second)
+			case "clock_gap":
+				s.lastCheck = now.Add(-3 * time.Minute)
+			case "uncertainty":
+				s.breakContinuity(now)
+			}
+			ticket := signLegacyFixture(t, legacyPayloadFixture(now), legacyWorkerFixture)
+			if s.authorizeLegacy(ids, localTestRecipient, activityJob, ticket, []byte(legacyWorkerFixture), now).Allowed {
+				t.Fatal("exception bypassed safety condition")
+			}
+		})
+	}
+}
+
+func TestLegacyRevalidatesFreshnessScopeAndNewReplyBeforeEachSend(t *testing.T) {
+	for _, name := range []string{"expired", "lease_expired", "new_reply", "wrong_job", "wrong_recipient", "wrong_lid", "changed_ticket", "different_lead_ticket", "wrong_key", "disconnect", "storage_failure", "unknown_event", "clock_gap", "clock_rollback"} {
+		t.Run(name, func(t *testing.T) {
+			s, ids, now := activityFixture(t)
+			s.coverage = now.Add(-time.Hour)
+			payload := legacyPayloadFixture(now)
+			ticket := signLegacyFixture(t, payload, legacyWorkerFixture)
+			if !s.authorizeLegacy(ids, localTestRecipient, activityJob, ticket, []byte(legacyWorkerFixture), now).Allowed {
+				t.Fatal("fixture authorization denied")
+			}
+			job, recipient, key, at := activityJob, localTestRecipient, legacyWorkerFixture, now.Add(time.Second)
+			switch name {
+			case "expired":
+				at = now.Add(4 * time.Minute)
+			case "lease_expired":
+				at = now.Add(31 * time.Second)
+			case "new_reply":
+				s.record(ids, "customer-reply", "", now)
+			case "wrong_job":
+				job = activityOtherJob
+			case "wrong_recipient":
+				recipient = localOwnerTestRecipient
+			case "wrong_lid":
+				ids[1] = types.NewJID("otherlid", types.HiddenUserServer)
+			case "changed_ticket":
+				ticket = signLegacyFixture(t, legacyPayloadFixture(now.Add(time.Second)), legacyWorkerFixture)
+			case "different_lead_ticket":
+				payload.LeadID = ownerOtherTestLead
+				ticket = signLegacyFixture(t, payload, legacyWorkerFixture)
+			case "wrong_key":
+				key = localTestToken
+			case "disconnect":
+				s.pause(now)
+			case "storage_failure":
+				s.db.Exec("DROP TABLE activity")
+			case "unknown_event":
+				s.breakContinuity(now)
+			case "clock_gap":
+				s.lastCheck = now.Add(-3 * time.Minute)
+			case "clock_rollback":
+				s.lastCheck = at.Add(time.Second)
+			}
+			if s.canSendLegacy(ids, recipient, job, payload.Messages[0], ticket, []byte(key), at) {
+				t.Fatal("send bypassed changed condition")
+			}
+		})
+	}
+}
+
+func TestLegacyIntegrityEmbargoPersistsAndDoesNotAlterNormalGuard(t *testing.T) {
+	s, ids, now := activityFixture(t)
+	s.breakContinuity(now)
+	path := filepath.Join(t.TempDir(), "fresh.db")
+	other, err := newLocalActivityStore(path, localTestToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	other.beginCoverage(now)
+	other.breakContinuity(now)
+	other.db.Close()
+	reopened, err := newLocalActivityStore(path, localTestToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.db.Close()
+	reopened.beginCoverage(now)
+	ticket := signLegacyFixture(t, legacyPayloadFixture(now), legacyWorkerFixture)
+	if reopened.authorizeLegacy(ids, localTestRecipient, activityJob, ticket, []byte(legacyWorkerFixture), now).Allowed || !reopened.legacyUncertainUntil.Equal(now.Add(5*24*time.Hour)) {
+		t.Fatal("unknown activity embargo must persist")
+	}
+	s.coverage = now.Add(-16 * 24 * time.Hour)
+	s.healthy = true
+	if !s.decision(ids, activityJob, 5, now).Allowed {
+		t.Fatal("legacy embargo must not change ordinary complete-window rule")
+	}
+	if !s.authorizeOwnerTest(localOwnerTestRecipient, ownerTestLead, activityJob, ownerTestTime()).Allowed {
+		t.Fatal("legacy embargo must not change explicit owner tests")
+	}
+}
+
+func TestLegacyKeepsExistingHistoryDatabaseMigrationCompatible(t *testing.T) {
+	s, _, now := activityFixture(t)
+	if _, err := s.db.Exec("DROP TABLE activity_legacy_integrity"); err != nil {
+		t.Fatal(err)
+	}
+	s.db.Close()
+	// A signed checkpoint created by the previous release still restores normally.
+	path := filepath.Join(t.TempDir(), "legacy.db")
+	old, err := newLocalActivityStore(path, localTestToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	old.bindSession("fixture-session", now)
+	old.completeSync(now)
+	old.coverage = now.Add(-16 * 24 * time.Hour)
+	if _, err := old.db.Exec("DROP TABLE activity_legacy_integrity"); err != nil {
+		t.Fatal(err)
+	}
+	old.closeClean(now)
+	fresh, err := newLocalActivityStore(path, localTestToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer fresh.db.Close()
+	fresh.bindSession("fixture-session", now.Add(time.Minute))
+	fresh.completeSync(now.Add(time.Minute))
+	if !fresh.healthy || !fresh.coverage.Equal(now.Add(-16*24*time.Hour)) || !fresh.legacyUncertainUntil.IsZero() {
+		t.Fatal("new optional table must not discard valid prior checkpoint")
+	}
+}
+
+// Fixed synthetic vector emitted by the Node.js production signer; verifies the
+// base64url byte encoding and MAC domain agree across both runtimes.
+func TestLegacyTicketMatchesNodeSignerVector(t *testing.T) {
+	ticket := "eyJiYXRjaElkIjoiMjIyMjIyMjItMjIyMi00MjIyLTgyMjItMjIyMjIyMjIyMjIyIiwiam9iSWQiOiIxMTExMTExMS0xMTExLTQxMTEtODExMS0xMTExMTExMTExMTEiLCJsZWFkSWQiOiIzMzMzMzMzMy0zMzMzLTQzMzMtODMzMy0zMzMzMzMzMzMzMzMiLCJyZWNpcGllbnQiOiI1NTE5OTg4ODg3Nzc3IiwidGlwbyI6ImxlbWJyZXRlX3Byb3Bvc3RhXzdkIiwiZXhwaXJlc0F0IjoiMjAyNi0xMC0xNlQxODowNTowMC4wMDBaIiwibWVzc2FnZXMiOlsiT2zDoSwgY29tbyB2YWk_ISIsIlBhc3NhbmRvIHPDsyBwYXJhIHNhYmVyIHNlIHZvY8OqIGNvbnNlZ3VpdSBkYXIgdW1hIG9saGFkaW5oYSBuYSBwcm9wb3N0YSBxdWUgdGUgZW52aWVpLiIsImh0dHBzOi8vY3JtLmludmFsaWQvcC9maXh0dXJlIiwiU2UgZmljb3UgYWxndW1hIGTDunZpZGEsIG1lIGNoYW1hIHF1ZSBldSB0ZSBleHBsaWNvLiDinKgiXX0.UqT7bo7Zv8nbrEx_yIJ_bR9yAQT5JxKJp0f5XH1_0oA"
+	key := "fixture-legacy-worker-secret-32-characters"
+	payload, valid := decodeLocalLegacyTicket(ticket, []byte(key), "5519988887777", "11111111-1111-4111-8111-111111111111", time.UnixMilli(1792173600000).UTC())
+	if !valid || payload.BatchID != "22222222-2222-4222-8222-222222222222" || payload.Messages[0] != "Olá, como vai?!" {
+		t.Fatal("Node.js signer and Go bridge MAC differ")
+	}
+}
+
+func TestLegacyIntegrityTamperingFailsClosedAndStorageURLsRemainSupported(t *testing.T) {
+	s, _, now := activityFixture(t)
+	s.breakContinuity(now)
+	if _, err := s.db.Exec("UPDATE activity_legacy_integrity SET uncertain_until=uncertain_until-1"); err != nil {
+		t.Fatal(err)
+	}
+	// Read-only reopening validates the signed metadata before any transport starts.
+	var path string
+	rows, err := s.db.Query("PRAGMA database_list")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rows.Next() {
+		var seq int
+		var name, file string
+		if err := rows.Scan(&seq, &name, &file); err != nil {
+			t.Fatal(err)
+		}
+		if name == "main" {
+			path = file
+		}
+	}
+	rows.Close()
+	if reopened, err := newLocalActivityStore(path, localTestToken); err == nil {
+		reopened.db.Close()
+		t.Fatal("tampered integrity metadata accepted")
+	}
+	payload := legacyPayloadFixture(now)
+	payload.Messages[2] = "https://example.supabase.co/storage/v1/object/public/propostas/fixture.pdf"
+	if _, valid := decodeLocalLegacyTicket(signLegacyFixture(t, payload, legacyWorkerFixture), []byte(legacyWorkerFixture), localTestRecipient, activityJob, now); !valid {
+		t.Fatal("existing approved storage URLs must remain valid")
 	}
 }

@@ -27,10 +27,11 @@ import (
 const localBridgeMaxBodyBytes int64 = 64 * 1024
 
 type localSendRequest struct {
-	Recipient            string  `json:"recipient"`
-	Message              string  `json:"message"`
-	AutomationJobID      string  `json:"automation_job_id,omitempty"`
-	AutomationTestLeadID *string `json:"automation_test_lead_id,omitempty"`
+	Recipient                     string  `json:"recipient"`
+	Message                       string  `json:"message"`
+	AutomationJobID               string  `json:"automation_job_id,omitempty"`
+	AutomationTestLeadID          *string `json:"automation_test_lead_id,omitempty"`
+	AutomationLegacyAuthorization *string `json:"automation_legacy_authorization,omitempty"`
 }
 
 type localBridgeResponse struct {
@@ -104,7 +105,7 @@ func newLocalRESTHandler(client *whatsmeow.Client, token string, activities ...*
 			writeLocalError(w, http.StatusUnsupportedMediaType, "invalid_content_type", "Use UTF-8 application/json.")
 			return
 		}
-		body := http.MaxBytesReader(w, r.Body, 4096)
+		body := http.MaxBytesReader(w, r.Body, 16384)
 		defer body.Close()
 		data, err := io.ReadAll(body)
 		if err != nil || !utf8.Valid(data) {
@@ -112,10 +113,11 @@ func newLocalRESTHandler(client *whatsmeow.Client, token string, activities ...*
 			return
 		}
 		var request struct {
-			Recipient  string  `json:"recipient"`
-			JobID      string  `json:"jobId"`
-			Days       int     `json:"days"`
-			TestLeadID *string `json:"testLeadId"`
+			Recipient           string  `json:"recipient"`
+			JobID               string  `json:"jobId"`
+			Days                int     `json:"days"`
+			TestLeadID          *string `json:"testLeadId"`
+			LegacyAuthorization *string `json:"legacyAuthorization"`
 		}
 		decoder := json.NewDecoder(bytes.NewReader(data))
 		decoder.DisallowUnknownFields()
@@ -128,6 +130,10 @@ func newLocalRESTHandler(client *whatsmeow.Client, token string, activities ...*
 			writeLocalError(w, http.StatusBadRequest, "invalid_payload", "Invalid activity payload.")
 			return
 		}
+		if request.LegacyAuthorization != nil && (request.TestLeadID != nil || request.Days != 5 || *request.LegacyAuthorization == "") {
+			writeLocalError(w, http.StatusBadRequest, "invalid_payload", "Invalid legacy activity reference.")
+			return
+		}
 		decision := localActivityDecision{Code: "historico_em_sincronizacao", Activity: &localActivityProof{CheckedAt: time.Now()}}
 		if request.TestLeadID != nil {
 			decision = localActivityDecision{Code: "owner_test_denied"}
@@ -138,7 +144,14 @@ func newLocalRESTHandler(client *whatsmeow.Client, token string, activities ...*
 			ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 			defer cancel()
 			if keys, err := localActivityIdentity(ctx, client, request.Recipient); err == nil {
-				decision = activity.decision(keys, request.JobID, request.Days, time.Now())
+				if request.LegacyAuthorization != nil {
+					decision = localActivityDecision{Code: "legacy_authorization_denied"}
+					if secret, err := localLegacyWorkerSecret(); err == nil {
+						decision = activity.authorizeLegacy(keys, request.Recipient, request.JobID, *request.LegacyAuthorization, secret, time.Now())
+					}
+				} else {
+					decision = activity.decision(keys, request.JobID, request.Days, time.Now())
+				}
 			} else {
 				decision.Code = "identidade_nao_confirmada"
 			}
@@ -216,6 +229,17 @@ func newLocalRESTHandler(client *whatsmeow.Client, token string, activities ...*
 			writeLocalError(w, http.StatusBadRequest, "invalid_payload", "Invalid owner test reference.")
 			return
 		}
+		if request.AutomationLegacyAuthorization != nil {
+			if request.AutomationTestLeadID != nil || request.AutomationJobID == "" || *request.AutomationLegacyAuthorization == "" {
+				writeLocalError(w, http.StatusBadRequest, "invalid_payload", "Invalid legacy automation reference.")
+				return
+			}
+			secret, err := localLegacyWorkerSecret()
+			if _, valid := decodeLocalLegacyTicket(*request.AutomationLegacyAuthorization, secret, request.Recipient, request.AutomationJobID, time.Now()); err != nil || !valid {
+				writeLocalError(w, http.StatusConflict, "legacy_authorization_denied", "The legacy authorization is not valid.")
+				return
+			}
+		}
 		if client == nil {
 			writeLocalError(w, http.StatusOK, "simulation_no_send", "Simulation does not send messages.")
 			return
@@ -236,6 +260,10 @@ func newLocalRESTHandler(client *whatsmeow.Client, token string, activities ...*
 		if activity != nil && request.AutomationJobID != "" {
 			if request.AutomationTestLeadID != nil {
 				automationAllowed = activity.canSendOwnerTest(request.Recipient, *request.AutomationTestLeadID, request.AutomationJobID, time.Now())
+			} else if request.AutomationLegacyAuthorization != nil {
+				if secret, err := localLegacyWorkerSecret(); err == nil {
+					automationAllowed = activity.canSendLegacy(keys, request.Recipient, request.AutomationJobID, request.Message, *request.AutomationLegacyAuthorization, secret, time.Now())
+				}
 			} else {
 				automationAllowed = activity.canSend(keys, request.AutomationJobID, time.Now())
 			}

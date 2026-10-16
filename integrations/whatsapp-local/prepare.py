@@ -141,7 +141,7 @@ def patch_history_download(text: str) -> str:
 
 
 def patch_mcp_send_arguments(main: str, whatsapp: str) -> tuple[str, str]:
-    """Propaga a referência restrita de teste sem criar outra ferramenta de envio."""
+    """Propaga autorizações restritas sem criar outra ferramenta de envio."""
     main = replace_once(main, '''def send_message(
     recipient: str,
     message: str
@@ -149,19 +149,20 @@ def patch_mcp_send_arguments(main: str, whatsapp: str) -> tuple[str, str]:
     recipient: str,
     message: str,
     automation_job_id: Optional[str] = None,
-    automation_test_lead_id: Optional[str] = None
+    automation_test_lead_id: Optional[str] = None,
+    automation_legacy_authorization: Optional[str] = None
 )''')
     main = replace_once(
         main, 'whatsapp_send_message(recipient, message)',
-        'whatsapp_send_message(recipient, message, automation_job_id, automation_test_lead_id)',
+        'whatsapp_send_message(recipient, message, automation_job_id, automation_test_lead_id, automation_legacy_authorization)',
     )
     whatsapp = replace_once(
         whatsapp, 'def send_message(recipient: str, message: str)',
-        'def send_message(recipient: str, message: str, automation_job_id: Optional[str] = None, automation_test_lead_id: Optional[str] = None)',
+        'def send_message(recipient: str, message: str, automation_job_id: Optional[str] = None, automation_test_lead_id: Optional[str] = None, automation_legacy_authorization: Optional[str] = None)',
     )
     whatsapp = replace_once(
         whatsapp, '            "message": message,\n        }\n        \n        response = _local_post(url, payload)',
-        '            "message": message,\n        }\n        if automation_job_id is not None:\n            payload["automation_job_id"] = automation_job_id\n        if automation_test_lead_id is not None:\n            payload["automation_test_lead_id"] = automation_test_lead_id\n        \n        response = _local_post(url, payload)',
+        '            "message": message,\n        }\n        if automation_job_id is not None:\n            payload["automation_job_id"] = automation_job_id\n        if automation_test_lead_id is not None:\n            payload["automation_test_lead_id"] = automation_test_lead_id\n        if automation_legacy_authorization is not None:\n            payload["automation_legacy_authorization"] = automation_legacy_authorization\n        \n        response = _local_post(url, payload)',
     )
     return main, whatsapp
 

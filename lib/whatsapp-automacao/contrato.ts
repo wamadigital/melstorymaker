@@ -3,7 +3,8 @@ import { MENSAGENS_LEMBRETE_FORMULARIO } from "./lembrete-formulario";
 import { validarSequenciaProposta, type ParteMensagem } from "./lembretes-proposta";
 import { marcoTesteOwner, testeOwnerPropostaValido } from "./testes";
 import { validarSequenciaPropostaInicial } from "./proposta-inicial";
-export type ProtocoloWorker = 1 | 2 | 3 | 4 | 5;
+import { assinarAutorizacaoLegada, validarAutorizacaoLegada } from "./lote-legado";
+export type ProtocoloWorker = 1 | 2 | 3 | 4 | 5 | 6;
 export type TipoJobWhatsApp = "lembrete_formulario_24h" | "lembrete_proposta_7d" | "lembrete_proposta_30d" | "proposta_inicial_15m";
 export const HEADER_PROTOCOLO_WORKER = "X-Mel-Worker-Protocol";
 
@@ -18,6 +19,7 @@ export const jobSchema = z.object({
   lead_id: z.unknown().optional(),
   proposta_enviado_em: z.unknown().optional(),
   teste_owner_expira_em: z.string().datetime({ offset: true }).nullish(),
+  lote_legado_id: z.string().uuid().nullish(),
 });
 const textoSequencia = z.string().min(1).max(2000).refine((texto) => texto.trim().length > 0);
 const parte = <T extends number>(delay: T) => z.object({
@@ -36,6 +38,9 @@ export type JobWhatsApp = {
   tipo?: TipoJobWhatsApp;
   /** Somente os cinco testes temporários validados no banco e no envelope. */
   testLeadId?: string;
+  /** Exceção temporária assinada, somente para um item autorizado do lote. */
+  legacyBatchId?: string;
+  legacyAuthorization?: string;
 };
 
 function linkIndividual(texto: string): boolean {
@@ -59,8 +64,12 @@ export function validarSequenciaMensagens(sequencia: unknown, mensagem: string):
 }
 
 /** Tambem usado na fronteira HTTP para nunca liberar sequencia a worker V1. */
-export function validarJobWorker(job: JobWhatsApp, protocolo: ProtocoloWorker, agoraMs = Date.now()): JobWhatsApp {
+export function validarJobWorker(job: JobWhatsApp, protocolo: ProtocoloWorker, agoraMs = Date.now(), segredoLegado?: string): JobWhatsApp {
   if (job.messagesSequence === undefined) throw new Error("mensagem_nao_autorizada");
+  if (job.legacyBatchId !== undefined || job.legacyAuthorization !== undefined) {
+    if (protocolo < 6) throw new Error("worker_sem_protocolo_lote_legado");
+    validarAutorizacaoLegada(job, agoraMs, segredoLegado);
+  }
   if (job.testLeadId !== undefined) {
     const marco = marcoTesteOwner({ leadId: job.testLeadId, nome: "TESTE HENRIQUE", destinatario: job.recipient }, agoraMs);
     if (protocolo < 3 || !marco || job.tipo !== `lembrete_proposta_${marco}d`) {
@@ -83,7 +92,7 @@ export function validarJobWorker(job: JobWhatsApp, protocolo: ProtocoloWorker, a
   return { ...job, messagesSequence: validarSequenciaMensagens(job.messagesSequence, job.message) };
 }
 
-export function envelopeJob(linha: unknown, protocolo: ProtocoloWorker = 1, agoraMs = Date.now()): JobWhatsApp {
+export function envelopeJob(linha: unknown, protocolo: ProtocoloWorker = 1, agoraMs = Date.now(), segredoLegado?: string): JobWhatsApp {
   const job = jobSchema.parse(linha);
   const envelope: JobWhatsApp = {
     id: job.id, leaseToken: job.lease_token, recipient: job.destinatario,
@@ -107,7 +116,12 @@ export function envelopeJob(linha: unknown, protocolo: ProtocoloWorker = 1, agor
     if (protocolo !== 2 || job.tipo !== "lembrete_formulario_24h") throw new Error("worker_sem_protocolo_sequencia");
     envelope.messagesSequence = validarSequenciaMensagens(job.sequencia, job.mensagem);
   }
-  return validarJobWorker(envelope, protocolo, agoraMs);
+  if (job.lote_legado_id != null) {
+    if (protocolo < 6) throw new Error("worker_sem_protocolo_lote_legado");
+    envelope.legacyBatchId = job.lote_legado_id;
+    envelope.legacyAuthorization = assinarAutorizacaoLegada(envelope, job.lead_id, segredoLegado, agoraMs);
+  }
+  return validarJobWorker(envelope, protocolo, agoraMs, segredoLegado);
 }
 
 export const atividadeSchema = z.object({

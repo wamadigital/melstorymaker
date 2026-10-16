@@ -235,3 +235,32 @@ func TestLocalBridgeHTTPResourceDeadlinesAreBounded(t *testing.T) {
 		t.Fatal("HTTP headers must have a bounded size")
 	}
 }
+
+func TestLocalBridgeLegacyReferenceCannotFallThroughToPersonalOrOwnerSends(t *testing.T) {
+	handler := localTestHandler(t, nil)
+	for _, body := range []string{
+		`{"recipient":"` + localTestRecipient + `","message":"fixture","automation_legacy_authorization":"ticket"}`,
+		`{"recipient":"` + localTestRecipient + `","message":"fixture","automation_job_id":"` + activityJob + `","automation_legacy_authorization":""}`,
+		`{"recipient":"` + localOwnerTestRecipient + `","message":"fixture","automation_job_id":"` + activityJob + `","automation_test_lead_id":"` + ownerTestLead + `","automation_legacy_authorization":"ticket"}`,
+	} {
+		localTestRun(t, handler, localTestRequest(http.MethodPost, "/api/send", body), http.StatusBadRequest, "invalid_payload")
+	}
+	localTestRun(t, handler, localTestRequest(http.MethodPost, "/api/send", `{"recipient":"`+localTestRecipient+`","message":"fixture","automation_job_id":"`+activityJob+`","automation_legacy_authorization":"forged.ticket"}`), http.StatusConflict, "legacy_authorization_denied")
+	// The new optional worker key must never be needed for ordinary/personal sends.
+	localTestRun(t, handler, localTestRequest(http.MethodPost, "/api/send", localTestPayload(t, localTestRecipient, "fixture")), http.StatusOK, "simulation_no_send")
+}
+
+func TestLocalBridgeLegacyActivityRejectsMixedOrWrongWindowRequests(t *testing.T) {
+	handler := localTestHandler(t, nil)
+	for _, body := range []string{
+		`{"recipient":"` + localTestRecipient + `","jobId":"` + activityJob + `","days":15,"legacyAuthorization":"ticket"}`,
+		`{"recipient":"` + localTestRecipient + `","jobId":"` + activityJob + `","days":5,"legacyAuthorization":""}`,
+		`{"recipient":"` + localTestRecipient + `","jobId":"` + activityJob + `","days":5,"legacyAuthorization":"ticket","testLeadId":"` + ownerTestLead + `"}`,
+	} {
+		localTestRun(t, handler, localTestRequest(http.MethodPost, "/api/activity-check", body), http.StatusBadRequest, "invalid_payload")
+	}
+	response := localTestRun(t, handler, localTestRequest(http.MethodPost, "/api/activity-check", `{"recipient":"`+localTestRecipient+`","jobId":"`+activityJob+`","days":5,"legacyAuthorization":"forged.ticket"}`), http.StatusOK, "historico_em_sincronizacao")
+	if strings.Contains(response.Body.String(), `"allowed":true`) {
+		t.Fatal("disconnected simulation must never grant exception")
+	}
+}

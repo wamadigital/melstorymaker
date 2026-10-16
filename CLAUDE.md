@@ -171,6 +171,37 @@ perturbe a ela. Lembretes de 7/30 dias continuam por clique com gates de 5/15
 dias intactos. Nenhum e-mail automático nem confirmação antiga é autorizado.
 Execução permanece online na Railway Hobby, sem Mac ligado ou upgrade.
 
+## Rodada única de lembretes legados — autorizada em 16/10/2026
+
+O owner autorizou uma rodada para os 49 clientes com evento futuro que estavam
+em Esfriou no inventário de 16/10 às 15h42 (Brasília). Excluir 11 eventos passados
+e cinco cards de teste. Enviar só o primeiro lembrete de quatro partes aprovado;
+não enviar a última tentativa junto, mover cards, apagar leads ou marcar envio
+sem ACK. Os cards permanecem em Esfriou, com o lembrete confirmado registrado.
+
+Somente cobertura histórica insuficiente recebe exceção neste lote. Interação
+recente comprovada, identidade incerta, falha de armazenamento/sincronização,
+proposta ou contato alterado, envio anterior, parcial ou indeterminado bloqueiam.
+O manifesto privado sela IDs, destinatários, proposta e sequência; cria pausado,
+exige ativação própria e expira em até 24 horas. Clientes novos não entram
+automaticamente. A regra normal de cinco/quinze dias permanece inalterada.
+
+Aplicar manualmente `supabase/whatsapp-lote-legado.sql`, publicar o backend e
+atualizar a Railway para protocolo 6/RPCs V7 antes de ativar o manifesto. Manter
+120–240 segundos entre leads, com limite persistido e revalidado no primeiro
+STARTED, sem compensar atrasos com rajadas. O worker consulta a cada 10 segundos
+durante o lote ativo; ao terminar volta aos 60 segundos. Ticket HMAC com até
+cinco minutos de validade vincula job, lote, destinatário e textos à chave já
+existente do worker. Bridge e servidor revalidam antes de cada parte; manter
+ledger, ACKs e a proibição de repetir resultados parciais/indeterminados.
+
+Na pré-checagem, 46 tinham cobertura insuficiente, um tinha interação recente e
+dois não tinham identidade confirmada. Esses números não comprovam envios.
+Reportar ACKs e bloqueios reais. Instalar a capacidade ou criar o lote pausado
+não inicia mensagens. Pausar impede novos inícios/partes sem desligar as outras
+automações. O intervalo controla o ritmo, sem garantir ausência de bloqueio do
+WhatsApp. Preservar recursos do Hobby e o runtime canônico na Railway.
+
 ## Continuidade do histórico WhatsApp — correção de 16/10/2026
 
 Preservar a cobertura já comprovada em `activity.db`, com checkpoint HMAC

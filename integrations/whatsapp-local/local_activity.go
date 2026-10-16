@@ -3,17 +3,25 @@ package main
 // Only contact/message/job hashes and timestamps are stored. Message bodies,
 // contact names, media and conversation history never enter this database.
 import (
+	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"database/sql"
+	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net/url"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/types"
@@ -29,13 +37,14 @@ type localActivityProof struct {
 }
 
 type localActivityDecision struct {
-	Allowed    bool                `json:"allowed"`
-	Code       string              `json:"code"`
-	Activity   *localActivityProof `json:"activity,omitempty"`
-	TestLeadID string              `json:"testLeadId,omitempty"`
-	JobID      string              `json:"jobId,omitempty"`
-	Recipient  string              `json:"recipient,omitempty"`
-	CheckedAt  *time.Time          `json:"checkedAt,omitempty"`
+	Allowed       bool                `json:"allowed"`
+	Code          string              `json:"code"`
+	Activity      *localActivityProof `json:"activity,omitempty"`
+	TestLeadID    string              `json:"testLeadId,omitempty"`
+	JobID         string              `json:"jobId,omitempty"`
+	Recipient     string              `json:"recipient,omitempty"`
+	CheckedAt     *time.Time          `json:"checkedAt,omitempty"`
+	LegacyBatchID string              `json:"legacyBatchId,omitempty"`
 }
 
 type localActivityStore struct {
@@ -52,6 +61,202 @@ type localActivityStore struct {
 	lastCheck               time.Time
 	authorizations          map[string]localActivityAuthorization
 	ownerTestAuthorizations map[string]localOwnerTestAuthorization
+	legacyAuthorizations    map[string]localLegacyAuthorization
+	legacyUncertainUntil    time.Time
+}
+
+type localLegacyTicket struct {
+	BatchID   string   `json:"batchId"`
+	JobID     string   `json:"jobId"`
+	LeadID    string   `json:"leadId"`
+	Recipient string   `json:"recipient"`
+	Tipo      string   `json:"tipo"`
+	ExpiresAt string   `json:"expiresAt"`
+	Messages  []string `json:"messages"`
+}
+
+type localLegacyAuthorization struct {
+	ticketHash    string
+	recipientHash string
+	keysHash      string
+	checkedAt     time.Time
+	nextMessage   int
+}
+
+// The one-off exception is signed with the worker credential, never the bridge
+// bearer. Reading lazily keeps normal sends independent of this optional path.
+func localLegacyWorkerSecret() ([]byte, error) {
+	data, err := os.ReadFile("worker-token")
+	if err != nil {
+		return nil, errors.New("legacy authorization unavailable")
+	}
+	value := strings.TrimSuffix(string(data), "\n")
+	if len(value) < 32 || len(value) > 4096 {
+		return nil, errors.New("legacy authorization unavailable")
+	}
+	for _, c := range value {
+		if c < '!' || c > '~' {
+			return nil, errors.New("legacy authorization unavailable")
+		}
+	}
+	return []byte(value), nil
+}
+
+func decodeLocalLegacyTicket(ticket string, secret []byte, recipient, jobID string, now time.Time) (*localLegacyTicket, bool) {
+	if len(secret) < 32 || len(ticket) > 8192 {
+		return nil, false
+	}
+	for _, c := range secret {
+		if c < '!' || c > '~' {
+			return nil, false
+		}
+	}
+	pieces := strings.Split(ticket, ".")
+	if len(pieces) != 2 {
+		return nil, false
+	}
+	signature, err := base64.RawURLEncoding.Strict().DecodeString(pieces[1])
+	if err != nil || len(signature) != sha256.Size {
+		return nil, false
+	}
+	mac := hmac.New(sha256.New, secret)
+	mac.Write([]byte("mel-whatsapp-legacy-v1." + pieces[0]))
+	if !hmac.Equal(signature, mac.Sum(nil)) {
+		return nil, false
+	}
+	data, err := base64.RawURLEncoding.Strict().DecodeString(pieces[0])
+	if err != nil || !utf8.Valid(data) || !json.Valid(data) {
+		return nil, false
+	}
+	// Reject duplicate keys as well as unknown/missing/null fields.
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	token, err := decoder.Token()
+	if err != nil || token != json.Delim('{') {
+		return nil, false
+	}
+	fields := map[string]json.RawMessage{}
+	for decoder.More() {
+		key, err := decoder.Token()
+		name, ok := key.(string)
+		if err != nil || !ok {
+			return nil, false
+		}
+		switch name {
+		case "batchId", "jobId", "leadId", "recipient", "tipo", "expiresAt", "messages":
+		default:
+			return nil, false
+		}
+		if _, exists := fields[name]; exists {
+			return nil, false
+		}
+		var raw json.RawMessage
+		if decoder.Decode(&raw) != nil || bytes.Equal(raw, []byte("null")) {
+			return nil, false
+		}
+		fields[name] = raw
+	}
+	if _, err := decoder.Token(); err != nil || len(fields) != 7 {
+		return nil, false
+	}
+	var extra json.RawMessage
+	if decoder.Decode(&extra) != io.EOF {
+		return nil, false
+	}
+	decoder = json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	var payload localLegacyTicket
+	if decoder.Decode(&payload) != nil {
+		return nil, false
+	}
+	expires, err := time.Parse(time.RFC3339Nano, payload.ExpiresAt)
+	if err != nil || !expires.After(now) || expires.After(now.Add(5*time.Minute)) ||
+		!validLocalJobID(payload.BatchID) || !validLocalJobID(payload.JobID) || !validLocalJobID(payload.LeadID) ||
+		payload.JobID != jobID || payload.Recipient != recipient || !validLocalBrazilRecipient(recipient) ||
+		payload.Tipo != "lembrete_proposta_7d" || len(payload.Messages) != 4 ||
+		payload.Messages[0] != "Olá, como vai?!" ||
+		payload.Messages[1] != "Passando só para saber se você conseguiu dar uma olhadinha na proposta que te enviei." ||
+		payload.Messages[3] != "Se ficou alguma dúvida, me chama que eu te explico. ✨" {
+		return nil, false
+	}
+	for _, character := range payload.Messages[2] {
+		if unicode.IsSpace(character) {
+			return nil, false
+		}
+	}
+	link, err := url.Parse(payload.Messages[2])
+	if err != nil || link.Scheme != "https" || link.Host == "" || link.User != nil || link.RawQuery != "" || link.Fragment != "" ||
+		strings.ContainsAny(payload.Messages[2], " \t\n\r\\@?#") || len(payload.Messages[2]) > 4000 {
+		return nil, false
+	}
+	return &payload, true
+}
+
+func validLocalLegacyKeys(keys []types.JID, recipient string) bool {
+	return len(keys) == 2 && keys[0].ToNonAD() == types.NewJID(recipient, types.DefaultUserServer) &&
+		!keys[1].IsEmpty() && keys[1].Server == types.HiddenUserServer
+}
+
+func (s *localActivityStore) legacyKeysHash(keys []types.JID) string {
+	return s.hash("legacy-keys", keys[0].ToNonAD().String()+"|"+keys[1].ToNonAD().String())
+}
+
+func localLegacyDecisionAllowed(result localActivityDecision, now time.Time) bool {
+	proof := result.Activity
+	return proof != nil && (result.Code == "inactivity_clear" || result.Code == "historico_incompleto") &&
+		!proof.CoverageStartedAt.IsZero() && proof.CoverageStartedAt.Unix() > 0 && !proof.CoverageStartedAt.After(now) &&
+		proof.CheckedAt.Equal(now) && (proof.LastInteractionAt == nil || proof.LastInteractionAt.Unix() > 0 && !proof.LastInteractionAt.After(now.Add(-5*24*time.Hour)))
+}
+
+func (s *localActivityStore) authorizeLegacy(keys []types.JID, recipient, jobID, ticket string, secret []byte, now time.Time) localActivityDecision {
+	payload, valid := decodeLocalLegacyTicket(ticket, secret, recipient, jobID, now)
+	if !valid || !validLocalLegacyKeys(keys, recipient) {
+		return localActivityDecision{Code: "legacy_authorization_denied"}
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	result := s.decisionLocked(keys, jobID, 5, now)
+	if !localLegacyDecisionAllowed(result, now) {
+		if result.Allowed {
+			return localActivityDecision{Code: "historico_indisponivel", Activity: result.Activity}
+		}
+		return result
+	}
+	if now.Before(s.legacyUncertainUntil) {
+		return localActivityDecision{Code: "historico_indisponivel", Activity: result.Activity}
+	}
+	jobHash, ticketHash := s.hash("job", jobID), s.hash("legacy-ticket", ticket)
+	authorization, found := s.legacyAuthorizations[jobHash]
+	if found && (authorization.ticketHash != ticketHash || authorization.recipientHash != s.hash("recipient", recipient) || authorization.keysHash != s.legacyKeysHash(keys) || now.Before(authorization.checkedAt)) {
+		return localActivityDecision{Code: "legacy_authorization_denied"}
+	}
+	authorization.ticketHash, authorization.recipientHash = ticketHash, s.hash("recipient", recipient)
+	authorization.keysHash, authorization.checkedAt = s.legacyKeysHash(keys), now
+	s.legacyAuthorizations[jobHash] = authorization
+	result.Allowed, result.Code, result.LegacyBatchID = true, "legacy_history_exception", payload.BatchID
+	return result
+}
+
+func (s *localActivityStore) canSendLegacy(keys []types.JID, recipient, jobID, message, ticket string, secret []byte, now time.Time) bool {
+	payload, valid := decodeLocalLegacyTicket(ticket, secret, recipient, jobID, now)
+	if !valid || !validLocalLegacyKeys(keys, recipient) {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	key := s.hash("job", jobID)
+	authorization, found := s.legacyAuthorizations[key]
+	if !found || authorization.ticketHash != s.hash("legacy-ticket", ticket) || authorization.recipientHash != s.hash("recipient", recipient) ||
+		authorization.keysHash != s.legacyKeysHash(keys) || now.Before(authorization.checkedAt) || now.Sub(authorization.checkedAt) > 30*time.Second ||
+		authorization.nextMessage >= len(payload.Messages) || payload.Messages[authorization.nextMessage] != message || now.Before(s.legacyUncertainUntil) {
+		return false
+	}
+	if !localLegacyDecisionAllowed(s.decisionLocked(keys, jobID, 5, now), now) || now.Before(s.legacyUncertainUntil) {
+		return false
+	}
+	// Consume before invoking the transport: an uncertain SDK result must not be replayed.
+	authorization.nextMessage++
+	s.legacyAuthorizations[key] = authorization
+	return true
 }
 
 type localActivityAuthorization struct {
@@ -143,14 +348,27 @@ func newLocalActivityStore(path, secret string) (*localActivityStore, error) {
 	CREATE TABLE IF NOT EXISTS activity_checkpoint (
 		id INTEGER PRIMARY KEY CHECK(id=1), version INTEGER NOT NULL, session_hash TEXT NOT NULL,
 		coverage_start INTEGER NOT NULL, checkpoint_at INTEGER NOT NULL, clean_shutdown INTEGER NOT NULL, signature TEXT NOT NULL
-	);`)
+	); CREATE TABLE IF NOT EXISTS activity_legacy_integrity (
+ id INTEGER PRIMARY KEY CHECK(id=1), uncertain_until INTEGER NOT NULL, signature TEXT NOT NULL
+ );`)
 	if err != nil {
 		db.Close()
 		return nil, err
 	}
 	// Restoring a checkpoint is deferred until the authenticated session and its
 	// offline-sync completion have both been verified. Legacy rows prove no silence.
-	return &localActivityStore{db: db, secret: []byte(secret), authorizations: make(map[string]localActivityAuthorization), ownerTestAuthorizations: make(map[string]localOwnerTestAuthorization)}, nil
+	store := &localActivityStore{db: db, secret: []byte(secret), authorizations: make(map[string]localActivityAuthorization), ownerTestAuthorizations: make(map[string]localOwnerTestAuthorization), legacyAuthorizations: make(map[string]localLegacyAuthorization)}
+	var until int64
+	var signature string
+	err = db.QueryRow("SELECT uncertain_until,signature FROM activity_legacy_integrity WHERE id=1").Scan(&until, &signature)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) || err == nil && (until <= 0 || !hmac.Equal([]byte(signature), []byte(store.hash("legacy-uncertain", fmt.Sprint(until))))) {
+		db.Close()
+		return nil, errors.New("activity integrity unavailable")
+	}
+	if err == nil {
+		store.legacyUncertainUntil = time.UnixMilli(until).UTC()
+	}
+	return store, nil
 }
 
 func (s *localActivityStore) hash(kind, value string) string {
@@ -178,6 +396,7 @@ func (s *localActivityStore) failLocked() {
 	s.candidateAt = time.Time{}
 	clear(s.authorizations)
 	clear(s.ownerTestAuthorizations)
+	clear(s.legacyAuthorizations)
 	// A failed checkpoint cannot later be mistaken for a clean shutdown.
 	_, _ = s.db.Exec("DELETE FROM activity_checkpoint WHERE id=1")
 }
@@ -262,6 +481,7 @@ func (s *localActivityStore) pause(now time.Time) {
 	s.healthy = false
 	clear(s.authorizations)
 	clear(s.ownerTestAuthorizations)
+	clear(s.legacyAuthorizations)
 }
 
 func (s *localActivityStore) invalidate() { s.pause(time.Now()) }
@@ -293,6 +513,19 @@ func (s *localActivityStore) completeSync(now time.Time) {
 
 // An unassignable event, ordering loss or clock discontinuity cannot be bridged.
 // A new observation window is safe; it never asserts silence in the missing part.
+func (s *localActivityStore) markLegacyUncertaintyLocked(now time.Time) bool {
+	until := now.Add(5 * 24 * time.Hour)
+	if until.After(s.legacyUncertainUntil) {
+		s.legacyUncertainUntil = until
+	}
+	value := s.legacyUncertainUntil.UnixMilli()
+	if _, err := s.db.Exec("INSERT INTO activity_legacy_integrity(id,uncertain_until,signature) VALUES(1,?,?) ON CONFLICT(id) DO UPDATE SET uncertain_until=excluded.uncertain_until,signature=excluded.signature", value, s.hash("legacy-uncertain", fmt.Sprint(value))); err != nil {
+		s.failLocked()
+		return false
+	}
+	return true
+}
+
 func (s *localActivityStore) breakContinuity(now time.Time) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -301,8 +534,12 @@ func (s *localActivityStore) breakContinuity(now time.Time) {
 	}
 	s.candidateCoverage, s.candidateAt = time.Time{}, time.Time{}
 	s.coverage, s.lastCheck = now, now
+	if !s.markLegacyUncertaintyLocked(now) {
+		return
+	}
 	clear(s.authorizations)
 	clear(s.ownerTestAuthorizations)
+	clear(s.legacyAuthorizations)
 	if s.sessionHash != "" {
 		s.checkpointLocked(now, false)
 	}
@@ -320,6 +557,7 @@ func (s *localActivityStore) closeClean(now time.Time) {
 	s.closed, s.healthy = true, false
 	clear(s.authorizations)
 	clear(s.ownerTestAuthorizations)
+	clear(s.legacyAuthorizations)
 	s.db.Close()
 }
 
@@ -496,12 +734,18 @@ func recordLocalActivityEvent(client *whatsmeow.Client, evt interface{}) {
 func (s *localActivityStore) decision(keys []types.JID, jobID string, days int, now time.Time) localActivityDecision {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.decisionLocked(keys, jobID, days, now)
+}
+
+func (s *localActivityStore) decisionLocked(keys []types.JID, jobID string, days int, now time.Time) localActivityDecision {
 	// Clock discontinuities cannot inherit a checkpoint from the old timeline.
 	if !s.lastCheck.IsZero() && (now.UTC().Sub(s.lastCheck.UTC()) > 2*time.Minute || now.Before(s.lastCheck)) {
 		s.coverage = now
+		s.markLegacyUncertaintyLocked(now)
 		s.candidateCoverage, s.candidateAt = time.Time{}, time.Time{}
 		clear(s.authorizations)
 		clear(s.ownerTestAuthorizations)
+		clear(s.legacyAuthorizations)
 		s.checkpointLocked(now, false)
 	}
 	s.lastCheck = now
@@ -568,9 +812,11 @@ func (s *localActivityStore) heartbeat(now time.Time) {
 	defer s.mu.Unlock()
 	if !s.lastCheck.IsZero() && ((s.healthy && now.UTC().Sub(s.lastCheck.UTC()) > 2*time.Minute) || now.Before(s.lastCheck)) {
 		s.coverage = now
+		s.markLegacyUncertaintyLocked(now)
 		s.candidateCoverage, s.candidateAt = time.Time{}, time.Time{}
 		clear(s.authorizations)
 		clear(s.ownerTestAuthorizations)
+		clear(s.legacyAuthorizations)
 	}
 	s.lastCheck = now
 	if s.healthy && !s.broken && !s.closed {

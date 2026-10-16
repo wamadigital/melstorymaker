@@ -322,3 +322,31 @@ expira em 30 segundos e é renovada antes de cada parte. O quadro recebe
 somente marco/prazo do card visível, sem publicar a allowlist no bundle.
 Os eventos de teste da Meta permanecem encerrados. Nenhum fluxo de formulário
 é ativado e nenhuma mensagem é disparada pelo preparo dos cards.
+
+
+## Rodada única legada — protocolo 6 / RPCs V7
+
+Autorização de 16/10/2026: 49 clientes com evento futuro do inventário de Esfriou;
+excluir eventos passados e testes. Enviar só o primeiro lembrete aprovado, manter
+os cards e confirmar no Kanban exclusivamente após ACK completo. Exceção só para
+histórico incompleto; conversa recente, identidade incerta, falha de sync/registro,
+proposta/telefone alterados, envio anterior ou indeterminado continuam bloqueando.
+
+Aplicar manualmente `supabase/whatsapp-lote-legado.sql` e publicar backend/worker
+compatíveis antes da ativação. Manifesto privado com snapshots imutáveis cria
+pausado, expira em até24h e é ativado separadamente. Um ticket HMAC com a chave já
+existente do worker vincula lote/job/lead/destinatário/textos por até cinco minutos.
+O bridge confere ticket e metadados antes de cada parte; o SQL confere estado e
+snapshot. Nunca declarar prova incompleta como completa.
+
+`criar_lote_legado_whatsapp` só prepara; `ativar_lote_legado_whatsapp` libera;
+`pausar_lote_legado_whatsapp` impede novas partes/inícios sem desligar os demais
+fluxos. As tabelas `whatsapp_lotes_legados` e `whatsapp_lote_legado_itens` são
+privadas com RLS e acesso apenas de service_role. Nenhuma rota administrativa
+pública foi criada para aceitar destinatários ou textos livres.
+
+Intervalo persistido de120–240s entre leads, sem catch-up. O claim retorna
+pollAfterSeconds10 durante o lote ativo e60 depois; limite de cadência no banco
+continua obrigatório. ACK tardio é reconciliado sem reenviar. Resultado parcial
+ou desconhecido permanece indeterminado. Instalação/criação pausada não é envio.
+Não iniciar o backup local. Permanecem o mesmo serviço/volume e limites do Hobby.

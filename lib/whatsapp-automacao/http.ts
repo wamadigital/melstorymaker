@@ -3,7 +3,7 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import {
-  reivindicarWhatsApp, registrarResultadoWhatsApp,
+  reivindicarWhatsApp, registrarResultadoWhatsApp, cadenciaLoteLegadoWhatsApp,
   type AmbienteWhatsApp,
 } from "./index";
 import {
@@ -19,16 +19,18 @@ export type DependenciasHttpWhatsApp = {
   reivindicar: (protocolo?: ProtocoloWorker) => Promise<JobWhatsApp | null>;
   resultado: (id: string, resultado: ResultadoWorker, protocolo?: ProtocoloWorker) => Promise<string | null>;
   agora?: () => number;
+  cadencia?: () => Promise<10 | 60>;
 };
 const uuid = z.string().uuid();
 const cabecalhos = { "Cache-Control": "no-store" };
 const resposta = (corpo: unknown, status = 200) => NextResponse.json(corpo, { status, headers: cabecalhos });
 const reais = (): DependenciasHttpWhatsApp => ({
   ambiente: process.env, reivindicar: reivindicarWhatsApp, resultado: registrarResultadoWhatsApp,
+  cadencia: cadenciaLoteLegadoWhatsApp,
 });
 export function protocoloWorker(req: Request): ProtocoloWorker {
   const valor = req.headers.get(HEADER_PROTOCOLO_WORKER);
-  return valor === "5" ? 5 : valor === "4" ? 4 : valor === "3" ? 3 : valor === "2" ? 2 : 1;
+  return valor === "6" ? 6 : valor === "5" ? 5 : valor === "4" ? 4 : valor === "3" ? 3 : valor === "2" ? 2 : 1;
 }
 
 function autenticar(req: Request, ambiente: AmbienteWhatsApp): Response | null {
@@ -59,7 +61,9 @@ export async function tratarReivindicacao(req: Request, deps = reais()): Promise
   if (!config && !propostas && !inicial) return resposta({ active: false, job: null, ...detalhes });
   try {
     const job = await deps.reivindicar(protocolo);
-    return resposta({ active: true, job: job ? validarJobWorker(job, protocolo, (deps.agora ?? Date.now)()) : null, ...detalhes });
+    const pollAfterSeconds = protocolo >= 6 ? await (deps.cadencia?.() ?? Promise.resolve(60)) : undefined;
+    return resposta({ active: true, job: job ? validarJobWorker(job, protocolo, (deps.agora ?? Date.now)(), deps.ambiente.WHATSAPP_WORKER_TOKEN) : null,
+      ...detalhes, ...(protocolo >= 6 ? { pollAfterSeconds } : {}) });
   } catch {
     console.error("[whatsapp] nao consegui reivindicar a fila");
     return resposta({ erro: "Fila indisponivel", ...detalhes }, 503);
