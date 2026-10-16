@@ -128,15 +128,15 @@ test("falhas nao vazam erro/credenciais; ACK inexistente nao autoriza WhatsApp",
   } finally { log.mock.restore(); }
 });
 
-test("somente header5 permite claim/started de formulário; protocolos antigos só reconciliam ACK", async () => {
-  for (const header of [null, "1", "", "02", "2,1", "6", "true", "2", "3", "4", "5"]) {
+test("headers5/6 permitem claim/started de formulário; protocolos antigos só reconciliam ACK", async () => {
+  for (const header of [null, "1", "", "02", "2,1", "7", "true", "2", "3", "4", "5", "6"]) {
     const { deps } = dependencias();
     const protocolos: (ProtocoloWorker | undefined)[] = [];
     deps.reivindicar = async (protocolo) => { protocolos.push(protocolo); return (protocolo ?? 1) >= 3 ? { ...job, tipo: "lembrete_formulario_24h" } : job; };
     deps.resultado = async (_id, resultado, protocolo) => { protocolos.push(protocolo); return resultado.outcome === "sent" ? "enviado" : "enviando"; };
     const claim = await tratarReivindicacao(req({ protocol: 2 }, `Bearer ${TOKEN}`, header), deps);
     assert.equal(claim.status, 200);
-    const ativo = header === "5";
+    const ativo = header === "5" || header === "6";
     assert.equal((await claim.json()).active, ativo);
     assert.equal((await tratarResultado(req({ leaseToken: LEASE, outcome: "started" }, `Bearer ${TOKEN}`, header), ID, deps)).status, ativo ? 200 : 409);
     assert.deepEqual(protocolos, ativo ? [Number(header), Number(header)] : []);

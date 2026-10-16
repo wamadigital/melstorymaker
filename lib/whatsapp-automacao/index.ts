@@ -66,21 +66,21 @@ export function criarRepositorioWhatsApp(db: SupabaseClient, contexto: ContextoR
           falhaLembretes();
         }
       }
-      const { data, error } = await db.rpc(protocolo === 5 ? "reivindicar_whatsapp_v6" : protocolo === 4 ? "reivindicar_whatsapp_v5" : protocolo === 3 ? "reivindicar_whatsapp_v4" : "reivindicar_whatsapp_v3",
+      const { data, error } = await db.rpc(protocolo >= 6 ? "reivindicar_whatsapp_v7" : protocolo === 5 ? "reivindicar_whatsapp_v6" : protocolo === 4 ? "reivindicar_whatsapp_v5" : protocolo === 3 ? "reivindicar_whatsapp_v4" : "reivindicar_whatsapp_v3",
         protocolo >= 3 ? {
           p_formulario_ativo: !!config, p_inicio_em: config?.inicioEm ?? null, p_propostas_ativo: propostas,
           ...(protocolo >= 4 ? { p_inicial_ativo: inicial } : {}),
         } : { p_lembrete_ativo: true, p_inicio_em: config!.inicioEm })
         .abortSignal(AbortSignal.timeout(5_000));
       if (error) throw new Error("claim_whatsapp");
-      return data?.[0] ? envelopeJob(data[0], protocolo, agora()) : null;
+      return data?.[0] ? envelopeJob(data[0], protocolo, agora(), ambiente.WHATSAPP_WORKER_TOKEN) : null;
     },
     resultado: async (id: string, resultado: ResultadoWorker, protocolo = protocoloPadrao): Promise<string | null> => {
       const config = configAtual(protocolo);
       const propostas = propostasAtivas(protocolo);
       const inicial = inicialAtiva(protocolo);
       if (resultado.outcome === "started" && !config && !propostas && !inicial) return null;
-      const { data, error } = await db.rpc(protocolo === 5 ? "resultado_whatsapp_v6" : protocolo === 4 ? "resultado_whatsapp_v5" : protocolo === 3 ? "resultado_whatsapp_v4" : config ? "resultado_whatsapp_v3" : "resultado_whatsapp", {
+      const { data, error } = await db.rpc(protocolo >= 6 ? "resultado_whatsapp_v7" : protocolo === 5 ? "resultado_whatsapp_v6" : protocolo === 4 ? "resultado_whatsapp_v5" : protocolo === 3 ? "resultado_whatsapp_v4" : config ? "resultado_whatsapp_v3" : "resultado_whatsapp", {
         p_id: id, p_lease_token: resultado.leaseToken, p_outcome: resultado.outcome,
         p_code: resultado.code ?? null,
         ...(protocolo >= 3 ? {
@@ -96,6 +96,16 @@ export function criarRepositorioWhatsApp(db: SupabaseClient, contexto: ContextoR
       return typeof data === "string" ? data : null;
     },
   };
+}
+
+/** Só acelera a consulta enquanto o lote explicitamente ativado estiver válido. */
+export async function cadenciaLoteLegadoWhatsApp(): Promise<10 | 60> {
+  try {
+    const { data, error } = await supabaseAdmin().from("whatsapp_lotes_legados").select("id")
+      .eq("estado", "ativo").gt("expira_em", new Date().toISOString()).limit(1)
+      .abortSignal(AbortSignal.timeout(3_000));
+    return !error && data?.length ? 10 : 60;
+  } catch { return 60; }
 }
 
 export async function reivindicarWhatsApp(protocolo: ProtocoloWorker = 1): Promise<JobWhatsApp | null> {

@@ -197,7 +197,7 @@ func main() {
 
         response = _local_post(url, payload)
         return response
-'''
+'''.replace("\n\n        response", "\n        \n        response")
         main, whatsapp = prepare.patch_mcp_send_arguments(main, whatsapp)
         captured = []
         wrapper_scope = {
@@ -215,7 +215,11 @@ func main() {
         self.assertEqual(send("fixture", "text", "job", "lead"), {
             "recipient": "fixture", "message": "text", "automation_job_id": "job", "automation_test_lead_id": "lead",
         })
-        self.assertEqual(len(captured), 3)
+        self.assertEqual(send("fixture", "text", "job", None, "signed-legacy-fixture"), {
+            "recipient": "fixture", "message": "text", "automation_job_id": "job",
+            "automation_legacy_authorization": "signed-legacy-fixture",
+        })
+        self.assertEqual(len(captured), 4)
 
     def test_generated_mcp_refuses_divergent_upstream_signatures(self):
         with self.assertRaisesRegex(RuntimeError, "Upstream divergente"):

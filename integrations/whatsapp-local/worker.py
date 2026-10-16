@@ -2,6 +2,7 @@
 
 import argparse
 import asyncio
+import base64
 import hashlib
 import fcntl
 import json
@@ -30,7 +31,8 @@ def unexpired(job: dict, now: datetime | None = None) -> bool:
     expires = datetime.fromisoformat(job["expiresAt"].replace("Z", "+00:00"))
     current = now or datetime.now(timezone.utc)
     return (expires.tzinfo is not None and expires > current
-            and ("testLeadId" not in job or current < OWNER_TEST_DEADLINE))
+            and ("testLeadId" not in job or current < OWNER_TEST_DEADLINE)
+            and ("legacyAuthorization" not in job or legacy_authorization(job, current) is not None))
 
 
 LEGACY_JOB_FIELDS = ("id", "leaseToken", "recipient", "message", "expiresAt")
@@ -72,6 +74,54 @@ OWNER_TEST_LEADS = {
 }
 
 
+def legacy_authorization(job: dict, now: datetime | None = None) -> dict | None:
+    """Validate scope locally; only the bridge can verify the ticket's MAC."""
+    if (job.get("tipo") != "lembrete_proposta_7d" or "testLeadId" in job
+            or not isinstance(job.get("legacyBatchId"), str)
+            or not isinstance(job.get("legacyAuthorization"), str)):
+        return None
+    ticket = job["legacyAuthorization"]
+    if not 1 <= len(ticket) <= 8192 or not re.fullmatch(r"[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+", ticket):
+        return None
+    def unique_keys(pairs):
+        value = {}
+        for key, item in pairs:
+            if key in value:
+                raise ValueError("duplicate_ticket_key")
+            value[key] = item
+        return value
+    def decode(segment):
+        decoded = base64.b64decode(segment + "=" * (-len(segment) % 4), altchars=b"-_", validate=True)
+        if base64.urlsafe_b64encode(decoded).decode().rstrip("=") != segment:
+            raise ValueError("noncanonical_ticket_encoding")
+        return decoded
+    try:
+        payload_part, mac_part = ticket.split(".")
+        if len(decode(mac_part)) != 32:
+            return None
+        payload = json.loads(decode(payload_part), object_pairs_hook=unique_keys)
+        if (not isinstance(payload, dict)
+                or set(payload) != {"batchId", "jobId", "leadId", "recipient", "tipo", "expiresAt", "messages"}):
+            return None
+        for key in ("batchId", "jobId", "leadId"):
+            if not isinstance(payload[key], str) or str(UUID(payload[key])) != payload[key].lower():
+                return None
+        if (payload["batchId"] != job["legacyBatchId"] or payload["jobId"] != job["id"]
+                or payload["recipient"] != job["recipient"] or payload["tipo"] != job["tipo"]
+                or not isinstance(payload["messages"], list)
+                or payload["messages"] != [part["message"] for part in job["messagesSequence"]]
+                or not isinstance(payload["expiresAt"], str)):
+            return None
+        expires = datetime.fromisoformat(payload["expiresAt"].replace("Z", "+00:00"))
+        if expires.tzinfo is None or expires.utcoffset() is None:
+            return None
+        if now is not None and (expires <= now or expires > now + timedelta(minutes=5)):
+            return None
+        return payload
+    except (AttributeError, ValueError, TypeError, KeyError, UnicodeError, OverflowError):
+        return None
+
+
 def formulario_quiet_hours(job: dict, now: datetime | None = None) -> bool:
     """O não perturbe do formulário usa Brasília, independente do fuso do host."""
     if job.get("tipo") != FORM_REMINDER_TYPE:
@@ -93,7 +143,7 @@ def valid_owner_test(job: dict) -> bool:
 def message_parts(job: dict) -> list[dict]:
     """Valida o contrato inteiro antes de autorizar qualquer chamada de envio."""
     if not isinstance(job, dict) or not set(LEGACY_JOB_FIELDS).issubset(job) or set(job) - {
-        *LEGACY_JOB_FIELDS, "messagesSequence", "tipo", "testLeadId"
+        *LEGACY_JOB_FIELDS, "messagesSequence", "tipo", "testLeadId", "legacyBatchId", "legacyAuthorization"
     }:
         raise ValueError("invalid_job")
     for field in ("id", "leaseToken"):
@@ -125,6 +175,10 @@ def message_parts(job: dict) -> list[dict]:
     kind = job.get("tipo")
     if kind is not None and kind not in JOB_TYPES:
         raise ValueError("invalid_job")
+    if ("legacyBatchId" in job or "legacyAuthorization" in job) and (
+            "legacyBatchId" not in job or "legacyAuthorization" not in job
+            or kind != "lembrete_proposta_7d" or "testLeadId" in job):
+        raise ValueError("invalid_legacy_authorization")
     if "testLeadId" in job and not valid_owner_test(job):
         raise ValueError("invalid_job")
     if "messagesSequence" not in job:
@@ -163,6 +217,8 @@ def message_parts(job: dict) -> list[dict]:
                 or sequence[3]["message"] != "Qualquer dúvida, é só me chamar. Ok?\nFico à disposição para te ajudar no que precisar!"
                 or "\n\n".join(part["message"] for part in sequence) != job["message"]):
             raise ValueError("invalid_initial_proposal")
+    if ("legacyBatchId" in job or "legacyAuthorization" in job) and legacy_authorization(job) is None:
+        raise ValueError("invalid_legacy_authorization")
     return sequence
 
 
@@ -186,6 +242,9 @@ class Ledger:
             value.extend(["job_type_v3", job["tipo"]])
         if "testLeadId" in job:
             value.extend(["owner_test_lead_v1", job["testLeadId"]])
+        if "legacyBatchId" in job:
+            # A renewed short-lived ticket must not change a durable receipt.
+            value.extend(["legacy_batch_v1", job["legacyBatchId"]])
         return hashlib.sha256(json.dumps(value, ensure_ascii=False).encode()).hexdigest()
 
     def get(self, job: dict) -> str | None:
@@ -224,7 +283,8 @@ class API:
         self.session = requests.Session()
         self.session.trust_env = False
         self.session.headers["Authorization"] = "Bearer " + token
-        self.session.headers["X-Mel-Worker-Protocol"] = "5"
+        self.session.headers["X-Mel-Worker-Protocol"] = "6"
+        self.poll_after_seconds = 60
 
     async def post(self, path: str, body: dict) -> dict:
         def request():
@@ -235,9 +295,12 @@ class API:
         return await asyncio.to_thread(request)
 
     async def claim(self) -> dict:
+        self.poll_after_seconds = 60
         response = await self.post("/api/integracoes/whatsapp/reivindicar", {})
-        if response.get("protocolVersion") != 5:
+        if response.get("protocolVersion") != 6:
             raise ValueError("invalid_worker_protocol")
+        interval = response.get("pollAfterSeconds")
+        self.poll_after_seconds = interval if type(interval) is int and interval in (10, 60) else 60
         job = response.get("job")
         if job is not None and (not isinstance(job, dict) or job.get("tipo") not in JOB_TYPES):
             raise ValueError("invalid_job")
@@ -278,6 +341,8 @@ class LocalMCP:
             if not valid_owner_test(job):
                 raise ValueError("invalid_job")
             arguments["automation_test_lead_id"] = job["testLeadId"]
+        if "legacyAuthorization" in job:
+            arguments["automation_legacy_authorization"] = job["legacyAuthorization"]
         result = await asyncio.wait_for(self.session.call_tool("send_message", arguments), timeout=35)
         if result.isError or not result.content:
             return False
@@ -295,6 +360,8 @@ class LocalMCP:
                     if not valid_owner_test(job):
                         raise ValueError("invalid_job")
                     body["testLeadId"] = job["testLeadId"]
+                if "legacyAuthorization" in job:
+                    body["legacyAuthorization"] = job["legacyAuthorization"]
                 response = direct.post("http://127.0.0.1:18281/api/activity-check",
                     headers={"Authorization": "Bearer " + token},
                     json=body,
@@ -360,6 +427,24 @@ def incomplete_activity(value: object, days: int, now: datetime) -> dict | None:
     return proof
 
 
+def verified_legacy_activity(value: object, job: dict, now: datetime) -> dict | None:
+    """Waive only incomplete coverage, never a known recent interaction."""
+    if (legacy_authorization(job, now) is None or not isinstance(value, dict)
+            or set(value) != {"allowed", "code", "activity", "legacyBatchId"}
+            or value.get("allowed") is not True or value.get("code") != "legacy_history_exception"
+            or value.get("legacyBatchId") != job["legacyBatchId"]):
+        return None
+    proof = value.get("activity")
+    timestamps = activity_timestamps(proof, now)
+    if timestamps is None:
+        return None
+    checked, coverage, last = timestamps
+    cutoff = checked - timedelta(days=5)
+    if proof["complete"] != (coverage <= cutoff) or (last is not None and last > cutoff):
+        return None
+    return proof
+
+
 def verified_owner_test(value: object, job: dict, now: datetime) -> bool:
     """Exceção explícita vinculada ao job; nunca simula histórico de conversa."""
     if (not valid_owner_test(job) or now >= OWNER_TEST_DEADLINE or not isinstance(value, dict)
@@ -412,6 +497,10 @@ async def process(api, mcp, ledger: Ledger, job: dict, *, sleep=asyncio.sleep, c
     def quiet_hours() -> bool:
         return formulario_quiet_hours(job, clock() if clock is not None else None)
 
+    async def authorize_start(proof: dict | None) -> dict:
+        code = "legacy_history_exception" if "legacyAuthorization" in job else None
+        return await api.result(job, "started", code=code, activity=proof) if proof is not None else await api.result(job, "started")
+
     previous = ledger.get(job)
     if previous:
         outcome = "sent" if previous == "sent" else "indeterminate"
@@ -439,6 +528,12 @@ async def process(api, mcp, ledger: Ledger, job: dict, *, sleep=asyncio.sleep, c
             checked_now = clock() if clock is not None else datetime.now(timezone.utc)
             if "testLeadId" in job:
                 return (None, None) if verified_owner_test(value, job, checked_now) else (None, "inactivity_unverified")
+            if "legacyAuthorization" in job:
+                proof = verified_legacy_activity(value, job, checked_now)
+                if proof is not None:
+                    return proof, None
+                code = value.get("code") if isinstance(value, dict) and value.get("allowed") is False else None
+                return (None, code if isinstance(code, str) and code in ACTIVITY_BLOCK_CODES else "inactivity_unverified")
             proof = verified_activity(value, days, checked_now)
             if proof is not None:
                 return proof, None
@@ -461,7 +556,7 @@ async def process(api, mcp, ledger: Ledger, job: dict, *, sleep=asyncio.sleep, c
         await api.result(job, "failed", "formulario_nao_perturbe")
         return "quiet_hours"
     # Se o servidor não confirmar a elegibilidade, não chama WhatsApp.
-    accepted = await api.result(job, "started", activity=proof) if proof is not None else await api.result(job, "started")
+    accepted = await authorize_start(proof)
     if accepted.get("accepted") is not True:
         return "rejected"
     # O registro antecede o envio. Crash/timeout não permitem repetir o envio.
@@ -487,7 +582,7 @@ async def process(api, mcp, ledger: Ledger, job: dict, *, sleep=asyncio.sleep, c
                 if quiet_hours():
                     sent = False
                     break
-                accepted = await api.result(job, "started", activity=proof) if proof is not None else await api.result(job, "started")
+                accepted = await authorize_start(proof)
                 if accepted.get("accepted") is not True or not still_unexpired():
                     sent = False
                     break
@@ -501,6 +596,9 @@ async def process(api, mcp, ledger: Ledger, job: dict, *, sleep=asyncio.sleep, c
                 single["tipo"] = job["tipo"]
             if "testLeadId" in job:
                 single["testLeadId"] = job["testLeadId"]
+            if "legacyAuthorization" in job:
+                single["legacyAuthorization"] = job["legacyAuthorization"]
+                single["legacyBatchId"] = job["legacyBatchId"]
             single["message"] = part["message"]
             sent = await mcp.send(single) is True
     except asyncio.CancelledError:
@@ -572,7 +670,7 @@ async def run(once: bool) -> None:
                         LOG.warning("Fila indisponível ou resultado pendente de reconciliação")
                     if once:
                         break
-                    await asyncio.sleep(60)
+                    await asyncio.sleep(getattr(api, "poll_after_seconds", 60))
     finally:
         ledger.close()
         api.session.close()

@@ -250,6 +250,29 @@ cinco/quinze dias. Outro clique só reabre a mesma tentativa cancelada antes de
 iniciar; confirmação parcial/desconhecida nunca repete. Esta previsão é diagnóstico,
 sem enviar automaticamente quando chegar a data.
 
+### Rodada única de lembretes legados — exceção autorizada em 16/10/2026
+
+O owner autorizou os 49 clientes com evento futuro do inventário de Esfriou
+de 16/10 às 15h42 (Brasília); os 11 eventos passados e cinco testes ficam fora.
+São quatro partes do primeiro lembrete, com as pausas existentes de 2/3/2s e o
+link individual da proposta. O ACK confirma o lembrete e mantém o card em Esfriou;
+não envia a última tentativa junto nem encerra o acompanhamento futuro.
+
+Uma lista privada, imutável e temporária vincula destinatário, lead, proposta,
+job e copy. Ela nasce pausada, exige ativação e expira em até 24h. Somente
+cobertura histórica insuficiente recebe exceção; interação recente comprovada,
+identidade incerta, falha de sincronização/registro, dados alterados, duplicidade
+e envios parciais/indeterminados bloqueiam. Exceção nunca fabrica histórico
+completo nem inclui novos leads. As demais regras de RF-20 continuam intactas.
+
+Protocolo 6 e RPCs V7 executam essa autorização. O intervalo entre leads é de
+120–240s, persistido no banco e verificado antes do primeiro STARTED. Reinícios
+não compensam atrasos com rajadas. Consulta a cada 10s só durante o lote ativo;
+após concluir/pausar/expirar retorna aos 60s. Ticket HMAC vinculado ao job tem no
+máximo cinco minutos e é conferido antes de cada parte. O ledger e os ACKs
+continuam sendo a fonte de confirmação. A aplicação de
+`supabase/whatsapp-lote-legado.sql` não cria nem inicia o lote.
+
 ### Horários do lembrete de formulário — regra de 16/10/2026
 
 | Última resposta salva | Envio em America/Sao_Paulo |
