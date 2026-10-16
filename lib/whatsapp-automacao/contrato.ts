@@ -3,7 +3,7 @@ import { MENSAGENS_LEMBRETE_FORMULARIO } from "./lembrete-formulario";
 import { validarSequenciaProposta, type ParteMensagem } from "./lembretes-proposta";
 import { marcoTesteOwner, testeOwnerPropostaValido } from "./testes";
 import { validarSequenciaPropostaInicial } from "./proposta-inicial";
-export type ProtocoloWorker = 1 | 2 | 3 | 4;
+export type ProtocoloWorker = 1 | 2 | 3 | 4 | 5;
 export type TipoJobWhatsApp = "lembrete_formulario_24h" | "lembrete_proposta_7d" | "lembrete_proposta_30d" | "proposta_inicial_15m";
 export const HEADER_PROTOCOLO_WORKER = "X-Mel-Worker-Protocol";
 
@@ -68,7 +68,7 @@ export function validarJobWorker(job: JobWhatsApp, protocolo: ProtocoloWorker, a
     }
   }
   if (job.tipo === "proposta_inicial_15m") {
-    if (protocolo !== 4) throw new Error("worker_sem_protocolo_proposta_inicial");
+    if (protocolo < 4) throw new Error("worker_sem_protocolo_proposta_inicial");
     return { ...job, messagesSequence: validarSequenciaPropostaInicial(job.messagesSequence, job.message) };
   }
   if (protocolo >= 3) {

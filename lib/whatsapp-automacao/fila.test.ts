@@ -30,11 +30,11 @@ function sdkFicticio(responder: (nome: string, corpo: Record<string, unknown>) =
   });
 }
 
-test("sem flag, configuração completa ou protocolo2 não há acesso ao claim legado", async () => {
+test("sem flag, configuração completa ou protocolo5 não há acesso ao claim legado", async () => {
   for (const flag of [undefined, "", "0", "false", "yes"]) {
     assert.equal(automacaoAtiva({ WHATSAPP_AUTOMACAO_ATIVA: flag }), false);
     const db = sdkFicticio(() => { assert.fail("nenhuma RPC deve ser chamada"); });
-    const repo = criarRepositorioWhatsApp(db, { ambiente: { ...ambiente, WHATSAPP_AUTOMACAO_ATIVA: flag }, agora: () => AGORA, protocolo: 2 });
+    const repo = criarRepositorioWhatsApp(db, { ambiente: { ...ambiente, WHATSAPP_AUTOMACAO_ATIVA: flag }, agora: () => AGORA, protocolo: 5 });
     assert.equal(await repo.reivindicar(), null);
     assert.equal(await repo.resultado(ID, { leaseToken: TOKEN, outcome: "started" }), null);
   }
@@ -43,14 +43,14 @@ test("sem flag, configuração completa ou protocolo2 não há acesso ao claim l
   assert.equal(await criarRepositorioWhatsApp(db, { ambiente, agora: () => AGORA }).reivindicar(), null);
 });
 
-test("SDK usa somente batch/claim V3 e entrega apenas a sequência aprovada sem PII extra", async () => {
+test("SDK usa somente batch/claim V6 e entrega apenas a sequência aprovada sem PII extra", async () => {
   const nomes: string[] = [];
   const repo = criarRepositorioWhatsApp(sdkFicticio((nome) => {
     nomes.push(nome);
     return Response.json(nome.startsWith("enfileirar_") ? 1 : [linha]);
-  }), { ambiente, agora: () => AGORA, protocolo: 2 });
+  }), { ambiente, agora: () => AGORA, protocolo: 5 });
   const job = await repo.reivindicar();
-  assert.deepEqual(nomes, ["enfileirar_lembretes_formulario_whatsapp_v3", "reivindicar_whatsapp_v3"]);
+  assert.deepEqual(nomes, ["enfileirar_lembretes_formulario_whatsapp_v6", "reivindicar_whatsapp_v6"]);
   assert.equal(job?.id, ID);
   assert.deepEqual(job?.messagesSequence, sequencia);
   assert.ok(!JSON.stringify(job).includes("privado"));
@@ -62,7 +62,7 @@ test("resposta antiga da fila nunca libera confirmação ou mensagem alternativa
     { tipo: "lembrete_7_dias" }, { tipo: "lembrete_30_dias" }, { tipo: undefined },
     { sequencia: sequencia.map((p, i) => i === 0 ? { ...p, message: "Texto não aprovado" } : p) }]) {
     const repo = criarRepositorioWhatsApp(sdkFicticio((nome) => Response.json(nome.startsWith("enfileirar_") ? 0 : [{ ...linha, ...alteracao }])),
-      { ambiente, agora: () => AGORA, protocolo: 2 });
+      { ambiente, agora: () => AGORA, protocolo: 5 });
     await assert.rejects(repo.reivindicar());
   }
 });
@@ -70,21 +70,21 @@ test("resposta antiga da fila nunca libera confirmação ou mensagem alternativa
 test("started exige lembrete habilitado mas ACK anterior continua reconciliável após pausa", async () => {
   const chamadas: { nome: string; corpo: Record<string, unknown> }[] = [];
   const db = sdkFicticio((nome, corpo) => { chamadas.push({ nome, corpo }); return Response.json(corpo.p_outcome === "started" ? "enviando" : "enviado"); });
-  const repo = criarRepositorioWhatsApp(db, { ambiente, agora: () => AGORA, protocolo: 2 });
+  const repo = criarRepositorioWhatsApp(db, { ambiente, agora: () => AGORA, protocolo: 5 });
   assert.equal(await repo.resultado(ID, { leaseToken: TOKEN, outcome: "started" }), "enviando");
-  assert.equal(chamadas[0].nome, "resultado_whatsapp_v3");
-  const pausado = criarRepositorioWhatsApp(db, { ambiente: {}, agora: () => AGORA, protocolo: 2 });
+  assert.equal(chamadas[0].nome, "resultado_whatsapp_v6");
+  const pausado = criarRepositorioWhatsApp(db, { ambiente: {}, agora: () => AGORA, protocolo: 5 });
   assert.equal(await pausado.resultado(ID, { leaseToken: TOKEN, outcome: "started" }), null);
   assert.equal(chamadas.length, 1);
   assert.equal(await pausado.resultado(ID, { leaseToken: TOKEN, outcome: "sent" }), "enviado");
-  assert.equal(chamadas[1].nome, "resultado_whatsapp");
+  assert.equal(chamadas[1].nome, "resultado_whatsapp_v6");
 });
 
 test("claim vazio e erro de banco não viram autorização de envio", async () => {
   const vazio = criarRepositorioWhatsApp(sdkFicticio((nome) => Response.json(nome.startsWith("enfileirar_") ? 0 : [])),
-    { ambiente, agora: () => AGORA, protocolo: 2 });
+    { ambiente, agora: () => AGORA, protocolo: 5 });
   assert.equal(await vazio.reivindicar(), null);
   const erro = criarRepositorioWhatsApp(sdkFicticio((nome) => nome.startsWith("enfileirar_") ? Response.json(0)
-    : Response.json({ message: "privado", code: "XX000" }, { status: 500 })), { ambiente, agora: () => AGORA, protocolo: 2 });
+    : Response.json({ message: "privado", code: "XX000" }, { status: 500 })), { ambiente, agora: () => AGORA, protocolo: 5 });
   await assert.rejects(erro.reivindicar(), /claim_whatsapp/);
 });

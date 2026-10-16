@@ -42,7 +42,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     GOMEMLIMIT=64MiB
 WORKDIR /app
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates libsqlite3-0 \
+    && apt-get install -y --no-install-recommends ca-certificates libsqlite3-0 tzdata \
     && rm -rf /var/lib/apt/lists/* \
     && mkdir -p /app/.whatsapp-local/bin \
     && ln -s /data/state /app/.whatsapp-local/state

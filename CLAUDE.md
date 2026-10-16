@@ -63,16 +63,17 @@ supabase/schema.sql    Schema completo (crm-outbox.sql e quadro-tempo-real.sql s
 
 ## Estado operacional do WhatsApp em 15/10/2026
 
-Determinação vigente do owner: retirar a confirmação automática ao concluir o
+Determinação do owner na migração de 15/10: retirar a confirmação automática ao concluir o
 formulário, cujo texto não recebeu aprovação específica. O submit não enfileira
 essa mensagem. A publicação inicial de 15/10/2026 habilitou os lembretes de
 proposta acionados pelos botões de 7/30 dias, autorizados pelo owner, com
 `WHATSAPP_AUTOMACAO_ATIVA=true` e `WHATSAPP_LEMBRETE_PROPOSTA_ATIVO=true` em produção.
-`WHATSAPP_LEMBRETE_FORMULARIO_ATIVO=false`: lembrete de formulário em Novo continua sem disparo
+`WHATSAPP_LEMBRETE_FORMULARIO_ATIVO=false` naquele checkpoint: lembrete de formulário em Novo ficou sem disparo
 sem clique. Bridge, MCP stdio, observador e worker executam na Railway; a fila
 manual funciona com o Mac desligado. A orientação posterior de RF-28 habilita também a primeira proposta automática, conforme seção abaixo. O ambiente de desenvolvimento permanece pausado.
-Preservar histórico, sessão e ACKs anteriores. Não habilitar confirmação nem
-lembrete automático de formulário sem nova orientação específica do owner.
+Preservar histórico, sessão e ACKs anteriores. A confirmação permanece removida.
+A nova orientação de 16/10 autoriza ativar o lembrete de formulário sob a regra
+de seis horas da seção seguinte; o histórico de 15/10 não descreve essa ativação.
 
 O runtime canônico é o projeto privado `mel-whatsapp`, serviço `whatsapp`, na
 Railway Hobby. Implantação `47e5370d-dd0b-4d9b-a57a-e482a6974b4a` confirmou Linux
@@ -108,8 +109,9 @@ passa a sair automaticamente pelo WhatsApp após 15 minutos contínuos em
 Aguardando revisão, nas quatro categorias/cinco artes, incluindo os cards atuais
 sem envio. Isso substitui a aprovação manual somente para esse envio inicial;
 e-mail, contrato, assinatura e lembretes de 7/30 dias mantêm seus controles.
-A confirmação de recebimento antiga continua removida e o formulário de Novo
-continua com sua flag desligada.
+A confirmação de recebimento antiga continua removida. Na publicação de RF-28,
+o formulário de Novo ainda estava com sua flag desligada; RF-25 foi redefinido e
+teve ativação autorizada em 16/10, conforme seção abaixo.
 
 Aplicar manualmente `supabase/whatsapp-proposta-inicial.sql` antes do código.
 Fila privada `whatsapp_propostas_automaticas`, RLS sem policies públicas;
@@ -138,12 +140,43 @@ receber proposta NÃO dispara novamente. Ícone de WhatsApp passa a quatro linha
 incluindo Proposta comercial, somente com ACK. CRM durável continua no trigger;
 o evento Site é disparado após o COMMIT do primeiro ACK.
 
+## Lembrete de formulário — regra autorizada em 16/10/2026
+
+O owner autorizou substituir a regra pausada de 24 horas desde a criação e
+ativar RF-25 em produção. Agora são seis horas desde a última resposta
+efetivamente salva do formulário; nova resposta reinicia a contagem. Metadados,
+tracking e movimentação do Kanban não reiniciam o relógio. Não tentar detectar o
+fechamento da aba. Somente Novo (`incompleto`), telefone válido, um lembrete por
+lead e formulários iniciados a partir do corte de ativação; sem backfill.
+
+O não perturbe é `[21h00,08h00)` em `America/Sao_Paulo`, exclusivo desse
+lembrete. Vencimento entre 21h00 e 23h59 adia para 09h00 do dia seguinte;
+entre 00h00 e 07h59, para 09h00 do mesmo dia. Às 08h00 está liberado, às 21h00
+está bloqueado. 08h30 + 6h = 14h30; 15h01 + 6h vai para 09h00 do dia seguinte.
+Revalidar prazo, horário real, coluna, telefone e ausência de envio antes de cada
+parte, inclusive se o worker atrasar. Parcial/desconhecido encerra sem repetir.
+
+Aplicar manualmente `supabase/whatsapp-formulario-6h.sql` antes da publicação,
+atualizar o worker canônico da Railway para protocolo 5 e usar as RPCs V6.
+Workers antigos não têm autorização para esse lembrete. Preservar os três textos
+aprovados e o link sozinho na quarta parte, com pausas 2/3/2s. Configurar em
+produção `WHATSAPP_LEMBRETE_FORMULARIO_ATIVO=true` junto da flag geral e um
+`WHATSAPP_LEMBRETE_FORMULARIO_INICIO_EM` ISO com fuso do instante da ativação;
+corte ausente/inválido mantém o fluxo desligado. Desenvolvimento permanece
+desligado. Esta autorização não comprova publicação: conferir SQL, versão do
+backend, worker e flags antes de declarar o envio ativo.
+
+Primeira proposta após 15 minutos permanece como RF-28, sem aplicar esse não
+perturbe a ela. Lembretes de 7/30 dias continuam por clique com gates de 5/15
+dias intactos. Nenhum e-mail automático nem confirmação antiga é autorizado.
+Execução permanece online na Railway Hobby, sem Mac ligado ou upgrade.
+
 ## Decisões travadas (NUNCA reabrir nem "melhorar")
 
 1. PDF gerado com pdf-lib sobre os PDFs base do Figma. Nunca Puppeteer, Chromium, headless browser ou API do Figma em runtime.
 2. E-mail sempre pela interface `MailAdapter`, com `GmailAdapter` (SMTP do Gmail da Mel, App Password) como único provider. Nunca chamar Nodemailer direto de uma rota: é a interface que garante que a trava do `MAIL_DRY_RUN` não seja contornada. **Sem serviço transacional de e-mail** — a conta Workspace entrega 2.000 destinatários/dia e o volume da Mel é muito menor. Não introduzir um sem que o volume mude de ordem de grandeza.
 2b. O remetente é `mel@wama.digital`, e isso é **deliberado** — não é migração pendente para `@melstorymaker.com.br`. Decisão do owner em 18/08/2026: o nome de exibição ("Mel Simão | Storymaker") é o que o lead lê, e o endereço da agência não atrapalha. Não trocar sem pedido explícito: mudar exigiria criar o endereço no Workspace e alteraria `GMAIL_USER` junto, já que o Google reescreve o remetente.
-3. **WhatsApp autorizado em 15/10/2026:** formulário em Novo há mais de 24h usa uma sequência por lead, três textos exatos de `MENSAGENS_LEMBRETE_FORMULARIO`, pausas 2/3/2s e link individual sozinho na quarta parte; terceira frase atual: "Suas respostas estão salvas, acesse o link:". Lembretes de proposta de 7/30 dias usam somente clique autenticado nos botões do Kanban: quatro partes com pausas 2/3/2s e cinco partes com pausas 4/4/3/5s, conforme `lembretes-proposta.ts`. Exigem respectivamente 5/15 dias sem mensagens ao contato, recebidas ou enviadas por qualquer aparelho, com verificação de metadados no bridge da Railway antes de CADA parte; histórico incompleto, identidade incerta ou bridge desconectado bloqueiam. A última tentativa exige ACK completo do primeiro lembrete para a mesma proposta; carimbo manual não vale. O primeiro lembrete também conta como interação, impondo no mínimo 15 dias entre os envios. Nenhum cron enfileira lembretes de proposta. Protocolo 3 e RPCs V4 obrigatórios para propostas; protocolo 2 continua formulário apenas. A confirmação de recebimento permanece excluída, submit não enfileira mensagens. Fila privada, bridge em loopback autenticado e worker na Railway; Mac somente como backup desativado; falha após início fica indeterminada sem repetição automática. A publicação inicial habilitou os lembretes de proposta por clique; RF-28 acrescenta o primeiro envio automático da proposta, mantendo a flag do formulário desligada. SQLs incrementais manuais `whatsapp-lembrete-copy.sql` e `whatsapp-lembretes-proposta.sql`; preservar histórico e sessões. O observador guarda somente hashes e horários no volume privado da Railway, exige observação contínua de 5/15 dias e perde a comprovação de cobertura após reinício/desconexão/interrupção; a migração reiniciou essa janela. Proposta inicial mantém o fluxo aprovado pela Mel. Exceção aprovada pelo owner (18/08/2026): notificação interna de lead novo via CallMeBot (`lib/notifica/`), em que a Mel só RECEBE de um gateway; conteúdo mínimo (sem e-mail nem telefone do lead na mensagem), falha nunca quebra o submit (`after()` + try/catch), e sem `NOTIFICA_WHATSAPP_APIKEY` é no-op. Essa exceção também retira a notificação de lead novo do escopo v2 proibido da regra 8. **A única env obrigatória é a apikey**: o número vem de `MEL_WHATSAPP`, e `NOTIFICA_WHATSAPP_FONE` só existe para mandar o aviso a um aparelho diferente. Pedir o mesmo telefone em duas variáveis já deixou a notificação muda em produção (20/08/2026, apikey configurada e fone não). A notificação dispara **no submit** (`incompleto` → `aguardando_revisao`), não na criação do lead: avisar na criação significaria uma mensagem para cada pessoa que escolheu a categoria e desistiu.
+3. **WhatsApp: texto autorizado em 15/10 e regra de formulário revisada em 16/10/2026:** formulário incompleto em Novo usa seis horas desde a última resposta salva, não perturbe de 21h00 até 08h00 em São Paulo e adiamento para 09h00 conforme seção acima, em uma única sequência por lead, três textos exatos de `MENSAGENS_LEMBRETE_FORMULARIO`, pausas 2/3/2s e link individual sozinho na quarta parte; terceira frase atual: "Suas respostas estão salvas, acesse o link:". Lembretes de proposta de 7/30 dias usam somente clique autenticado nos botões do Kanban: quatro partes com pausas 2/3/2s e cinco partes com pausas 4/4/3/5s, conforme `lembretes-proposta.ts`. Exigem respectivamente 5/15 dias sem mensagens ao contato, recebidas ou enviadas por qualquer aparelho, com verificação de metadados no bridge da Railway antes de CADA parte; histórico incompleto, identidade incerta ou bridge desconectado bloqueiam. A última tentativa exige ACK completo do primeiro lembrete para a mesma proposta; carimbo manual não vale. O primeiro lembrete também conta como interação, impondo no mínimo 15 dias entre os envios. Nenhum cron enfileira lembretes de proposta. Protocolo 3 e RPCs V4 são o contrato original dos lembretes por clique; o formulário de seis horas exige protocolo 5 e RPCs V6, sem autorização a workers antigos. A confirmação de recebimento permanece excluída, submit não enfileira mensagens. Fila privada, bridge em loopback autenticado e worker na Railway; Mac somente como backup desativado; falha após início fica indeterminada sem repetição automática. A publicação inicial habilitou os lembretes de proposta por clique; RF-28 acrescentou o primeiro envio automático da proposta. Em 16/10, o owner autorizou ativar RF-25 somente para novos formulários após o corte explícito. SQLs incrementais manuais `whatsapp-lembrete-copy.sql`, `whatsapp-lembretes-proposta.sql` e a revisão `whatsapp-formulario-6h.sql`; preservar histórico e sessões. O observador guarda somente hashes e horários no volume privado da Railway, exige observação contínua de 5/15 dias e perde a comprovação de cobertura após reinício/desconexão/interrupção; a migração reiniciou essa janela. Proposta inicial mantém o fluxo aprovado pela Mel. Exceção aprovada pelo owner (18/08/2026): notificação interna de lead novo via CallMeBot (`lib/notifica/`), em que a Mel só RECEBE de um gateway; conteúdo mínimo (sem e-mail nem telefone do lead na mensagem), falha nunca quebra o submit (`after()` + try/catch), e sem `NOTIFICA_WHATSAPP_APIKEY` é no-op. Essa exceção também retira a notificação de lead novo do escopo v2 proibido da regra 8. **A única env obrigatória é a apikey**: o número vem de `MEL_WHATSAPP`, e `NOTIFICA_WHATSAPP_FONE` só existe para mandar o aviso a um aparelho diferente. Pedir o mesmo telefone em duas variáveis já deixou a notificação muda em produção (20/08/2026, apikey configurada e fone não). A notificação dispara **no submit** (`incompleto` → `aguardando_revisao`), não na criação do lead: avisar na criação significaria uma mensagem para cada pessoa que escolheu a categoria e desistiu.
 4. Human-in-the-loop: nenhum e-mail sai para o lead sem ação explícita da Mel no painel. Não criar envio automático pós-submit.
 5. Formulário renderizado 100% a partir de `lib/form/arvore.json`. Perguntas nunca hardcoded em componentes. Nova pergunta = mudança no JSON.
 5h. **Padronização autorizada em 15/10/2026:** depois do submit vencedor, `padronizar-envio.ts` chama a API Anthropic (`claude-haiku-5-5`, JSON estruturado, 20s, sem retries) para `nome` nas quatro categorias e `noivos` em casamento. Retirar sobrenomes, manter prenomes compostos; usar ` & ` e mulher primeiro quando a identificação é segura. Ambiguidade/casal do mesmo gênero conserva a ordem, uma pessoa continua uma. A resposta é corrigida no jsonb e `nome_display`, com CAS de status/updated_at para não sobrescrever a Mel. Só os nomes vão à API; sem conteúdo em logs. Erro preserva o original e não atrasa a confirmação. Não alterar nomes de contratos, criar envios ou aplicar lote retroativo. Datas do EVENTO usam `DD.MM.AAAA` no formulário/painel/proposta; `respostas.data` e `data_evento` continuam ISO. `dataEvento()` é o formatador com pontos; `dataCurta()` de datas administrativas/financeiras mantém barras. PDFs existentes só mudam ao regerar.

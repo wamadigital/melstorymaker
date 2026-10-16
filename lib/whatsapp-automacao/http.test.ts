@@ -12,13 +12,13 @@ const sequenciaAprovada = [...MENSAGENS_LEMBRETE_FORMULARIO,
   { message: `https://crm.invalid/continuar/${ID}`, delayBeforeSeconds: 2 as const }];
 const job = { id: ID, leaseToken: LEASE, recipient: "5519988887777",
   message: sequenciaAprovada.map((p) => p.message).join("\n\n"),
-  expiresAt: "2026-10-15T18:00:00Z", messagesSequence: sequenciaAprovada };
-const req = (body: unknown = {}, authorization = `Bearer ${TOKEN}`, protocolo: string | null = "2") => new Request("https://crm.invalid/api/integracoes/whatsapp", {
+  expiresAt: "2026-10-15T18:00:00Z", tipo: "lembrete_formulario_24h" as const, messagesSequence: sequenciaAprovada };
+const req = (body: unknown = {}, authorization = `Bearer ${TOKEN}`, protocolo: string | null = "5") => new Request("https://crm.invalid/api/integracoes/whatsapp", {
   method: "POST", headers: { authorization, "content-type": "application/json",
     ...(protocolo === null ? {} : { "X-Mel-Worker-Protocol": protocolo }) }, body: JSON.stringify(body),
 });
 
-test("proposta inicial exige protocolo4 e sua própria flag, sem reativar formulário ou lembretes", async () => {
+test("proposta inicial aceita protocolos 4/5 e sua própria flag, sem reativar formulário ou lembretes", async () => {
   const sequencia = sequenciaPropostaInicial("Maria Eduarda", "https://crm.invalid/p/a3f9");
   const inicial = { ...job, tipo: "proposta_inicial_15m" as const, messagesSequence: sequencia,
     message: sequencia.map(p => p.message).join("\n\n") };
@@ -30,14 +30,16 @@ test("proposta inicial exige protocolo4 e sua própria flag, sem reativar formul
   };
   assert.equal((await (await tratarReivindicacao(req({}, `Bearer ${TOKEN}`, "3"), deps)).json()).active, false);
   assert.equal(chamadas, 0);
-  const resposta = await (await tratarReivindicacao(req({}, `Bearer ${TOKEN}`, "4"), deps)).json();
-  assert.deepEqual(resposta, { active: true, job: inicial, protocolVersion: 4, reminderActive: false,
-    proposalReminderActive: false, proposalInitialActive: true });
-  assert.equal((await tratarResultado(req({ leaseToken: LEASE, outcome: "started" }, `Bearer ${TOKEN}`, "4"), ID, deps)).status, 200);
+  for (const protocolo of [4, 5]) {
+    const resposta = await (await tratarReivindicacao(req({}, `Bearer ${TOKEN}`, String(protocolo)), deps)).json();
+    assert.deepEqual(resposta, { active: true, job: inicial, protocolVersion: protocolo, reminderActive: false,
+      proposalReminderActive: false, proposalInitialActive: true });
+    assert.equal((await tratarResultado(req({ leaseToken: LEASE, outcome: "started" }, `Bearer ${TOKEN}`, String(protocolo)), ID, deps)).status, 200);
+  }
   deps.ambiente.WHATSAPP_PROPOSTA_INICIAL_ATIVA = "false";
   assert.equal((await (await tratarReivindicacao(req({}, `Bearer ${TOKEN}`, "4"), deps)).json()).active, false);
   assert.equal((await tratarResultado(req({ leaseToken: LEASE, outcome: "started" }, `Bearer ${TOKEN}`, "4"), ID, deps)).status, 409);
-  assert.equal(chamadas, 1);
+  assert.equal(chamadas, 2);
 });
 function dependencias(ativa = "1") {
   let claims = 0, resultados = 0;
@@ -66,7 +68,7 @@ test("auth falha fechado e nao toca fila; nunca aceita token em cookie/query", a
 test("desativada impede claim e started, mas aceita resultado de envio anterior", async () => {
   const { deps, contagem } = dependencias("0");
   const r = await tratarReivindicacao(req(), deps);
-  assert.deepEqual(await r.json(), { active: false, job: null, protocolVersion: 2, reminderActive: false });
+  assert.deepEqual(await r.json(), { active: false, job: null, protocolVersion: 5, reminderActive: false, proposalReminderActive: false, proposalInitialActive: false });
   assert.equal((await tratarResultado(req({ leaseToken: LEASE, outcome: "started" }), ID, deps)).status, 409);
   assert.deepEqual(await (await tratarResultado(req({ leaseToken: LEASE, outcome: "sent" }), ID, deps)).json(), { accepted: true, state: "enviado" });
   assert.deepEqual(contagem(), { claims: 0, resultados: 1 });
@@ -76,7 +78,7 @@ test("contrato de claim e started bem sucedidos devolve ACK explicito no-store",
   const { deps } = dependencias();
   const r = await tratarReivindicacao(req({ recipient: "nao-controla-destinatario" }), deps);
   assert.equal(r.headers.get("cache-control"), "no-store");
-  assert.deepEqual(await r.json(), { active: true, job, protocolVersion: 2, reminderActive: true });
+  assert.deepEqual(await r.json(), { active: true, job, protocolVersion: 5, reminderActive: true, proposalReminderActive: false, proposalInitialActive: false });
   const inicio = await tratarResultado(req({ leaseToken: LEASE, outcome: "started" }), ID, deps);
   assert.equal(inicio.status, 200);
   assert.equal((await inicio.json()).accepted, true);
@@ -126,15 +128,15 @@ test("falhas nao vazam erro/credenciais; ACK inexistente nao autoriza WhatsApp",
   } finally { log.mock.restore(); }
 });
 
-test("headers2/3/4 permitem claim/started; protocolos antigos só reconciliam ACK", async () => {
-  for (const header of [null, "1", "", "02", "2,1", "5", "true", "2", "3", "4"]) {
+test("somente header5 permite claim/started de formulário; protocolos antigos só reconciliam ACK", async () => {
+  for (const header of [null, "1", "", "02", "2,1", "6", "true", "2", "3", "4", "5"]) {
     const { deps } = dependencias();
     const protocolos: (ProtocoloWorker | undefined)[] = [];
     deps.reivindicar = async (protocolo) => { protocolos.push(protocolo); return (protocolo ?? 1) >= 3 ? { ...job, tipo: "lembrete_formulario_24h" } : job; };
     deps.resultado = async (_id, resultado, protocolo) => { protocolos.push(protocolo); return resultado.outcome === "sent" ? "enviado" : "enviando"; };
     const claim = await tratarReivindicacao(req({ protocol: 2 }, `Bearer ${TOKEN}`, header), deps);
     assert.equal(claim.status, 200);
-    const ativo = header === "2" || header === "3" || header === "4";
+    const ativo = header === "5";
     assert.equal((await claim.json()).active, ativo);
     assert.equal((await tratarResultado(req({ leaseToken: LEASE, outcome: "started" }, `Bearer ${TOKEN}`, header), ID, deps)).status, ativo ? 200 : 409);
     assert.deepEqual(protocolos, ativo ? [Number(header), Number(header)] : []);
@@ -151,20 +153,20 @@ test("fronteira HTTP nao entrega sequencia para worker antigo nem faz fallback c
   ];
   const lembrete = envelopeJob({ id: ID, lease_token: LEASE, destinatario: job.recipient,
     mensagem: sequencia.map((p) => p.message).join("\n\n"), expira_em: job.expiresAt,
-    tipo: "lembrete_formulario_24h", sequencia }, 2);
+    tipo: "lembrete_formulario_24h", sequencia }, 5);
   deps.reivindicar = async () => lembrete;
   const log = mock.method(console, "error", () => {});
   try {
     const antigo = await tratarReivindicacao(req({}, `Bearer ${TOKEN}`, null), deps);
     assert.equal(antigo.status, 200);
     assert.deepEqual(await antigo.json(), { active: false, job: null });
-    const novo = await tratarReivindicacao(req({}, `Bearer ${TOKEN}`, "2"), deps);
+    const novo = await tratarReivindicacao(req({}, `Bearer ${TOKEN}`, "5"), deps);
     assert.equal(novo.status, 200);
     assert.deepEqual((await novo.json()).job.messagesSequence, sequencia);
   } finally { log.mock.restore(); }
 });
 
-test("somente claim protocolo2 autenticado publica capacidade e configuracao efetiva sem envs", async () => {
+test("somente claim protocolo5 autenticado publica capacidade e configuracao efetiva sem envs", async () => {
   const agora = Date.parse("2026-10-15T18:00:00Z");
   for (const [override, esperado] of [
     [{}, true], [{ WHATSAPP_LEMBRETE_FORMULARIO_ATIVO: "false" }, false],
@@ -178,14 +180,14 @@ test("somente claim protocolo2 autenticado publica capacidade e configuracao efe
       WHATSAPP_LEMBRETE_FORMULARIO_ATIVO: "true", APP_URL: "https://crm.invalid",
       WHATSAPP_LEMBRETE_FORMULARIO_INICIO_EM: "2026-10-15T17:00:00Z", ...override,
     });
-    const r = await tratarReivindicacao(req({}, `Bearer ${TOKEN}`, "2"), deps);
+    const r = await tratarReivindicacao(req({}, `Bearer ${TOKEN}`, "5"), deps);
     const corpo = await r.json();
-    assert.equal(corpo.protocolVersion, 2); assert.equal(corpo.reminderActive, esperado);
-    assert.deepEqual(Object.keys(corpo), ["active", "job", "protocolVersion", "reminderActive"]);
+    assert.equal(corpo.protocolVersion, 5); assert.equal(corpo.reminderActive, esperado);
+    assert.deepEqual(Object.keys(corpo), ["active", "job", "protocolVersion", "reminderActive", "proposalReminderActive", "proposalInitialActive"]);
     assert.ok(!JSON.stringify(corpo).includes(TOKEN));
     const legado = await tratarReivindicacao(req({}, `Bearer ${TOKEN}`, null), deps);
     assert.deepEqual(Object.keys(await legado.json()), ["active", "job"]);
-    const negado = await tratarReivindicacao(req({}, "Bearer errado", "2"), deps);
+    const negado = await tratarReivindicacao(req({}, "Bearer errado", "5"), deps);
     assert.equal(negado.status, 401);
     assert.deepEqual(await negado.json(), { erro: "Nao autorizado" });
   }

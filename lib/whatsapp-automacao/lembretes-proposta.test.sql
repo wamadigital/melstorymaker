@@ -223,19 +223,16 @@ begin
     raise exception 'Clique repetiu sequencia parcial';
   end if;
 
-  -- A mudanca do indice preserva o formulario4partes e seu limite unico.
+  -- A regra RF-25 agora exige protocolo5/V6; rollback nao reativa formulario24h.
   v_seq:='[{"message":"Olá! Aqui é a Mel Storymaker 👋","delayBeforeSeconds":0},
     {"message":"Ficou alguma dúvida para finalizar o formulário? Se precisar de ajuda, pode me chamar por aqui 😊","delayBeforeSeconds":2},
     {"message":"Suas respostas estão salvas, acesse o link:","delayBeforeSeconds":3}]';
-  if public.enfileirar_lembretes_formulario_whatsapp_v3(v_agora-interval '2 days',v_seq,'https://crm.invalid')<>1
-    or public.enfileirar_lembretes_formulario_whatsapp_v3(v_agora-interval '2 days',v_seq,'https://crm.invalid')<>0 then
-    raise exception 'Indice parcial quebrou idempotencia do formulario';
+  if public.enfileirar_lembretes_formulario_whatsapp_v3(v_agora-interval '2 days',v_seq,'https://crm.invalid')<>0 then
+    raise exception 'Rollback V3 enfileirou formulario';
   end if;
   select * into v_job from public.reivindicar_whatsapp_v4(true,v_agora-interval '2 days',false);
-  if v_job.tipo<>'lembrete_formulario_24h'
-    or public.resultado_whatsapp_v4(v_job.id,v_job.lease_token,'started',null,true,v_agora-interval '2 days',false,null,null,null,false)<>'enviando'
-    or public.resultado_whatsapp_v4(v_job.id,v_job.lease_token,'sent',null,false,null,false,null,null,null,false)<>'enviado' then
-    raise exception 'V4 regrediu formulario V3';
+  if found then
+    raise exception 'Worker V4 recebeu formulario exclusivo V6';
   end if;
 end;
 $$;
