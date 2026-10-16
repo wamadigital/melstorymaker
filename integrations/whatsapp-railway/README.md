@@ -18,7 +18,7 @@ O import privado conferiu SHA-256 dos oito payloads antes de publicar `/data/sta
 
 Os dois LaunchAgents próprios do Mac foram descarregados e desabilitados. A cópia em `~/Library/Application Support/MelStorymaker/WhatsApp` é somente backup, com `enabled:false` no worker e registro privado `cloud-migration.json`. Não iniciar `connect.command`, bridge, worker ou reinstalar LaunchAgents dessa origem. O estado remoto passa a evoluir; qualquer recuperação exige parar a nuvem primeiro e trazer o estado mais recente, inclusive ledger/ACKs. Nunca usar a mesma sessão em dois hosts nem restaurar ledger antigo sobre o atual.
 
-As flags de mensagem foram preservadas: geral e lembretes de proposta por clique habilitados, lembrete de formulário desligado e confirmação de recebimento removida. Textos, pausas, critérios, botões e histórico não mudaram. A comprovação de silêncio de 5/15 dias reiniciou após reconectar na Railway e deve ser construída continuamente para contatos reais; importar os bancos não restaura essa cobertura. A exceção dos cinco testes do owner mantém o prazo original, sem ampliação.
+No checkpoint da migração de 15/10, as flags de mensagem foram preservadas: geral e lembretes de proposta por clique habilitados, lembrete de formulário desligado e confirmação de recebimento removida. Textos, pausas, critérios, botões e histórico não mudaram nessa migração. RF-28 acrescentou depois a primeira proposta automática. Em 16/10, o owner autorizou ativar RF-25 com seis horas desde a última resposta salva e não perturbe, conforme seção abaixo. A comprovação de silêncio de 5/15 dias reiniciou após reconectar na Railway e deve ser construída continuamente para contatos reais; importar os bancos não restaura essa cobertura. A exceção dos cinco testes do owner mantém o prazo original, sem ampliação.
 
 ## Orçamento e limites aplicados
 
@@ -123,7 +123,7 @@ A troca inicial abaixo foi concluída. Estes passos são referência para opera�
 4. Na migração inicial, com os serviços locais parados, `export_state.py` produziu cópias consistentes de `store/whatsapp.db`, `store/activity.db`, `store/messages.db` e `worker-ledger.db`, e dos mesmos `bridge-token`, `worker-token` e `worker-config.json`. Em recuperação atual, a origem é o estado remoto mais recente, não o backup antigo. Conferir schemas, integridade e hashes. Não enviar logs, QR, histórico de conversas, mídias, Go ou caches. O token do bridge também é o segredo HMAC dos registros de interação e deve ser preservado.
 5. Transferir por SSH autenticado, diretamente para o volume privado, sem gravar conteúdo em comando/log, variável pública, Git ou imagem. Fixar `/data/state` e `/data/state/store` em `0700`, arquivos em `0600`; fechar/checkpointar SQLite antes de comparar hashes. Não publicar a API do bridge nem criar domínio público de envio.
 6. O export inclui `.cloud-ready.json` com conteúdo exato `{"version":1}` no pacote validado por `receive_state.py`; o import publica o estado somente após validar o conjunto. Rodar `python /app/integrations/whatsapp-railway/cloud.py --check`. Criar o arquivo privado `/data/enable-cloud` somente com a outra origem parada e o orçamento autorizado. O supervisor espera o bridge confirmar conexão autenticada antes de iniciar o worker/MCP.
-7. Conferir conexão, worker, ledger e reconciliação dos ACKs sem enviar mensagem de teste não solicitada. Confirmar que o lembrete de formulário continua desligado e a confirmação de recebimento removida. Mensagens, pausas, botões e condições permanecem iguais; a orientação operacional do painel deve refletir execução online, sem dependência do Mac.
+7. Conferir conexão, worker, ledger e reconciliação dos ACKs sem enviar mensagem de teste não solicitada. No checkpoint original, o lembrete de formulário estava desligado; em recuperações, conferir as flags contra as autorizações posteriores de RF-25 e RF-28, sem ampliar o corte nem restaurar estado antigo. A confirmação de recebimento permanece removida. Textos, pausas, botões e condições devem corresponder ao PRD vigente; a orientação operacional do painel deve refletir execução online, sem dependência do Mac.
 8. A cobertura de silêncio **recomeça** após reconectar: aguardar 5/15 dias contínuos para contatos reais. Não fabricar histórico ou restaurar cobertura em memória. A exceção temporária de testes do owner conserva seu prazo e não é ampliada.
 9. Os dois LaunchAgents locais próprios já estão descarregados/desabilitados e o worker local desativado. Preservar esse estado e o backup privado. Em rollback, parar/desativar a nuvem antes de reutilizar a sessão no Mac e trazer de volta o estado persistente mais recente, incluindo ledger/ACKs. Nunca restaurar um ledger antigo sobre o atual.
 
@@ -133,7 +133,7 @@ Fontes oficiais conferidas: [Docker Python](https://hub.docker.com/_/python), [D
 
 ## Proposta inicial automática (RF-28)
 
-A revisão do worker protocolo 4 acrescenta `proposta_inicial_15m`: a Vercel
+A revisão original do worker protocolo 4 acrescentou `proposta_inicial_15m`: a Vercel
 prepara o PDF após os 15 minutos registrados no Supabase, e a Railway envia
 as quatro partes com pausas 3/2/4s. A nova flag é própria; não ativa confirmação
 antiga nem lembrete de formulário. O primeiro orçamento não usa a janela de
@@ -144,3 +144,36 @@ parcial/desconhecido nunca é repetido automaticamente. E-mail continua manual.
 A atualização substitui somente o código do serviço existente e conserva
 Hobby, uma réplica, 256 MB, 0,05 vCPU e volume 512 MB. Um redeploy reconecta o
 bridge e reinicia a cobertura de inatividade dos lembretes, sem apagar histórico.
+
+## Formulário incompleto: seis horas e não perturbe (RF-25, 16/10/2026)
+
+Ativação em produção autorizada pelo owner; o contrato substitui a regra pausada
+de 24 horas desde a criação. O backend conta seis horas desde a última resposta
+efetivamente salva; nova resposta reinicia, metadados/tracking/Kanban não.
+Somente Novo (`incompleto`), telefone válido e um lembrete por lead. Não depende
+do fechamento da aba, do navegador aberto nem do Mac.
+
+Não enviar este lembrete entre 21h00 e antes de 08h00 em `America/Sao_Paulo`.
+Vencimento de 21h00 a 23h59 adia para 09h00 do dia seguinte; de 00h00 a 07h59,
+para 09h00 do mesmo dia. Às 08h00 está liberado e às 21h00 está bloqueado.
+Conferir horário real e elegibilidade antes de cada uma das quatro partes,
+inclusive quando o processamento atrasar. Texto e pausas 2/3/2s permanecem
+iguais; terceira parte: “Suas respostas estão salvas, acesse o link:”; link
+individual sozinho na quarta parte. Resultado parcial ou desconhecido não é
+repetido automaticamente.
+
+Aplicar manualmente `supabase/whatsapp-formulario-6h.sql`, publicar o backend com
+RPCs V6 e atualizar este mesmo serviço para worker protocolo 5. Workers antigos
+não podem executar o lembrete de seis horas. Preservar sessão, volume, ledger e
+ACKs. Habilitar a flag própria junto da geral e fixar
+`WHATSAPP_LEMBRETE_FORMULARIO_INICIO_EM` no instante de ativação (ISO com fuso):
+somente formulários iniciados a partir desse instante, sem backfill. Corte
+ausente ou inválido mantém o fluxo desligado. Desenvolvimento continua pausado.
+Esta autorização não comprova publicação: conferir SQL, versões e flags antes
+de declarar o fluxo ativo.
+
+Não altera a primeira proposta de 15 minutos, a confirmação antiga removida,
+os gates de 5/15 dias e o clique obrigatório para lembretes de 7/30 dias.
+E-mail permanece manual. O não perturbe de RF-25 não é uma regra global.
+Conservar Hobby, uma réplica, 256 MB, 0,05 vCPU e o volume de 512 MB; nenhum
+upgrade ou serviço adicional é necessário para este contrato.

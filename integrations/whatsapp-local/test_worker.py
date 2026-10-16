@@ -293,10 +293,10 @@ class WorkerTests(unittest.TestCase):
 
         def send(request, **kwargs):
             self.assertTrue(request.url.startswith("https://worker-ficticio.invalid/"))
-            self.assertEqual(request.headers["X-Mel-Worker-Protocol"], "4")
+            self.assertEqual(request.headers["X-Mel-Worker-Protocol"], "5")
             self.assertEqual(kwargs["allow_redirects"], False)
             requests.append(json.loads(request.body))
-            return SimpleNamespace(raise_for_status=lambda: None, json=lambda: {"accepted": True, "protocolVersion": 4})
+            return SimpleNamespace(raise_for_status=lambda: None, json=lambda: {"accepted": True, "protocolVersion": 5})
 
         with patch.object(worker, "ORIGIN", "https://worker-ficticio.invalid"), patch.object(api.session, "send", side_effect=send):
             asyncio.run(api.claim())
@@ -796,10 +796,178 @@ class WorkerTests(unittest.TestCase):
         self.addCleanup(api.session.close)
         for response in ({"protocolVersion": 2, "job": None},
                          {"protocolVersion": 3, "job": self.job},
-                         {"protocolVersion": 4, "job": {**self.job, "tipo": "confirmacao_recebimento"}}):
+                         {"protocolVersion": 4, "job": {**self.job, "tipo": worker.FORM_REMINDER_TYPE}},
+                         {"protocolVersion": 5, "job": {**self.job, "tipo": "confirmacao_recebimento"}}):
             with patch.object(api, "post", new=AsyncMock(return_value=response)):
                 with self.assertRaises(ValueError):
                     asyncio.run(api.claim())
+
+
+class FormReminderQuietHoursTests(unittest.TestCase):
+    setUp = WorkerTests.setUp
+    tearDown = WorkerTests.tearDown
+    fake_sleep = WorkerTests.fake_sleep
+    run_sequence = WorkerTests.run_sequence
+    activity_proof = WorkerTests.activity_proof
+
+    def form_job(self, local="2026-10-16T14:30:00-03:00"):
+        self.now = datetime.fromisoformat(local).astimezone(timezone.utc)
+        self.sleeps = []
+        self.texts = [
+            "Olá! Aqui é a Mel Storymaker 👋",
+            "Ficou alguma dúvida para finalizar o formulário? Se precisar de ajuda, pode me chamar por aqui 😊",
+            "Suas respostas estão salvas, acesse o link:",
+            "https://crm.invalid/continuar/" + self.job["id"],
+        ]
+        self.job.update({
+            "tipo": worker.FORM_REMINDER_TYPE,
+            "expiresAt": (self.now + timedelta(hours=1)).isoformat(),
+            "message": "\n\n".join(self.texts),
+            "messagesSequence": [
+                {"message": text, "delayBeforeSeconds": delay}
+                for text, delay in zip(self.texts, (0, 2, 3, 2))
+            ],
+        })
+
+    def test_quiet_hours_boundaries_use_brasilia_even_with_utc_clock(self):
+        self.form_job()
+        for local, blocked in (
+            ("2026-10-16T20:59:59-03:00", False),
+            ("2026-10-16T21:00:00-03:00", True),
+            ("2026-10-16T23:59:59-03:00", True),
+            ("2026-10-17T00:00:00-03:00", True),
+            ("2026-10-17T07:59:59-03:00", True),
+            ("2026-10-17T08:00:00-03:00", False),
+        ):
+            with self.subTest(local=local):
+                utc = datetime.fromisoformat(local).astimezone(timezone.utc)
+                self.assertEqual(worker.formulario_quiet_hours(self.job, utc), blocked)
+        with self.assertRaisesRegex(ValueError, "invalid_worker_clock"):
+            worker.formulario_quiet_hours(self.job, datetime(2026, 10, 16, 14))
+
+    def test_quiet_jobs_defer_without_starting_ledger_or_calling_whatsapp(self):
+        for local in ("2026-10-16T21:00:00-03:00", "2026-10-17T07:59:59-03:00"):
+            with self.subTest(local=local):
+                self.form_job(local)
+                api, mcp = FakeAPI(), FakeMCP()
+                mcp.ready = AsyncMock(side_effect=AssertionError("não reserva início em horário bloqueado"))
+                self.assertEqual(self.run_sequence(api, mcp), "quiet_hours")
+                self.assertEqual(api.calls, [("failed", "formulario_nao_perturbe")])
+                self.assertEqual(mcp.calls, 0)
+                self.assertIsNone(self.ledger.get(self.job))
+                self.assertEqual(self.ledger.pending(), [])
+                mcp.ready.assert_not_called()
+
+    def test_normal_hours_keep_approved_four_parts_delays_and_server_rechecks(self):
+        self.form_job("2026-10-16T08:00:00-03:00")
+        api, mcp = FakeAPI(), FakeMCP()
+        self.assertEqual(self.run_sequence(api, mcp), "sent")
+        self.assertEqual([job["message"] for job in mcp.jobs], self.texts)
+        self.assertEqual(self.sleeps, [2, 3, 2])
+        self.assertEqual(api.calls, [("started", None)] * 4 + [("sent", None)])
+        self.assertEqual(self.ledger.get(self.job), "sent")
+
+    def test_20h59_all_parts_complete_before_quiet_boundary(self):
+        self.form_job("2026-10-16T20:59:50-03:00")
+        api, mcp = FakeAPI(), FakeMCP()
+        self.assertEqual(self.run_sequence(api, mcp), "sent")
+        self.assertEqual(mcp.calls, 4)
+        self.assertEqual(self.now.astimezone(worker.FORM_REMINDER_TIMEZONE).isoformat(),
+                         "2026-10-16T20:59:57-03:00")
+
+    def test_bridge_preflight_crossing_21h_defers_before_cloud_start(self):
+        self.form_job("2026-10-16T20:59:59-03:00")
+        async def slow_preflight():
+            self.now += timedelta(seconds=1)
+            return True
+        api, mcp = FakeAPI(), FakeMCP()
+        mcp.ready = slow_preflight
+        self.assertEqual(self.run_sequence(api, mcp), "quiet_hours")
+        self.assertEqual(api.calls, [("failed", "formulario_nao_perturbe")])
+        self.assertEqual(mcp.calls, 0)
+        self.assertIsNone(self.ledger.get(self.job))
+
+    def test_first_cloud_authorization_crossing_21h_never_reaches_mcp(self):
+        self.form_job("2026-10-16T20:59:59-03:00")
+        test = self
+        class SlowAPI(FakeAPI):
+            async def result(self, job, outcome, code=None, activity=None):
+                result = await super().result(job, outcome, code, activity)
+                if outcome == "started":
+                    test.now += timedelta(seconds=1)
+                return result
+        api, mcp = SlowAPI(), FakeMCP()
+        self.assertEqual(self.run_sequence(api, mcp), "indeterminate")
+        self.assertEqual(api.calls, [("started", None), ("indeterminate", None)])
+        self.assertEqual(mcp.calls, 0)
+        self.assertEqual(self.ledger.get(self.job), "indeterminate")
+
+    def test_pause_crossing_21h_stops_partial_sequence_and_never_resumes(self):
+        self.form_job("2026-10-16T20:59:59-03:00")
+        api, mcp = FakeAPI(), FakeMCP()
+        self.assertEqual(self.run_sequence(api, mcp), "indeterminate")
+        self.assertEqual(mcp.calls, 1)
+        self.assertEqual(self.sleeps, [2])
+        self.assertEqual(api.calls, [("started", None), ("indeterminate", None)])
+        self.assertEqual(self.ledger.get(self.job), "indeterminate")
+        self.now += timedelta(hours=12)
+        self.assertEqual(self.run_sequence(FakeAPI(), mcp), "reconciled")
+        self.assertEqual(mcp.calls, 1)
+
+    def test_subsequent_cloud_authorization_rechecks_clock_immediately_before_mcp(self):
+        self.form_job("2026-10-16T20:59:56-03:00")
+        test = self
+        class SlowSecondAPI(FakeAPI):
+            async def result(self, job, outcome, code=None, activity=None):
+                result = await super().result(job, outcome, code, activity)
+                if outcome == "started" and sum(call[0] == "started" for call in self.calls) == 2:
+                    test.now += timedelta(seconds=2)
+                return result
+        api, mcp = SlowSecondAPI(), FakeMCP()
+        self.assertEqual(self.run_sequence(api, mcp), "indeterminate")
+        self.assertEqual(mcp.calls, 1)
+        self.assertEqual(api.calls, [("started", None)] * 2 + [("indeterminate", None)])
+
+    def test_form_server_rejection_after_new_activity_never_sends_later_parts(self):
+        self.form_job()
+        api, mcp = FakeAPI(starts=[True, False]), FakeMCP()
+        self.assertEqual(self.run_sequence(api, mcp), "indeterminate")
+        self.assertEqual(mcp.calls, 1)
+        self.assertEqual(api.calls, [("started", None)] * 2 + [("indeterminate", None)])
+        self.assertEqual(self.run_sequence(FakeAPI(), mcp), "reconciled")
+        self.assertEqual(mcp.calls, 1)
+
+    def test_form_due_time_flag_column_or_phone_rejection_never_starts_local_send(self):
+        self.form_job()
+        api, mcp = FakeAPI(accepted=False), FakeMCP()
+        self.assertEqual(self.run_sequence(api, mcp), "rejected")
+        self.assertEqual(api.calls, [("started", None)])
+        self.assertEqual(mcp.calls, 0)
+        self.assertIsNone(self.ledger.get(self.job))
+
+    def test_existing_acks_reconcile_during_quiet_without_whatsapp(self):
+        for index, state in enumerate(("sent", "started")):
+            with self.subTest(state=state):
+                self.form_job("2026-10-16T23:00:00-03:00")
+                self.job["id"] = "c350bc94-24f1-4359-9e92-eac5f1a76e4" + str(index)
+                self.ledger.set(self.job, state)
+                api, mcp = FakeAPI(), FakeMCP()
+                self.assertEqual(self.run_sequence(api, mcp), "reconciled")
+                self.assertEqual(api.calls, [("sent" if state == "sent" else "indeterminate", None)])
+                self.assertEqual(mcp.calls, 0)
+                self.assertEqual(self.ledger.pending(), [])
+
+    def test_quiet_guard_does_not_apply_to_manual_7_or_30_day_reminders(self):
+        for index, kind in enumerate(worker.PROPOSAL_TYPES):
+            with self.subTest(kind=kind):
+                WorkerTests.proposal(self, kind)
+                self.now = datetime(2026, 10, 17, 2, tzinfo=timezone.utc)  # 23h de Brasília.
+                self.job["expiresAt"] = (self.now + timedelta(hours=1)).isoformat()
+                self.job["id"] = "c350bc94-24f1-4359-9e92-eac5f1a76e4" + str(index)
+                api, mcp = FakeAPI(), WorkerTests.proposal_mcp(self)
+                self.assertEqual(self.run_sequence(api, mcp), "sent")
+                self.assertEqual(mcp.calls, len(worker.PROPOSAL_DELAYS[kind]))
+                self.assertEqual(len(mcp.activity_calls), len(worker.PROPOSAL_DELAYS[kind]))
 
 
 class InitialProposalTests(unittest.TestCase):
@@ -840,6 +1008,16 @@ class InitialProposalTests(unittest.TestCase):
         self.assertEqual(mcp.calls, 1)
         self.assertEqual(asyncio.run(process(api, mcp, self.ledger, job)), "reconciled")
         self.assertEqual(mcp.calls, 1)
+
+    def test_initial_proposal_is_not_restricted_by_form_reminder_quiet_hours(self):
+        job = self.initial_job()
+        now = datetime(2026, 10, 17, 2, tzinfo=timezone.utc)  # 23h de Brasília.
+        job["expiresAt"] = (now + timedelta(hours=1)).isoformat()
+        api, mcp = FakeAPI(), FakeMCP()
+        async def sleep(_seconds):
+            pass
+        self.assertEqual(asyncio.run(process(api, mcp, self.ledger, job, sleep=sleep, clock=lambda: now)), "sent")
+        self.assertEqual(mcp.calls, 4)
 
     def test_initial_copy_tampering_blocks_before_whatsapp(self):
         for index in range(4):

@@ -81,18 +81,19 @@ test("flag desligada ou config inválida não consulta fila e só permite ACK an
   ];
   for (const ambiente of configuracoes) {
     const { db, chamadas } = transporte(({ nome }) => {
-      assert.ok(["reivindicar_whatsapp", "resultado_whatsapp"].includes(nome), "SQL V2 indisponivel neste cenario");
-      return Response.json(nome === "reivindicar_whatsapp" ? [linha] : "enviado");
+      assert.equal(nome, "resultado_whatsapp_v6", "sem configuração não há batch/claim");
+      return Response.json("enviado");
     });
-    const repositorio = criarRepositorioWhatsApp(db, { ambiente, agora: () => AGORA, protocolo: 2, falhaLembretes: () => assert.fail() });
+    const repositorio = criarRepositorioWhatsApp(db, { ambiente, agora: () => AGORA, protocolo: 5, falhaLembretes: () => assert.fail() });
     assert.equal(await repositorio.reivindicar(), null);
     assert.equal(await repositorio.resultado(ID, { leaseToken: LEASE, outcome: "sent" }), "enviado");
-    assert.deepEqual(chamadas.map((c) => c.nome), ["resultado_whatsapp"]);
-    assert.deepEqual(chamadas[0].corpo, { p_id: ID, p_lease_token: LEASE, p_outcome: "sent", p_code: null });
+    assert.deepEqual(chamadas.map((c) => c.nome), ["resultado_whatsapp_v6"]);
+    assert.equal(chamadas[0].corpo.p_formulario_ativo, false);
+    assert.equal(chamadas[0].corpo.p_inicio_em, null);
   }
 });
 
-test("sem capacidade V2 explícita não reivindica nem prepara lembretes", async () => {
+test("sem capacidade V5 explícita não reivindica nem prepara lembretes", async () => {
   const { db, chamadas } = transporte(({ nome }) => {
     assert.ok(["reivindicar_whatsapp", "resultado_whatsapp"].includes(nome));
     return Response.json(nome === "reivindicar_whatsapp" ? [linha] : "enviado");
@@ -103,30 +104,40 @@ test("sem capacidade V2 explícita não reivindica nem prepara lembretes", async
   assert.deepEqual(chamadas.map((c) => c.nome), ["resultado_whatsapp"]);
 });
 
-test("protocolo2 aguarda batch com tres partes e origem normalizada, depois chama RPC V3", async () => {
+test("workers 1 a 4 não enfileiram nem iniciam formulário mesmo com a flag ativa", async () => {
+  for (const protocolo of [1, 2, 3, 4] as const) {
+    const { db, chamadas } = transporte(() => { assert.fail("worker antigo não acessa a fila do formulário"); });
+    const repositorio = criarRepositorioWhatsApp(db, { ambiente: ambienteValido(), agora: () => AGORA, protocolo });
+    assert.equal(await repositorio.reivindicar(), null);
+    assert.equal(await repositorio.resultado(ID, { leaseToken: LEASE, outcome: "started" }), null);
+    assert.deepEqual(chamadas, []);
+  }
+});
+
+test("protocolo5 aguarda batch com tres partes e origem normalizada, depois chama RPC V6", async () => {
   let liberar!: () => void;
   const espera = new Promise<void>((resolve) => { liberar = resolve; });
   const { db, chamadas } = transporte(async ({ nome }) => {
-    if (nome === "enfileirar_lembretes_formulario_whatsapp_v3") { await espera; return Response.json(2); }
-    assert.equal(nome, "reivindicar_whatsapp_v3");
+    if (nome === "enfileirar_lembretes_formulario_whatsapp_v6") { await espera; return Response.json(2); }
+    assert.equal(nome, "reivindicar_whatsapp_v6");
     return Response.json([{ ...linha, tipo: "lembrete_formulario_24h", sequencia,
       mensagem: sequencia.map((p) => p.message).join("\n\n") }]);
   });
-  const repositorio = criarRepositorioWhatsApp(db, { ambiente: ambienteValido(), agora: () => AGORA, protocolo: 2 });
+  const repositorio = criarRepositorioWhatsApp(db, { ambiente: ambienteValido(), agora: () => AGORA, protocolo: 5 });
   const claim = repositorio.reivindicar();
   await new Promise<void>((resolve) => setImmediate(resolve));
   assert.equal(chamadas.length, 1, "claim nao ultrapassa batch pendente");
-  assert.deepEqual(chamadas[0], { nome: "enfileirar_lembretes_formulario_whatsapp_v3", corpo: {
+  assert.deepEqual(chamadas[0], { nome: "enfileirar_lembretes_formulario_whatsapp_v6", corpo: {
     p_inicio_em: INICIO_NORMALIZADO, p_mensagens: MENSAGENS_LEMBRETE_FORMULARIO, p_app_url: "https://crm.invalid",
   } });
   liberar();
   const job = await claim;
-  assert.deepEqual(Object.keys(job!), ["id", "leaseToken", "recipient", "message", "expiresAt", "messagesSequence"]);
+  assert.deepEqual(Object.keys(job!), ["id", "leaseToken", "recipient", "message", "expiresAt", "tipo", "messagesSequence"]);
   assert.ok(!JSON.stringify(job).includes("privado"));
   assert.ok(job?.message.endsWith(`/continuar/${ID}`));
   assert.deepEqual(job?.messagesSequence, sequencia);
-  assert.deepEqual(chamadas[1], { nome: "reivindicar_whatsapp_v3", corpo: {
-    p_lembrete_ativo: true, p_inicio_em: INICIO_NORMALIZADO,
+  assert.deepEqual(chamadas[1], { nome: "reivindicar_whatsapp_v6", corpo: {
+    p_formulario_ativo: true, p_inicio_em: INICIO_NORMALIZADO, p_propostas_ativo: false, p_inicial_ativo: false,
   } });
 });
 
@@ -135,27 +146,27 @@ test("erro HTTP ou transporte no batch só consulta lembretes aprovados sem loga
   try {
     for (const falhaTransporte of [false, true]) {
       const { db, chamadas } = transporte(({ nome }) => {
-        if (nome === "enfileirar_lembretes_formulario_whatsapp_v3") {
+        if (nome === "enfileirar_lembretes_formulario_whatsapp_v6") {
           if (falhaTransporte) throw new Error("telefone/token/texto privados");
           return Response.json({ code: "XX000", message: "telefone/token/texto privados" }, { status: 500 });
         }
         return Response.json([{ ...linha, tipo: "lembrete_formulario_24h", sequencia, mensagem: sequencia.map((p) => p.message).join("\n\n") }]);
       });
-      const repositorio = criarRepositorioWhatsApp(db, { ambiente: ambienteValido(), agora: () => AGORA, protocolo: 2 });
+      const repositorio = criarRepositorioWhatsApp(db, { ambiente: ambienteValido(), agora: () => AGORA, protocolo: 5 });
       assert.deepEqual((await repositorio.reivindicar())?.messagesSequence, sequencia);
-      assert.equal(chamadas.at(-1)?.nome, "reivindicar_whatsapp_v3");
+      assert.equal(chamadas.at(-1)?.nome, "reivindicar_whatsapp_v6");
     }
     assert.equal(log.mock.calls.length, 2);
     assert.ok(log.mock.calls.every((c) => c.arguments.length === 1 && !String(c.arguments[0]).includes("privados")));
   } finally { log.mock.restore(); }
 });
 
-test("request antigo bloqueia reivindicação mesmo quando o repositório tem protocolo2", async () => {
+test("request antigo bloqueia reivindicação mesmo quando o repositório tem protocolo5", async () => {
   const { db, chamadas } = transporte(({ nome }) => {
     assert.ok(["reivindicar_whatsapp", "resultado_whatsapp"].includes(nome));
     return Response.json(nome === "reivindicar_whatsapp" ? [linha] : "enviado");
   });
-  const repositorio = criarRepositorioWhatsApp(db, { ambiente: ambienteValido(), agora: () => AGORA, protocolo: 2 });
+  const repositorio = criarRepositorioWhatsApp(db, { ambiente: ambienteValido(), agora: () => AGORA, protocolo: 5 });
   assert.equal(await repositorio.reivindicar(1), null);
   await repositorio.resultado(ID, { leaseToken: LEASE, outcome: "sent" }, 1);
   assert.deepEqual(chamadas.map((c) => c.nome), ["resultado_whatsapp"]);
@@ -164,7 +175,7 @@ test("request antigo bloqueia reivindicação mesmo quando o repositório tem pr
 test("snapshot reminder malformado ou sem capacidade falha antes da resposta HTTP", async () => {
   const log = mock.method(console, "error", () => {});
   try {
-    for (const protocolo of [null, "2"]) {
+    for (const protocolo of [null, "5"]) {
       const { db, chamadas } = transporte(({ nome }) => {
         if (nome.startsWith("enfileirar_")) return Response.json(0);
         const partes = sequencia.map((p, i) => i === 3 ? { ...p, message: "texto indevido junto do link" } : p);
@@ -181,42 +192,45 @@ test("snapshot reminder malformado ou sem capacidade falha antes da resposta HTT
       const r = await tratarReivindicacao(req, deps);
       assert.equal(r.status, protocolo ? 503 : 200);
       assert.equal((await r.json()).job, protocolo ? undefined : null);
-      assert.equal(chamadas.at(-1)?.nome, protocolo ? "reivindicar_whatsapp_v3" : undefined);
+      assert.equal(chamadas.at(-1)?.nome, protocolo ? "reivindicar_whatsapp_v6" : undefined);
       assert.equal(chamadas.length, protocolo ? 2 : 0);
     }
   } finally { log.mock.restore(); }
 });
 
-test("resultado consulta configuracao atual: V3 com protocolo2 valido e V1 apos desativar sem repetir batch", async () => {
+test("resultado V6 consulta configuracao atual e aceita ACK após desativar sem repetir batch", async () => {
   const ambiente = ambienteValido();
   const { db, chamadas } = transporte(() => Response.json("enviado"));
-  const repositorio = criarRepositorioWhatsApp(db, { ambiente, agora: () => AGORA, protocolo: 2 });
+  const repositorio = criarRepositorioWhatsApp(db, { ambiente, agora: () => AGORA, protocolo: 5 });
   await repositorio.resultado(ID, { leaseToken: LEASE, outcome: "sent" });
-  assert.deepEqual(chamadas[0], { nome: "resultado_whatsapp_v3", corpo: {
+  assert.deepEqual(chamadas[0], { nome: "resultado_whatsapp_v6", corpo: {
     p_id: ID, p_lease_token: LEASE, p_outcome: "sent", p_code: null,
-    p_lembrete_ativo: true, p_inicio_em: INICIO_NORMALIZADO,
+    p_formulario_ativo: true, p_inicio_em: INICIO_NORMALIZADO, p_propostas_ativo: false, p_inicial_ativo: false,
+    p_historico_verificado_em: null, p_historico_cobertura_inicio_em: null,
+    p_ultima_interacao_em: null, p_historico_completo: false,
   } });
   ambiente.WHATSAPP_LEMBRETE_FORMULARIO_ATIVO = "false";
   await repositorio.resultado(ID, { leaseToken: LEASE, outcome: "sent" });
-  assert.equal(chamadas[1].nome, "resultado_whatsapp");
-  assert.equal(chamadas[1].corpo.p_lembrete_ativo, undefined);
+  assert.equal(chamadas[1].nome, "resultado_whatsapp_v6");
+  assert.equal(chamadas[1].corpo.p_formulario_ativo, false);
   ambiente.WHATSAPP_LEMBRETE_FORMULARIO_ATIVO = "true";
   ambiente.APP_URL = "http://crm.invalid";
   await repositorio.resultado(ID, { leaseToken: LEASE, outcome: "sent" });
-  assert.equal(chamadas[2].nome, "resultado_whatsapp");
+  assert.equal(chamadas[2].nome, "resultado_whatsapp_v6");
+  assert.equal(chamadas[2].corpo.p_formulario_ativo, false);
   assert.equal(chamadas.length, 3, "resultado nao enfileira nem reivindica");
 });
 
-test("apos desligar lembrete, rota honra recusa V1 de started e permite ACK tardio do mesmo token", async () => {
+test("apos desligar lembrete, rota recusa started e permite ACK V6 tardio do mesmo token", async () => {
   const ambiente = { ...ambienteValido(), WHATSAPP_LEMBRETE_FORMULARIO_ATIVO: "false" };
   const { db, chamadas } = transporte(({ nome, corpo }) => {
-    assert.equal(nome, "resultado_whatsapp");
+    assert.equal(nome, "resultado_whatsapp_v6");
     return Response.json(corpo.p_outcome === "started" ? null : "enviado");
   });
   const repositorio = criarRepositorioWhatsApp(db, { ambiente, agora: () => AGORA });
   const deps = { ambiente, reivindicar: repositorio.reivindicar, resultado: repositorio.resultado };
   const req = (outcome: string) => new Request(`https://crm.invalid/api/integracoes/whatsapp/${ID}/resultado`, {
-    method: "POST", headers: { authorization: `Bearer ${TOKEN}`, "content-type": "application/json", "X-Mel-Worker-Protocol": "2" },
+    method: "POST", headers: { authorization: `Bearer ${TOKEN}`, "content-type": "application/json", "X-Mel-Worker-Protocol": "5" },
     body: JSON.stringify({ leaseToken: LEASE, outcome }),
   });
   assert.equal((await tratarResultado(req("started"), ID, deps)).status, 409);

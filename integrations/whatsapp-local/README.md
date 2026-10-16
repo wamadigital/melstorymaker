@@ -5,7 +5,9 @@ executam na Railway Hobby, no projeto privado `mel-whatsapp`. A implantação
 `47e5370d-dd0b-4d9b-a57a-e482a6974b4a` confirmou conexão autenticada e worker em
 execução. O Mac pode ficar desligado. Confirmação ao concluir formulário
 permanece removida. Habilitados os lembretes de proposta por clique nos botões de 7/30 dias;
-a orientação posterior RF-28 autoriza também o primeiro envio após 15 minutos. Flag própria do formulário permanece desligada.
+a orientação posterior RF-28 autoriza também o primeiro envio após 15 minutos.
+A flag própria do formulário ficou desligada na migração; a revisão de 16/10
+autoriza ativá-la com a regra de seis horas e não perturbe descrita abaixo.
 Preservar histórico, sessão, ledger e ACKs. A cobertura contínua de 5/15 dias
 reiniciou na reconexão da nuvem e não é restaurada pelo banco importado.
 
@@ -26,11 +28,12 @@ autorizou hard limits de US$ 10 compute e US$ 0 Railway Agent no workspace,
 aplicados mantendo o Hobby; isso não garante uma fatura mensal fixa.
 
 Os envios autorizados são o primeiro orçamento automático após 15 minutos, o
-lembrete de formulário incompleto (pausado) e os lembretes de proposta por clique. Copy e pausas são fechadas;
+lembrete de formulário incompleto (ativação autorizada em 16/10, para novos
+formulários após o corte) e os lembretes de proposta por clique. Copy e pausas são fechadas;
 a confirmação de recebimento permanece removida. Flags, histórico de envios e
 sessão não devem ser alterados para executar testes. A publicação inicial habilitou os lembretes de proposta por clique; RF-28 acrescenta o orçamento automático.
 A primeira proposta agora segue RF-28: espera de 15 minutos, validação completa,
-gerador na Vercel e quatro partes com pausas 3/2/4s pelo worker protocolo 4.
+gerador na Vercel e quatro partes com pausas 3/2/4s (introduzida no protocolo 4).
 Só ACK completo move para Enviado. Cliente que já recebeu não é reenviado ao
 voltar à revisão. O Mac permanece desligável; e-mail e contratos seguem manuais.
 
@@ -155,11 +158,30 @@ existentes, aplicar manualmente `supabase/whatsapp-lembrete-copy.sql` no banco
 da Mel junto da publicação do backend. O histórico mantém o texto enviado;
 sequências antigas ainda pendentes são canceladas, sem reenvio automático.
 
-O prazo conta da criação do lead, quando ele deixa o WhatsApp e avança na
-primeira pergunta. A primeira coluna é `Novo` (`incompleto`); nenhum status
-volta para ela. Salvar mais respostas não reinicia o prazo. O preparo exige
-**mais de** 24 horas em Novo; antes de cada parte, o servidor revalida coluna,
-idade, telefone e ativação. O link retoma as respostas salvas da própria pessoa.
+**Regra vigente autorizada em 16/10/2026:** seis horas desde a última resposta
+efetivamente salva do formulário. Uma nova resposta reinicia a contagem;
+metadados, tracking e atualizações do Kanban não reiniciam. O relógio não depende
+de detectar a saída ou o fechamento da aba. Isso substitui a regra histórica de
+mais de 24 horas desde a criação, que permaneceu pausada até esta autorização.
+A primeira coluna é `Novo` (`incompleto`); nenhum status volta para ela.
+
+O não perturbe deste lembrete é de 21h00 até antes de 08h00 em
+`America/Sao_Paulo`. Se as seis horas vencerem entre 21h00 e 23h59, enviar a partir
+de 09h00 do dia seguinte; se vencerem entre 00h00 e 07h59, a partir de 09h00 do
+mesmo dia. Às 08h00 é permitido, às 21h00 é proibido. Não aplicar esta janela
+à primeira proposta nem aos lembretes manuais. Antes de cada parte, revalidar
+coluna, última resposta, prazo, horário real, telefone e ativação. Um atraso no
+worker não libera envio durante o não perturbe. O link retoma as respostas
+salvas da própria pessoa.
+
+| Última resposta salva | Primeiro horário permitido |
+|---|---|
+| 08h30 | 14h30 do mesmo dia |
+| 18h00 | 09h00 do dia seguinte |
+| 15h01 | 09h00 do dia seguinte |
+| 23h40 | 09h00 do dia seguinte |
+| 09h00 | 15h00 do mesmo dia |
+| 03h00 | 09h00 do mesmo dia |
 
 Há um único lembrete por lead, composto das quatro partes, separado da
 confirmação de conclusão. As partes e as pausas são um snapshot na fila. O envio
@@ -168,22 +190,25 @@ O worker da Railway busca os itens elegíveis da fila a cada 60 segundos, sem
 dependência de energia ou conexão do Mac. As pausas começam após o retorno de sucesso da
 mensagem anterior; as verificações e a rede também ocupam tempo.
 
-O worker atualizado anuncia `X-Mel-Worker-Protocol: 3`; o backend preserva
-protocolo 2 apenas para formulário. O protocolo 3 permite também as duas
-sequências de proposta, com comprovação de inatividade no bridge da nuvem. Falha, timeout,
+O worker desta revisão anuncia `X-Mel-Worker-Protocol: 5` e o formulário exige
+RPCs V6. Workers antigos não podem reservar ou enviar o lembrete de seis horas.
+As duas sequências de proposta por clique preservam a comprovação de
+inatividade no bridge da nuvem. Falha, timeout,
 interrupção ou recusa após o início encerra a sequência como indeterminada,
 sem repetição de partes. Um ACK perdido é reconciliado sem reenviar mensagens.
 `sent` exige sucesso de todas as chamadas ao MCP, sem afirmar leitura no celular.
-O lembrete de formulário continua desativado; qualquer ativação futura exige
-nova orientação específica do owner. Nesse caso, aplicar manualmente `supabase/whatsapp-lembrete-formulario.sql`
-no SQL Editor, atualizar o worker canônico na Railway e publicar o
-backend. Configurar `WHATSAPP_LEMBRETE_FORMULARIO_ATIVO=true` e
+O owner autorizou ativar este fluxo em produção em 16/10/2026. Antes da ativação,
+aplicar manualmente `supabase/whatsapp-formulario-6h.sql` no SQL Editor, atualizar
+o worker canônico na Railway e publicar o backend. Configurar
+`WHATSAPP_LEMBRETE_FORMULARIO_ATIVO=true` e
 `WHATSAPP_LEMBRETE_FORMULARIO_INICIO_EM` com o instante de ativação em ISO com
 fuso; `APP_URL` precisa ser HTTPS. O corte inclui apenas leads criados a partir
 desse instante, evitando mensagens retroativas. O interruptor geral
 `WHATSAPP_AUTOMACAO_ATIVA` continua valendo. Flag ausente/falsa, corte ausente ou
 inválido e URL inválida mantêm os lembretes desligados. Sem cron ou ferramenta
 MCP nova. O `send_message` existente é chamado quatro vezes, em série.
+Desenvolvimento permanece desligado. A autorização não comprova implantação;
+conferir SQL, versão do backend, worker e flags antes de declarar o fluxo ativo.
 
 ## Falhas e recibos
 
@@ -212,7 +237,8 @@ O preparo do código não instala o runtime nem ativa qualquer flag.
 No primeiro preparo de 15/10/2026, o observador e o worker foram instalados no
 runtime então canônico do Mac, e a cobertura começou às 10h28 de São Paulo.
 Essa cobertura não vale após a migração: a janela de 5/15 dias reiniciou na
-conexão da Railway. O worker atual atende somente a fila criada pelos botões. Os SQLs
+conexão da Railway. Os lembretes de proposta atendem somente a fila criada pelos botões;
+os fluxos automáticos de RF-25 e RF-28 têm condições próprias. Os SQLs
 incrementais são aplicados na conta da Mel antes da publicação do backend;
 a observação do bridge, sozinha, não ativa mensagens.
 
@@ -220,7 +246,7 @@ a observação do bridge, sozinha, não ativa mensagens.
 |---|---|---|---|
 | Relembrar cliente | 7 dias | 5 dias | 4 partes; pausas 2/3/2s |
 | Última tentativa | 30 dias e primeiro lembrete confirmado para a mesma proposta | 15 dias | 5 partes; pausas 4/4/3/5s |
-| Formulário em Novo | mais de 24h desde criação, após o corte | não exige histórico de conversa | 4 partes; pausas 2/3/2s |
+| Formulário em Novo | 6h desde a última resposta salva, após o corte; não perturbe 21h–08h e adiamento para 09h | não exige histórico de conversa | 4 partes; pausas 2/3/2s |
 
 O primeiro lembrete conta como interação para o segundo. Se for enviado no dia
 25, a última tentativa aguarda pelo menos até o dia 40. Nenhum relógio dispara

@@ -14,6 +14,7 @@ import sqlite3
 from datetime import datetime, timezone, timedelta
 from uuid import UUID
 from urllib.parse import urlsplit
+from zoneinfo import ZoneInfo
 
 import requests
 from mcp import ClientSession, StdioServerParameters
@@ -36,7 +37,9 @@ LEGACY_JOB_FIELDS = ("id", "leaseToken", "recipient", "message", "expiresAt")
 SEQUENCE_DELAYS = (0, 2, 3, 2)
 PROPOSAL_TYPES = {"lembrete_proposta_7d": 5, "lembrete_proposta_30d": 15}
 INITIAL_PROPOSAL_TYPE = "proposta_inicial_15m"
-JOB_TYPES = {"lembrete_formulario_24h", INITIAL_PROPOSAL_TYPE, *PROPOSAL_TYPES}
+FORM_REMINDER_TYPE = "lembrete_formulario_24h"
+FORM_REMINDER_TIMEZONE = ZoneInfo("America/Sao_Paulo")
+JOB_TYPES = {FORM_REMINDER_TYPE, INITIAL_PROPOSAL_TYPE, *PROPOSAL_TYPES}
 PROPOSAL_TEXTS = {
     "lembrete_proposta_7d": (
         "Olá, como vai?!",
@@ -63,6 +66,17 @@ OWNER_TEST_LEADS = {
     "abf88ff2-ea34-4e32-994d-f7dc75df599b": "lembrete_proposta_30d",
     "9263d823-d059-4e0a-b759-9184035dec89": "lembrete_proposta_30d",
 }
+
+
+def formulario_quiet_hours(job: dict, now: datetime | None = None) -> bool:
+    """O não perturbe do formulário usa Brasília, independente do fuso do host."""
+    if job.get("tipo") != FORM_REMINDER_TYPE:
+        return False
+    current = now if now is not None else datetime.now(timezone.utc)
+    if current.tzinfo is None or current.utcoffset() is None:
+        raise ValueError("invalid_worker_clock")
+    local = current.astimezone(FORM_REMINDER_TIMEZONE)
+    return local.hour >= 21 or local.hour < 8
 
 
 def valid_owner_test(job: dict) -> bool:
@@ -206,7 +220,7 @@ class API:
         self.session = requests.Session()
         self.session.trust_env = False
         self.session.headers["Authorization"] = "Bearer " + token
-        self.session.headers["X-Mel-Worker-Protocol"] = "4"
+        self.session.headers["X-Mel-Worker-Protocol"] = "5"
 
     async def post(self, path: str, body: dict) -> dict:
         def request():
@@ -218,7 +232,7 @@ class API:
 
     async def claim(self) -> dict:
         response = await self.post("/api/integracoes/whatsapp/reivindicar", {})
-        if response.get("protocolVersion") != 4:
+        if response.get("protocolVersion") != 5:
             raise ValueError("invalid_worker_protocol")
         job = response.get("job")
         if job is not None and (not isinstance(job, dict) or job.get("tipo") not in JOB_TYPES):
@@ -359,6 +373,9 @@ async def process(api, mcp, ledger: Ledger, job: dict, *, sleep=asyncio.sleep, c
     def still_unexpired() -> bool:
         return unexpired(job, clock()) if clock is not None else unexpired(job)
 
+    def quiet_hours() -> bool:
+        return formulario_quiet_hours(job, clock() if clock is not None else None)
+
     previous = ledger.get(job)
     if previous:
         outcome = "sent" if previous == "sent" else "indeterminate"
@@ -367,6 +384,9 @@ async def process(api, mcp, ledger: Ledger, job: dict, *, sleep=asyncio.sleep, c
         return "reconciled"
     if not still_unexpired():
         return "expired"
+    if quiet_hours():
+        await api.result(job, "failed", "formulario_nao_perturbe")
+        return "quiet_hours"
     try:
         ready = await mcp.ready()
     except Exception:
@@ -395,6 +415,10 @@ async def process(api, mcp, ledger: Ledger, job: dict, *, sleep=asyncio.sleep, c
     if blocked is not None:
         await api.result(job, "failed", blocked)
         return blocked
+    # O preflight pode atravessar 21h. Sem início/ledger, a nuvem adia às 9h.
+    if quiet_hours():
+        await api.result(job, "failed", "formulario_nao_perturbe")
+        return "quiet_hours"
     # Se o servidor não confirmar a elegibilidade, não chama WhatsApp.
     accepted = await api.result(job, "started", activity=proof) if proof is not None else await api.result(job, "started")
     if accepted.get("accepted") is not True:
@@ -411,7 +435,7 @@ async def process(api, mcp, ledger: Ledger, job: dict, *, sleep=asyncio.sleep, c
             if index:
                 # A pausa começa somente depois do ACK de sucesso anterior.
                 await sleep(part["delayBeforeSeconds"])
-                if not still_unexpired() or not await mcp.ready():
+                if not still_unexpired() or quiet_hours() or not await mcp.ready():
                     sent = False
                     break
                 # Revalida flag, coluna, telefone, corte e lease antes de cada parte.
@@ -419,10 +443,18 @@ async def process(api, mcp, ledger: Ledger, job: dict, *, sleep=asyncio.sleep, c
                 if blocked is not None:
                     sent = False
                     break
+                if quiet_hours():
+                    sent = False
+                    break
                 accepted = await api.result(job, "started", activity=proof) if proof is not None else await api.result(job, "started")
                 if accepted.get("accepted") is not True or not still_unexpired():
                     sent = False
                     break
+            # Depois do início não há retomada: um envio parcial permanece
+            # indeterminado no ledger, sem repetir mensagens no próximo dia.
+            if quiet_hours():
+                sent = False
+                break
             single = {field: job[field] for field in LEGACY_JOB_FIELDS}
             if "tipo" in job:
                 single["tipo"] = job["tipo"]
