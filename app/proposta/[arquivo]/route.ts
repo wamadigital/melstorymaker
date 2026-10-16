@@ -1,4 +1,5 @@
 import { BUCKET_PROPOSTAS, supabaseAdmin } from "@/lib/supabase/admin";
+import { arquivoProposta } from "@/lib/pdf/arquivo";
 
 type Ctx = { params: Promise<{ arquivo: string }> };
 
@@ -34,9 +35,12 @@ export async function GET(_req: Request, { params }: Ctx) {
     return new Response("Proposta não encontrada.", { status: 404 });
   }
 
+  const id = arquivo.slice(0, -4);
+  const { data: lead } = await supabaseAdmin().from("leads").select("id,pdf_storage_path").eq("id", id).maybeSingle();
+  if (!lead) return new Response("Proposta não encontrada.", { status: 404 });
   const { data, error } = await supabaseAdmin()
     .storage.from(BUCKET_PROPOSTAS)
-    .download(arquivo);
+    .download(arquivoProposta(id, lead.pdf_storage_path));
 
   if (error || !data) {
     return new Response("Proposta não encontrada.", { status: 404 });

@@ -5,10 +5,10 @@ import type { DisparoWhatsApp, LeadCartao } from "./tipos";
 
 const ANTIGO = "2026-10-01T12:00:00Z";
 const RECENTE = "2026-10-15T12:00:00Z";
-const TIPOS = ["lembrete_formulario_24h", "lembrete_proposta_7d", "lembrete_proposta_30d"] as const;
-const ROTULOS = ["Finalize o formulário", "Lembrete após 7 dias", "Lembrete após 30 dias"];
+const TIPOS = ["lembrete_formulario_24h", "proposta_inicial_15m", "lembrete_proposta_7d", "lembrete_proposta_30d"] as const;
+const ROTULOS = ["Finalize o formulário", "Proposta comercial", "Lembrete após 7 dias", "Lembrete após 30 dias"];
 
-test("resumo sem envios mantém somente as três mensagens atuais, na ordem dos lembretes", () => {
+test("resumo sem envios mantém as quatro mensagens atuais, na ordem do fluxo", () => {
   for (const lead of [{}, { disparos_whatsapp: [] }]) {
     const resumo = resumoEnviosWhatsApp(lead);
     assert.deepEqual(resumo.map(({ tipo }) => tipo), TIPOS);
@@ -17,12 +17,12 @@ test("resumo sem envios mantém somente as três mensagens atuais, na ordem dos 
   }
 });
 
-test("cada combinação de ACKs marca somente seus tipos e nunca aumenta as três linhas", () => {
-  for (let combinacao = 0; combinacao < 8; combinacao++) {
+test("cada combinação de ACKs marca somente seus tipos e mantém quatro linhas", () => {
+  for (let combinacao = 0; combinacao < 16; combinacao++) {
     const disparos = TIPOS.filter((_, i) => combinacao & (1 << i))
       .map((tipo) => ({ tipo, enviado_em: RECENTE }));
     const resumo = resumoEnviosWhatsApp({ disparos_whatsapp: disparos });
-    assert.equal(resumo.length, 3);
+    assert.equal(resumo.length, 4);
     assert.deepEqual(resumo.map(({ enviado }) => enviado), TIPOS.map((_, i) => Boolean(combinacao & (1 << i))));
     assert.equal(resumo.some(({ enviado }) => enviado), combinacao !== 0, "o ícone exige pelo menos um envio");
   }
@@ -48,7 +48,7 @@ test("revisão anterior, duplicatas e ordem dos ACKs não apagam nem duplicam um
   const lead = { disparos_whatsapp: disparos, enviado_em: RECENTE, status: "virou_cliente" };
   const antes = JSON.stringify(lead);
   const esperado = resumoEnviosWhatsApp(lead);
-  assert.deepEqual(esperado.map(({ enviado }) => enviado), [true, true, false]);
+  assert.deepEqual(esperado.map(({ enviado }) => enviado), [true, false, true, false]);
   assert.deepEqual(resumoEnviosWhatsApp({ disparos_whatsapp: [...disparos].reverse() }), esperado);
   assert.equal(JSON.stringify(lead), antes);
 });

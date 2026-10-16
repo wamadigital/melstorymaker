@@ -12,6 +12,7 @@ import {
 } from "./contrato";
 import { configuracaoLembreteFormulario } from "./lembrete-formulario";
 import { lembretesPropostaAtivos } from "./lembretes-proposta";
+import { propostaInicialAtiva } from "./proposta-inicial";
 
 export type DependenciasHttpWhatsApp = {
   ambiente: AmbienteWhatsApp;
@@ -27,7 +28,7 @@ const reais = (): DependenciasHttpWhatsApp => ({
 });
 export function protocoloWorker(req: Request): ProtocoloWorker {
   const valor = req.headers.get(HEADER_PROTOCOLO_WORKER);
-  return valor === "3" ? 3 : valor === "2" ? 2 : 1;
+  return valor === "4" ? 4 : valor === "3" ? 3 : valor === "2" ? 2 : 1;
 }
 
 function autenticar(req: Request, ambiente: AmbienteWhatsApp): Response | null {
@@ -47,13 +48,15 @@ export async function tratarReivindicacao(req: Request, deps = reais()): Promise
   const protocolo = protocoloWorker(req);
   const config = protocolo >= 2
     ? configuracaoLembreteFormulario(deps.ambiente, (deps.agora ?? Date.now)()) : null;
-  const propostas = protocolo === 3 && lembretesPropostaAtivos(deps.ambiente);
+  const propostas = protocolo >= 3 && lembretesPropostaAtivos(deps.ambiente);
+  const inicial = protocolo === 4 && propostaInicialAtiva(deps.ambiente);
   const detalhes = protocolo >= 2 ? {
     protocolVersion: protocolo,
     reminderActive: config !== null,
-    ...(protocolo === 3 ? { proposalReminderActive: propostas } : {}),
+    ...(protocolo >= 3 ? { proposalReminderActive: propostas } : {}),
+    ...(protocolo === 4 ? { proposalInitialActive: inicial } : {}),
   } : {};
-  if (!config && !propostas) return resposta({ active: false, job: null, ...detalhes });
+  if (!config && !propostas && !inicial) return resposta({ active: false, job: null, ...detalhes });
   try {
     const job = await deps.reivindicar(protocolo);
     return resposta({ active: true, job: job ? validarJobWorker(job, protocolo, (deps.agora ?? Date.now)()) : null, ...detalhes });
@@ -78,10 +81,11 @@ export async function tratarResultado(
   if (!parsed.success) return resposta({ erro: "Resultado invalido" }, 400);
   // Desligar bloqueia novos envios, mas aceita ACK/indeterminado dos ja iniciados.
   const protocolo = protocoloWorker(req);
-  if (parsed.data.activity && protocolo !== 3) return resposta({ erro: "Protocolo invalido" }, 400);
+  if (parsed.data.activity && protocolo < 3) return resposta({ erro: "Protocolo invalido" }, 400);
   if (parsed.data.outcome === "started" && (protocolo < 2 ||
     (!configuracaoLembreteFormulario(deps.ambiente, (deps.agora ?? Date.now)()) &&
-      !(protocolo === 3 && lembretesPropostaAtivos(deps.ambiente))))) {
+      !(protocolo >= 3 && lembretesPropostaAtivos(deps.ambiente)) &&
+      !(protocolo === 4 && propostaInicialAtiva(deps.ambiente))))) {
     return resposta({ erro: "Automacao desativada" }, 409);
   }
   try {

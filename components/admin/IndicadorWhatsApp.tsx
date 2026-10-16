@@ -5,7 +5,7 @@ import { MessageCircleCheck } from "lucide-react";
 import { resumoEnviosWhatsApp } from "@/lib/admin/disparos-whatsapp";
 import type { LeadCartao } from "@/lib/admin/tipos";
 
-/** Só um dos três disparos atuais confirmado pelo worker acende este sinal. */
+/** Só um dos disparos atuais confirmado pelo worker acende este sinal. */
 export function IndicadorWhatsApp({
   lead,
   somenteLeitura = false,

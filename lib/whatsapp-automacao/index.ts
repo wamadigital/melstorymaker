@@ -1,4 +1,5 @@
 import "server-only";
+import { after } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import {
@@ -10,6 +11,9 @@ import {
   type AmbienteLembreteFormulario,
 } from "./lembrete-formulario";
 import { lembretesPropostaAtivos } from "./lembretes-proposta";
+import { propostaInicialAtiva } from "./proposta-inicial";
+import { prepararUmaPropostaAutomatica } from "./preparar-proposta";
+import { enviarEventoDeStatus } from "@/lib/meta/lead";
 
 export type AmbienteWhatsApp = AmbienteLembreteFormulario & {
   [chave: string]: string | undefined;
@@ -35,14 +39,20 @@ export function criarRepositorioWhatsApp(db: SupabaseClient, contexto: ContextoR
   const protocoloPadrao = contexto.protocolo ?? 1;
   const configAtual = (protocolo: ProtocoloWorker) => protocolo >= 2
     ? configuracaoLembreteFormulario(ambiente, agora()) : null;
-  const propostasAtivas = (protocolo: ProtocoloWorker) => protocolo === 3 && lembretesPropostaAtivos(ambiente);
+  const propostasAtivas = (protocolo: ProtocoloWorker) => protocolo >= 3 && lembretesPropostaAtivos(ambiente);
+  const inicialAtiva = (protocolo: ProtocoloWorker) => protocolo === 4 && propostaInicialAtiva(ambiente);
   const falhaLembretes = contexto.falhaLembretes ??
     (() => console.error("[whatsapp] nao consegui registrar lembretes do formulario"));
   return {
     reivindicar: async (protocolo = protocoloPadrao): Promise<JobWhatsApp | null> => {
       const config = configAtual(protocolo);
       const propostas = propostasAtivas(protocolo);
-      if (!config && !propostas) return null;
+      const inicial = inicialAtiva(protocolo);
+      if (!config && !propostas && !inicial) return null;
+      if (inicial) {
+        try { await prepararUmaPropostaAutomatica(db); }
+        catch { console.error("[whatsapp:proposta] preparo_indisponivel"); }
+      }
       if (config) {
         try {
           const { error } = await db.rpc("enfileirar_lembretes_formulario_whatsapp_v3", {
@@ -54,9 +64,10 @@ export function criarRepositorioWhatsApp(db: SupabaseClient, contexto: ContextoR
           falhaLembretes();
         }
       }
-      const { data, error } = await db.rpc(protocolo === 3 ? "reivindicar_whatsapp_v4" : "reivindicar_whatsapp_v3",
-        protocolo === 3 ? {
+      const { data, error } = await db.rpc(protocolo === 4 ? "reivindicar_whatsapp_v5" : protocolo === 3 ? "reivindicar_whatsapp_v4" : "reivindicar_whatsapp_v3",
+        protocolo >= 3 ? {
           p_formulario_ativo: !!config, p_inicio_em: config?.inicioEm ?? null, p_propostas_ativo: propostas,
+          ...(protocolo === 4 ? { p_inicial_ativo: inicial } : {}),
         } : { p_lembrete_ativo: true, p_inicio_em: config!.inicioEm })
         .abortSignal(AbortSignal.timeout(5_000));
       if (error) throw new Error("claim_whatsapp");
@@ -65,12 +76,14 @@ export function criarRepositorioWhatsApp(db: SupabaseClient, contexto: ContextoR
     resultado: async (id: string, resultado: ResultadoWorker, protocolo = protocoloPadrao): Promise<string | null> => {
       const config = configAtual(protocolo);
       const propostas = propostasAtivas(protocolo);
-      if (resultado.outcome === "started" && !config && !propostas) return null;
-      const { data, error } = await db.rpc(protocolo === 3 ? "resultado_whatsapp_v4" : config ? "resultado_whatsapp_v3" : "resultado_whatsapp", {
+      const inicial = inicialAtiva(protocolo);
+      if (resultado.outcome === "started" && !config && !propostas && !inicial) return null;
+      const { data, error } = await db.rpc(protocolo === 4 ? "resultado_whatsapp_v5" : protocolo === 3 ? "resultado_whatsapp_v4" : config ? "resultado_whatsapp_v3" : "resultado_whatsapp", {
         p_id: id, p_lease_token: resultado.leaseToken, p_outcome: resultado.outcome,
         p_code: resultado.code ?? null,
-        ...(protocolo === 3 ? {
+        ...(protocolo >= 3 ? {
           p_formulario_ativo: !!config, p_inicio_em: config?.inicioEm ?? null, p_propostas_ativo: propostas,
+          ...(protocolo === 4 ? { p_inicial_ativo: inicial } : {}),
           p_historico_verificado_em: resultado.activity?.checkedAt ?? null,
           p_historico_cobertura_inicio_em: resultado.activity?.coverageStartedAt ?? null,
           p_ultima_interacao_em: resultado.activity?.lastInteractionAt ?? null,
@@ -91,5 +104,22 @@ export async function reivindicarWhatsApp(protocolo: ProtocoloWorker = 1): Promi
 export async function registrarResultadoWhatsApp(
   id: string, resultado: ResultadoWorker, protocolo: ProtocoloWorker = 1,
 ): Promise<string | null> {
-  return criarRepositorioWhatsApp(supabaseAdmin(), { protocolo }).resultado(id, resultado);
+  const db = supabaseAdmin();
+  let primeiroEnvio: string | null = null;
+  if (protocolo === 4 && resultado.outcome === "sent") {
+    try {
+      const { data } = await db.from("whatsapp_outbox").select("lead_id,tipo,enviado_em")
+        .eq("id", id).eq("lease_token", resultado.leaseToken)
+        .abortSignal(AbortSignal.timeout(5_000)).maybeSingle();
+      if (data?.tipo === "proposta_inicial_15m" && data.enviado_em === null) primeiroEnvio = data.lead_id;
+    } catch { /* Tracking auxiliar não bloqueia ACK nem entrega. */ }
+  }
+  const estado = await criarRepositorioWhatsApp(db, { protocolo }).resultado(id, resultado);
+  // O trigger do banco preserva o CRM durável. Mantém também o evento Site
+  // existente, após COMMIT, sem expor dados do contato ao navegador da Mel.
+  if (estado === "enviado" && primeiroEnvio) {
+    const leadId = primeiroEnvio;
+    after(async () => { await enviarEventoDeStatus(leadId, "enviado"); });
+  }
+  return estado;
 }

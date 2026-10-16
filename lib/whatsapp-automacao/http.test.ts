@@ -3,6 +3,7 @@ import { mock, test } from "node:test";
 import { tratarReivindicacao, tratarResultado, type DependenciasHttpWhatsApp } from "./http";
 import { envelopeJob, type ProtocoloWorker } from "./contrato";
 import { MENSAGENS_LEMBRETE_FORMULARIO } from "./lembrete-formulario";
+import { sequenciaPropostaInicial } from "./proposta-inicial";
 
 const TOKEN = "token-ficticio-whatsapp-com-32-caracteres";
 const ID = "c350bc94-24f1-4359-9e92-eac5f1a76e44";
@@ -15,6 +16,28 @@ const job = { id: ID, leaseToken: LEASE, recipient: "5519988887777",
 const req = (body: unknown = {}, authorization = `Bearer ${TOKEN}`, protocolo: string | null = "2") => new Request("https://crm.invalid/api/integracoes/whatsapp", {
   method: "POST", headers: { authorization, "content-type": "application/json",
     ...(protocolo === null ? {} : { "X-Mel-Worker-Protocol": protocolo }) }, body: JSON.stringify(body),
+});
+
+test("proposta inicial exige protocolo4 e sua própria flag, sem reativar formulário ou lembretes", async () => {
+  const sequencia = sequenciaPropostaInicial("Maria Eduarda", "https://crm.invalid/p/a3f9");
+  const inicial = { ...job, tipo: "proposta_inicial_15m" as const, messagesSequence: sequencia,
+    message: sequencia.map(p => p.message).join("\n\n") };
+  let chamadas = 0;
+  const deps: DependenciasHttpWhatsApp = {
+    ambiente: { WHATSAPP_WORKER_TOKEN: TOKEN, WHATSAPP_AUTOMACAO_ATIVA: "true", WHATSAPP_PROPOSTA_INICIAL_ATIVA: "true" },
+    reivindicar: async () => { chamadas++; return inicial; },
+    resultado: async () => "enviando",
+  };
+  assert.equal((await (await tratarReivindicacao(req({}, `Bearer ${TOKEN}`, "3"), deps)).json()).active, false);
+  assert.equal(chamadas, 0);
+  const resposta = await (await tratarReivindicacao(req({}, `Bearer ${TOKEN}`, "4"), deps)).json();
+  assert.deepEqual(resposta, { active: true, job: inicial, protocolVersion: 4, reminderActive: false,
+    proposalReminderActive: false, proposalInitialActive: true });
+  assert.equal((await tratarResultado(req({ leaseToken: LEASE, outcome: "started" }, `Bearer ${TOKEN}`, "4"), ID, deps)).status, 200);
+  deps.ambiente.WHATSAPP_PROPOSTA_INICIAL_ATIVA = "false";
+  assert.equal((await (await tratarReivindicacao(req({}, `Bearer ${TOKEN}`, "4"), deps)).json()).active, false);
+  assert.equal((await tratarResultado(req({ leaseToken: LEASE, outcome: "started" }, `Bearer ${TOKEN}`, "4"), ID, deps)).status, 409);
+  assert.equal(chamadas, 1);
 });
 function dependencias(ativa = "1") {
   let claims = 0, resultados = 0;
@@ -103,15 +126,15 @@ test("falhas nao vazam erro/credenciais; ACK inexistente nao autoriza WhatsApp",
   } finally { log.mock.restore(); }
 });
 
-test("headers2/3 permitem claim/started; protocolos antigos só reconciliam ACK", async () => {
-  for (const header of [null, "1", "", "02", "2,1", "4", "true", "2", "3"]) {
+test("headers2/3/4 permitem claim/started; protocolos antigos só reconciliam ACK", async () => {
+  for (const header of [null, "1", "", "02", "2,1", "5", "true", "2", "3", "4"]) {
     const { deps } = dependencias();
     const protocolos: (ProtocoloWorker | undefined)[] = [];
-    deps.reivindicar = async (protocolo) => { protocolos.push(protocolo); return protocolo === 3 ? { ...job, tipo: "lembrete_formulario_24h" } : job; };
+    deps.reivindicar = async (protocolo) => { protocolos.push(protocolo); return (protocolo ?? 1) >= 3 ? { ...job, tipo: "lembrete_formulario_24h" } : job; };
     deps.resultado = async (_id, resultado, protocolo) => { protocolos.push(protocolo); return resultado.outcome === "sent" ? "enviado" : "enviando"; };
     const claim = await tratarReivindicacao(req({ protocol: 2 }, `Bearer ${TOKEN}`, header), deps);
     assert.equal(claim.status, 200);
-    const ativo = header === "2" || header === "3";
+    const ativo = header === "2" || header === "3" || header === "4";
     assert.equal((await claim.json()).active, ativo);
     assert.equal((await tratarResultado(req({ leaseToken: LEASE, outcome: "started" }, `Bearer ${TOKEN}`, header), ID, deps)).status, ativo ? 200 : 409);
     assert.deepEqual(protocolos, ativo ? [Number(header), Number(header)] : []);

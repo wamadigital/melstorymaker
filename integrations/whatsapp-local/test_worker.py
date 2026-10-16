@@ -293,10 +293,10 @@ class WorkerTests(unittest.TestCase):
 
         def send(request, **kwargs):
             self.assertTrue(request.url.startswith("https://worker-ficticio.invalid/"))
-            self.assertEqual(request.headers["X-Mel-Worker-Protocol"], "3")
+            self.assertEqual(request.headers["X-Mel-Worker-Protocol"], "4")
             self.assertEqual(kwargs["allow_redirects"], False)
             requests.append(json.loads(request.body))
-            return SimpleNamespace(raise_for_status=lambda: None, json=lambda: {"accepted": True, "protocolVersion": 3})
+            return SimpleNamespace(raise_for_status=lambda: None, json=lambda: {"accepted": True, "protocolVersion": 4})
 
         with patch.object(worker, "ORIGIN", "https://worker-ficticio.invalid"), patch.object(api.session, "send", side_effect=send):
             asyncio.run(api.claim())
@@ -796,10 +796,58 @@ class WorkerTests(unittest.TestCase):
         self.addCleanup(api.session.close)
         for response in ({"protocolVersion": 2, "job": None},
                          {"protocolVersion": 3, "job": self.job},
-                         {"protocolVersion": 3, "job": {**self.job, "tipo": "confirmacao_recebimento"}}):
+                         {"protocolVersion": 4, "job": {**self.job, "tipo": "confirmacao_recebimento"}}):
             with patch.object(api, "post", new=AsyncMock(return_value=response)):
                 with self.assertRaises(ValueError):
                     asyncio.run(api.claim())
+
+
+class InitialProposalTests(unittest.TestCase):
+    setUp = WorkerTests.setUp
+    tearDown = WorkerTests.tearDown
+
+    def initial_job(self):
+        parts = [
+            {"message": "Oi, Maria Eduarda tudo bem? Aqui é a Mel Storymaker ✨", "delayBeforeSeconds": 0},
+            {"message": "Você solicitou um orçamento através do meu site.", "delayBeforeSeconds": 3},
+            {"message": "Segue a sua proposta:\n🤍 https://melstorymaker.com.br/p/a3f9", "delayBeforeSeconds": 2},
+            {"message": "Qualquer dúvida, é só me chamar. Ok?\nFico à disposição para te ajudar no que precisar!", "delayBeforeSeconds": 4},
+        ]
+        return {**self.job, "tipo": "proposta_inicial_15m", "messagesSequence": parts,
+                "message": "\n\n".join(part["message"] for part in parts)}
+
+    def test_initial_sequence_exact_pauses_ack_and_no_inactivity_gate(self):
+        job = self.initial_job()
+        api, mcp = FakeAPI(), FakeMCP()
+        mcp.activity = AsyncMock(side_effect=AssertionError("primeiro envio não exige 5/15 dias"))
+        pauses = []
+        async def sleep(seconds):
+            pauses.append(seconds)
+        self.assertEqual(asyncio.run(process(api, mcp, self.ledger, job, sleep=sleep)), "sent")
+        self.assertEqual(pauses, [3, 2, 4])
+        self.assertEqual([j["message"] for j in mcp.jobs], [p["message"] for p in job["messagesSequence"]])
+        self.assertEqual(api.calls, [("started", None)] * 4 + [("sent", None)])
+        mcp.activity.assert_not_called()
+        self.assertEqual(asyncio.run(process(api, mcp, self.ledger, job)), "reconciled")
+        self.assertEqual(mcp.calls, 4, "ACK repetido não envia novamente")
+
+    def test_initial_partial_stops_and_never_resends(self):
+        job = self.initial_job()
+        api, mcp = FakeAPI(starts=[True, False]), FakeMCP()
+        async def sleep(_seconds):
+            pass
+        self.assertEqual(asyncio.run(process(api, mcp, self.ledger, job, sleep=sleep)), "indeterminate")
+        self.assertEqual(mcp.calls, 1)
+        self.assertEqual(asyncio.run(process(api, mcp, self.ledger, job)), "reconciled")
+        self.assertEqual(mcp.calls, 1)
+
+    def test_initial_copy_tampering_blocks_before_whatsapp(self):
+        for index in range(4):
+            job = self.initial_job()
+            job["messagesSequence"][index]["delayBeforeSeconds"] += 1
+            api, mcp = FakeAPI(), FakeMCP()
+            self.assertEqual(asyncio.run(process(api, mcp, self.ledger, job)), "invalid_job")
+            self.assertEqual(mcp.calls, 0)
 
 
 if __name__ == "__main__":

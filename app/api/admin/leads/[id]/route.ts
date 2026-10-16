@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { BUCKET_PROPOSTAS, supabaseAdmin } from "@/lib/supabase/admin";
+import { supabaseAdmin } from "@/lib/supabase/admin";
+import { removerPropostasDoLead } from "@/lib/supabase/arquivos-proposta";
 import { getSessaoAdmin } from "@/lib/supabase/server";
 import { idsValidos, limparRespostasOrfas } from "@/lib/form/engine";
 import type { Respostas } from "@/lib/form/types";
@@ -126,12 +127,10 @@ export async function DELETE(_req: Request, { params }: Ctx) {
   // pela rota antiga /proposta/{id}.pdf e pela URL publica do Storage. A Mel
   // veria "excluido" e a proposta seguiria baixavel por quem tem o link --
   // exatamente quem recebeu por WhatsApp.
-  const { error: erroStorage } = await supabaseAdmin()
-    .storage.from(BUCKET_PROPOSTAS)
-    .remove([`${id}.pdf`]);
-
-  if (erroStorage) {
-    console.error(`[admin] exclusão abortada, PDF de ${id} não saiu: ${erroStorage.message}`);
+  try {
+    await removerPropostasDoLead(supabaseAdmin(), id);
+  } catch {
+    console.error(`[admin] exclusão abortada, PDF de ${id} não saiu`);
     return NextResponse.json(
       { erro: "Não consegui apagar o PDF da proposta, então não excluí o lead. Tenta de novo?" },
       { status: 502 },

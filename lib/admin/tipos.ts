@@ -2,7 +2,7 @@ import type { Lead } from "@/lib/form/types";
 
 /** Metadados de um envio confirmado pelo worker; nunca leva conteúdo ou contato. */
 export type DisparoWhatsApp = {
-  tipo: "confirmacao_recebimento" | "lembrete_formulario_24h" | "lembrete_proposta_7d" | "lembrete_proposta_30d";
+  tipo: "confirmacao_recebimento" | "lembrete_formulario_24h" | "lembrete_proposta_7d" | "lembrete_proposta_30d" | "proposta_inicial_15m";
   enviado_em: string;
   /** Revisão exata, somente para lembretes de proposta confirmados. */
   proposta_enviado_em?: string;

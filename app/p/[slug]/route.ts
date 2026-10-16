@@ -1,6 +1,7 @@
 import { BUCKET_PROPOSTAS, supabaseAdmin } from "@/lib/supabase/admin";
 import { RE_SLUG } from "@/lib/slug";
 import { excedeuLimite, ipDaRequisicao, LIMITES } from "@/lib/rate-limit";
+import { arquivoProposta } from "@/lib/pdf/arquivo";
 
 type Ctx = { params: Promise<{ slug: string }> };
 
@@ -37,7 +38,7 @@ export async function GET(req: Request, { params }: Ctx) {
 
   const { data: lead } = await supabaseAdmin()
     .from("leads")
-    .select("id")
+    .select("id,pdf_storage_path")
     .eq("slug", slug)
     .maybeSingle();
 
@@ -45,7 +46,7 @@ export async function GET(req: Request, { params }: Ctx) {
 
   const { data, error } = await supabaseAdmin()
     .storage.from(BUCKET_PROPOSTAS)
-    .download(`${lead.id}.pdf`);
+    .download(arquivoProposta(lead.id, lead.pdf_storage_path));
 
   if (error || !data) return new Response("Proposta não encontrada.", { status: 404 });
 

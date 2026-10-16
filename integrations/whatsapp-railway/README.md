@@ -130,3 +130,17 @@ A troca inicial abaixo foi concluída. Estes passos são referência para opera�
 O supervisor recusa execução padrão sem mount em `/data`, usa uma trava no volume, não possui pareamento automático e não publica logs dos filhos. Remover `/data/enable-cloud` encerra worker/MCP antes do bridge. Resultado desconhecido de envio continua bloqueado pelo ledger e pela fila existente; nenhum cron ou automação de envio é criado por esta implantação.
 
 Fontes oficiais conferidas: [Docker Python](https://hub.docker.com/_/python), [Docker Go](https://hub.docker.com/_/golang), [uv em Docker](https://docs.astral.sh/uv/guides/integration/docker/), [uv 0.12.7](https://github.com/astral-sh/uv/releases/tag/0.12.7), [Dockerfile específico e dockerignore](https://docs.docker.com/build/concepts/context/#dockerignore-files), [configuração Railway](https://docs.railway.com/config-as-code).
+
+## Proposta inicial automática (RF-28)
+
+A revisão do worker protocolo 4 acrescenta `proposta_inicial_15m`: a Vercel
+prepara o PDF após os 15 minutos registrados no Supabase, e a Railway envia
+as quatro partes com pausas 3/2/4s. A nova flag é própria; não ativa confirmação
+antiga nem lembrete de formulário. O primeiro orçamento não usa a janela de
+inatividade dos lembretes; os gates de 5/15 dias continuam iguais para 7/30 dias.
+Ledger, sessão e volume continuam os mesmos. Só ACK completo move para Enviado;
+parcial/desconhecido nunca é repetido automaticamente. E-mail continua manual.
+
+A atualização substitui somente o código do serviço existente e conserva
+Hobby, uma réplica, 256 MB, 0,05 vCPU e volume 512 MB. Um redeploy reconecta o
+bridge e reinicia a cobertura de inatividade dos lembretes, sem apagar histórico.

@@ -45,7 +45,7 @@ export async function lerDisparosWhatsApp(
       .from("whatsapp_outbox")
       .select("lead_id,tipo,enviado_em,estado,ocorrido_em,proposta_enviado_em,ultimo_codigo,iniciado_em")
       .in("lead_id", ids)
-      .in("tipo", ["confirmacao_recebimento", "lembrete_formulario_24h", "lembrete_proposta_7d", "lembrete_proposta_30d"])
+      .in("tipo", ["confirmacao_recebimento", "lembrete_formulario_24h", "lembrete_proposta_7d", "lembrete_proposta_30d", "proposta_inicial_15m"])
       .in("estado", ESTADOS).order("id", { ascending: true }).range(inicio, inicio + 999)
       .abortSignal(AbortSignal.timeout(5_000)));
     const respostas = await Promise.all(lotes.map(async ids => {

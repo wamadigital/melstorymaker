@@ -23,11 +23,12 @@ export type ResumoEnvioWhatsApp = {
 };
 
 const TIPOS_RESUMO: readonly TipoResumoWhatsApp[] = [
-  "lembrete_formulario_24h", "lembrete_proposta_7d", "lembrete_proposta_30d",
+  "lembrete_formulario_24h", "proposta_inicial_15m", "lembrete_proposta_7d", "lembrete_proposta_30d",
 ];
 
 const ROTULOS: Record<TipoHistoricoWhatsApp, string> = {
   confirmacao_recebimento: "Confirmação de recebimento",
+  proposta_inicial_15m: "Proposta comercial",
   lembrete_formulario_24h: "Finalize o formulário",
   lembrete_proposta_7d: "Lembrete após 7 dias",
   lembrete_proposta_30d: "Lembrete após 30 dias",
@@ -43,11 +44,11 @@ export function ehDataEnvioWhatsApp(valor: unknown): valor is string {
 
 export function ehTipoDisparoWhatsApp(valor: unknown): valor is DisparoWhatsApp["tipo"] {
   return valor === "confirmacao_recebimento" || valor === "lembrete_formulario_24h" ||
-    valor === "lembrete_proposta_7d" || valor === "lembrete_proposta_30d";
+    valor === "lembrete_proposta_7d" || valor === "lembrete_proposta_30d" || valor === "proposta_inicial_15m";
 }
 
 /**
- * Os três disparos atuais, sempre na mesma ordem. Somente ACKs do worker
+ * Os quatro disparos atuais, sempre na mesma ordem. Somente ACKs do worker
  * marcam envio; contatos manuais e a confirmação retirada não acendem o ícone.
  * O resumo conserva envios de propostas anteriores, sem decidir elegibilidade.
  */
