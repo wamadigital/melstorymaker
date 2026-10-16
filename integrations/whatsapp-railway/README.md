@@ -124,7 +124,7 @@ A troca inicial abaixo foi concluída. Estes passos são referência para opera�
 5. Transferir por SSH autenticado, diretamente para o volume privado, sem gravar conteúdo em comando/log, variável pública, Git ou imagem. Fixar `/data/state` e `/data/state/store` em `0700`, arquivos em `0600`; fechar/checkpointar SQLite antes de comparar hashes. Não publicar a API do bridge nem criar domínio público de envio.
 6. O export inclui `.cloud-ready.json` com conteúdo exato `{"version":1}` no pacote validado por `receive_state.py`; o import publica o estado somente após validar o conjunto. Rodar `python /app/integrations/whatsapp-railway/cloud.py --check`. Criar o arquivo privado `/data/enable-cloud` somente com a outra origem parada e o orçamento autorizado. O supervisor espera o bridge confirmar conexão autenticada antes de iniciar o worker/MCP.
 7. Conferir conexão, worker, ledger e reconciliação dos ACKs sem enviar mensagem de teste não solicitada. No checkpoint original, o lembrete de formulário estava desligado; em recuperações, conferir as flags contra as autorizações posteriores de RF-25 e RF-28, sem ampliar o corte nem restaurar estado antigo. A confirmação de recebimento permanece removida. Textos, pausas, botões e condições devem corresponder ao PRD vigente; a orientação operacional do painel deve refletir execução online, sem dependência do Mac.
-8. A cobertura de silêncio **recomeça** após reconectar: aguardar 5/15 dias contínuos para contatos reais. Não fabricar histórico ou restaurar cobertura em memória. A exceção temporária de testes do owner conserva seu prazo e não é ampliada.
+8. Validar a continuidade pelo checkpoint HMAC da mesma sessão e pelo término da sincronização offline. Reinício limpo/reconexão de até 30 minutos preserva somente cobertura comprovada; crash, lacuna sem comprovação ou arquivo legado sem checkpoint exige nova janela de 5/15 dias. Não fabricar histórico. A exceção temporária de testes do owner conserva seu prazo e não é ampliada.
 9. Os dois LaunchAgents locais próprios já estão descarregados/desabilitados e o worker local desativado. Preservar esse estado e o backup privado. Em rollback, parar/desativar a nuvem antes de reutilizar a sessão no Mac e trazer de volta o estado persistente mais recente, incluindo ledger/ACKs. Nunca restaurar um ledger antigo sobre o atual.
 
 O supervisor recusa execução padrão sem mount em `/data`, usa uma trava no volume, não possui pareamento automático e não publica logs dos filhos. Remover `/data/enable-cloud` encerra worker/MCP antes do bridge. Resultado desconhecido de envio continua bloqueado pelo ledger e pela fila existente; nenhum cron ou automação de envio é criado por esta implantação.
@@ -143,7 +143,7 @@ parcial/desconhecido nunca é repetido automaticamente. E-mail continua manual.
 
 A atualização substitui somente o código do serviço existente e conserva
 Hobby, uma réplica, 256 MB, 0,05 vCPU e volume 512 MB. Um redeploy reconecta o
-bridge e reinicia a cobertura de inatividade dos lembretes, sem apagar histórico.
+bridge; a cobertura segue a regra de continuidade verificável abaixo, sem apagar histórico.
 
 ## Formulário incompleto: seis horas e não perturbe (RF-25, 16/10/2026)
 
@@ -177,3 +177,23 @@ os gates de 5/15 dias e o clique obrigatório para lembretes de 7/30 dias.
 E-mail permanece manual. O não perturbe de RF-25 não é uma regra global.
 Conservar Hobby, uma réplica, 256 MB, 0,05 vCPU e o volume de 512 MB; nenhum
 upgrade ou serviço adicional é necessário para este contrato.
+
+## Continuidade e diagnóstico do histórico — 16/10/2026
+
+O estado de observação passa a incluir checkpoint HMAC em `store/activity.db`,
+vinculado à sessão autenticada. Encerramento limpo e reconexão de até 30 minutos
+só recuperam cobertura após `OfflineSyncCompleted`, com assinatura, sessão,
+relógio e gravação íntegros. A marca limpa é consumida ao iniciar; crash e falha
+de processamento não são tratados como silêncio comprovado. O limite de 30 minutos
+é política conservadora deste projeto, sem presumir retenção garantida pelo SDK.
+
+A primeira instalação não transforma os hashes anteriores em prova retroativa.
+As janelas de cinco/quinze dias continuam obrigatórias; quando faltam dias, o
+Kanban informa a previsão em Brasília. Sincronização pendente, identidade
+incompleta e indisponibilidade têm mensagens distintas. A data não agenda envio:
+os lembretes de proposta continuam exigindo clique da Mel.
+
+Aplicar o SQL manual `supabase/whatsapp-historico-feedback.sql` antes da versão
+web e do worker. Sessão, ledger, flags, textos e pausas permanecem os atuais.
+Não criar serviço, volume, domínio ou upgrade; a tabela pequena utiliza o mesmo
+volume persistente de 512 MB e os limites atuais do Hobby.
