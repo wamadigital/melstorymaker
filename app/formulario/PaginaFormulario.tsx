@@ -4,8 +4,7 @@ import type { Categoria } from "@/lib/form/types";
 import { FormularioClient, type TelaInicial } from "./FormularioClient";
 
 /**
- * Compartilhado por `/formulario` e `/orcamento`: as duas URLs sao o mesmo
- * formulario e mudam so a tela em que ele abre.
+ * Compartilhado pelas URLs públicas do formulário.
  */
 export const metadataFormulario: Metadata = {
   title: "Vamos eternizar seu momento ✨ | Mel Simão Storymaker",
@@ -23,9 +22,12 @@ export const metadataFormulario: Metadata = {
 export function PaginaFormulario({
   inicio,
   categoria,
+  origemFormulario,
 }: {
   inicio: TelaInicial;
   categoria?: Categoria;
+  /** Link da Mel: preserva o envio manual da primeira proposta. */
+  origemFormulario?: "orcar";
 }) {
   // MEL_WHATSAPP e server-side (nao e NEXT_PUBLIC): chega ao client como prop,
   // so nesta pagina, em vez de virar variavel publica de build.
@@ -35,7 +37,7 @@ export function PaginaFormulario({
     <>
       {/* Mesmo motivo do MEL_WHATSAPP: lido em runtime, sem virar NEXT_PUBLIC. */}
       <PixelMeta pixelId={process.env.META_PIXEL_ID} />
-      <FormularioClient whatsappMel={whatsappMel} inicio={inicio} categoriaInicial={categoria} />
+      <FormularioClient whatsappMel={whatsappMel} inicio={inicio} categoriaInicial={categoria} origemFormulario={origemFormulario} />
     </>
   );
 }

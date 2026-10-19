@@ -21,9 +21,10 @@ const corpo = z.object({
   respostas: z.record(z.string(), z.string()).optional(),
   passo_atual: z.string().nullable().optional(),
   tentativa_id: z.string().uuid().optional(),
+  origem_formulario: z.literal("orcar").optional(),
 });
 
-const camposCriacao = "id, categoria, passo_atual, respostas, status";
+const camposCriacao = "id, categoria, passo_atual, respostas, status, origem_formulario";
 
 /**
  * POST /api/leads -- cria o lead no primeiro avanco do formulario (RF-02).
@@ -78,6 +79,7 @@ export async function POST(req: Request) {
       ...(parsed.data.tentativa_id && { id: parsed.data.tentativa_id }),
       categoria,
       status: "incompleto",
+      ...(parsed.data.origem_formulario === "orcar" && { origem_formulario: "orcar" }),
       respostas,
       passo_atual,
       rastreio: paraGuardar(rastreio, origem),

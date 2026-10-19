@@ -38,7 +38,7 @@ import {
   type Armazenamento, type EstadoPersistencia,
 } from "@/lib/form/persistencia";
 import { estadosIguais, respostasIguais, type EstadoFormulario } from "@/lib/form/snapshot";
-import { CriacaoLead, respostasIniciaisPreservadas, type TentativaCriacao } from "@/lib/form/criacao";
+import { CriacaoLead, guardarOrigemOrcar, lerOrigemOrcar, origemOrcarDoLead, respostasIniciaisPreservadas, type TentativaCriacao } from "@/lib/form/criacao";
 
 /**
  * Caixa das duas portas da abertura. Mesma forma e mesma altura minima nas
@@ -52,13 +52,14 @@ const PORTA =
 
 type Tela = "boas_vindas" | "categoria" | "pergunta" | "confirmacao";
 
-/** `/formulario` abre nas duas portas; `/orcamento`, direto na categoria. */
+/** `/formulario` abre nas duas portas; os links da Mel, direto na categoria. */
 export type TelaInicial = Extract<Tela, "boas_vindas" | "categoria">;
 
 export function FormularioClient({
   whatsappMel,
   inicio,
   categoriaInicial,
+  origemFormulario,
 }: {
   whatsappMel: string;
   inicio: TelaInicial;
@@ -68,6 +69,7 @@ export function FormularioClient({
    * um orcamento" pula a escolha da categoria.
    */
   categoriaInicial?: Categoria;
+  origemFormulario?: "orcar";
 }) {
   // A tela inicial vem do servidor por prop, e nunca de uma leitura da URL no
   // navegador: e o estado que o servidor renderiza, e o conteudo precisa estar
@@ -106,6 +108,9 @@ export function FormularioClient({
   const montadoRef = useRef(true);
   /** `IniciouOrcamento` sai uma vez por visita, na primeira entrada no fluxo. */
   const iniciouOrcamento = useRef(false);
+  // A preferência acompanha o lead e a tentativa, inclusive ao retomar por
+  // outra URL. Ausência nunca reativa um envio já dispensado.
+  const leadOrcarRef = useRef<string | null>(null);
 
   const passos = categoria ? passosVisiveis(categoria, respostas) : [];
   const passo = passos.find((p) => p.id === passoId) ?? null;
@@ -118,6 +123,8 @@ export function FormularioClient({
         const r = await fetch(`/api/leads/${id}`, { cache: "no-store" });
         if (!r.ok) throw new ErroPersistencia(await falhaDaResposta(r));
         const lead = await r.json();
+        if (lead.origem_formulario === "orcar") leadOrcarRef.current = id;
+        if (origemOrcarDoLead(id, origemFormulario, leadOrcarRef.current)) guardarOrigemOrcar(id, armazenamentoRef.current);
         return lead.status === "incompleto"
           ? { categoria: lead.categoria, respostas: lead.respostas ?? {}, passo_atual: lead.passo_atual ?? null }
           : null;
@@ -131,7 +138,7 @@ export function FormularioClient({
         const r = await fetch(`/api/leads/${id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...estado, base: confirmada }),
+          body: JSON.stringify({ ...estado, base: confirmada, ...(origemOrcarDoLead(id, origemFormulario, leadOrcarRef.current) && { origem_formulario: "orcar" }) }),
         });
         if (!r.ok) return { ok: false, falha: await falhaDaResposta(r) };
         const ack = await r.json() as EstadoFormulario;
@@ -141,7 +148,7 @@ export function FormularioClient({
     filaRef.current = fila;
     setPersistencia({ pendente: false, enviando: false, salvoNoAparelho: false, falha: null });
     return fila;
-  }, []);
+  }, [origemFormulario]);
 
   const abrirEstado = useCallback((estado: EstadoFormulario) => {
     const rec = limparRespostasOrfas(estado.categoria, estado.respostas);
@@ -175,10 +182,12 @@ export function FormularioClient({
     const criacao = new CriacaoLead({
       armazenamento: armazenamentoRef.current,
       leadConfirmadoAtual: leadSalvo,
+      origem_formulario: origemFormulario,
       enviar: async (tentativa) => {
         const r = await fetch("/api/leads", {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...tentativa.estado, tentativa_id: tentativa.id }),
+          body: JSON.stringify({ ...tentativa.estado, tentativa_id: tentativa.id,
+            ...(tentativa.origem_formulario === "orcar" && { origem_formulario: "orcar" }) }),
         });
         if (!r.ok) throw new ErroPersistencia(await falhaDaResposta(r));
         return { ...await r.json(), criadoAgora: r.status === 201 };
@@ -192,6 +201,7 @@ export function FormularioClient({
     });
     criacaoRef.current = criacao;
     const tentativa = criacao.obterTentativa();
+    if (tentativa?.origem_formulario === "orcar") leadOrcarRef.current = tentativa.id;
     const salvo = leadSalvo ?? tentativa?.id;
     // Sem lead salvo a tela ja esta certa: nada a fazer, nenhum request.
     if (!salvo) return () => { montadoRef.current = false; filaRef.current?.parar(); };
@@ -220,6 +230,7 @@ export function FormularioClient({
             esquecerLead(salvo, armazenamentoRef.current);
             limparRascunho(salvo, armazenamentoRef.current);
             leadRef.current = null;
+            leadOrcarRef.current = null;
             return;
           }
           lead = await r.json();
@@ -227,6 +238,8 @@ export function FormularioClient({
         if (cancelado) return;
 
         if (!isCategoria(lead.categoria)) throw new Error("categoria inválida");
+        if (lead.origem_formulario === "orcar" || confirmada?.origem_formulario === "orcar" || lerOrigemOrcar(lead.id, armazenamentoRef.current)) leadOrcarRef.current = lead.id;
+        if (origemOrcarDoLead(lead.id, origemFormulario, leadOrcarRef.current)) guardarOrigemOrcar(lead.id, armazenamentoRef.current);
         const base: EstadoFormulario = {
           categoria: lead.categoria, respostas: lead.respostas ?? {}, passo_atual: lead.passo_atual ?? null,
         };
@@ -250,6 +263,7 @@ export function FormularioClient({
               setTela("confirmacao");
             }
             leadRef.current = null;
+            leadOrcarRef.current = null;
             return;
           }
           local = lerRascunho(lead.id, armazenamentoRef.current);
@@ -288,7 +302,7 @@ export function FormularioClient({
       montadoRef.current = false;
       filaRef.current?.parar();
     };
-  }, [abrirEstado, prepararFila]);
+  }, [abrirEstado, prepararFila, origemFormulario]);
 
   useEffect(() => {
     const tentar = () => { void filaRef.current?.tentarNovamente(true); };
@@ -337,6 +351,8 @@ export function FormularioClient({
         }
         const criado = resultado.lead;
         const id = criado.id;
+        if (criado.origem_formulario === "orcar" || resultado.tentativa.origem_formulario === "orcar") leadOrcarRef.current = id;
+        if (origemOrcarDoLead(id, origemFormulario, leadOrcarRef.current)) guardarOrigemOrcar(id, armazenamentoRef.current);
         if (criacaoAplicadaRef.current === id) return leadRef.current === id ? id : null;
         criacaoAplicadaRef.current = id;
         // Confirmado pelo servidor ANTES de qualquer escrita no aparelho.
@@ -377,7 +393,7 @@ export function FormularioClient({
         return null;
       }
     },
-    [abrirEstado, confirmarEnvio, prepararFila],
+    [abrirEstado, confirmarEnvio, prepararFila, origemFormulario],
   );
 
   // ------------------------------------------------------------------ navegar
@@ -508,7 +524,7 @@ export function FormularioClient({
 
       const r = await fetch(`/api/leads/${id}/submit`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ base: fila.obterBase() }),
+        body: JSON.stringify({ base: fila.obterBase(), ...(origemOrcarDoLead(id, origemFormulario, leadOrcarRef.current) && { origem_formulario: "orcar" }) }),
       });
       if (!r.ok) {
         const falha = await falhaDaResposta(r);
@@ -550,6 +566,8 @@ export function FormularioClient({
         return;
       }
       const lead = await r.json();
+      if (lead.origem_formulario === "orcar") leadOrcarRef.current = id;
+      if (origemOrcarDoLead(id, origemFormulario, leadOrcarRef.current)) guardarOrigemOrcar(id, armazenamentoRef.current);
       if (lead.status !== "incompleto") {
         if (isCategoria(lead.categoria)) confirmarEnvio(id, { categoria: lead.categoria, respostas: lead.respostas ?? {} }, snapshotDescartado);
         return;

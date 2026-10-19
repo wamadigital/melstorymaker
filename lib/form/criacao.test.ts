@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  CHAVE_TENTATIVA, CriacaoLead, lerTentativa, limparTentativa, respostasIniciaisPreservadas,
+  CHAVE_TENTATIVA, CriacaoLead, guardarOrigemOrcar, lerOrigemOrcar, lerTentativa, limparTentativa, origemOrcarDoLead, respostasIniciaisPreservadas,
   type LeadCriado, type TentativaCriacao,
 } from "./criacao";
 import { ErroPersistencia, type Armazenamento } from "./persistencia";
@@ -229,4 +229,89 @@ test("somente a resposta de criação nova autoriza Pixel Lead, nunca replay ou 
   const get = await criacao.recuperar();
   assert.ok(get?.ok);
   assert.equal(get.criadoAgora, false);
+});
+
+test("tentativa /orcar sobrevive ACK perdido e retomada por outra página", async () => {
+  const disco = discoEmMemoria();
+  const primeira = new CriacaoLead({
+    armazenamento: disco, gerarId: () => ID, origem_formulario: "orcar", consultar: async () => null,
+    enviar: async (tentativa) => {
+      assert.equal(tentativa.origem_formulario, "orcar");
+      throw new TypeError("ACK perdido");
+    },
+  });
+  assert.equal((await primeira.enviar(INICIAL)).ok, false);
+  assert.equal(lerTentativa(disco)?.origem_formulario, "orcar");
+  const retomada = new CriacaoLead({
+    armazenamento: disco, consultar: async () => null,
+    enviar: async (tentativa) => {
+      assert.equal(tentativa.origem_formulario, "orcar", "página normal não reativa proposta automática");
+      assert.deepEqual(tentativa.estado, INICIAL);
+      return { ...ack(), origem_formulario: "orcar" };
+    },
+  });
+  const resultado = await retomada.recuperar();
+  assert.ok(resultado?.ok);
+  assert.equal(resultado.lead.origem_formulario, "orcar");
+  assert.equal(resultado.tentativa.origem_formulario, "orcar");
+});
+
+test("retomar tentativa normal em /orcar só acrescenta opt-out sem alterar identidade ou snapshot", async () => {
+  const disco = discoEmMemoria();
+  const inicial: TentativaCriacao = { id: ID, snapshotId: "imutavel", estado: INICIAL };
+  disco.setItem(CHAVE_TENTATIVA, JSON.stringify(inicial));
+  let rede = 0;
+  const criacao = new CriacaoLead({
+    armazenamento: disco, origem_formulario: "orcar",
+    consultar: async () => { rede++; return ack(); },
+    enviar: async () => { throw new Error("GET existente não cria novamente"); },
+  });
+  assert.equal(rede, 0, "construir a preferência não altera lead no servidor");
+  assert.deepEqual(lerTentativa(disco), { ...inicial, origem_formulario: "orcar" });
+  const resultado = await criacao.recuperar();
+  assert.ok(resultado?.ok);
+  assert.deepEqual(resultado.tentativa.estado, INICIAL);
+  assert.equal(resultado.tentativa.snapshotId, inicial.snapshotId);
+  assert.equal(resultado.tentativa.origem_formulario, "orcar");
+});
+
+test("preferência /orcar local fica isolada por lead após limpar tentativa confirmada", () => {
+  const disco = discoEmMemoria();
+  guardarOrigemOrcar(ID, disco);
+  assert.equal(lerOrigemOrcar(ID, disco), true);
+  assert.equal(lerOrigemOrcar(OUTRO_ID, disco), false);
+  assert.equal(disco.getItem(CHAVE_LEAD), null, "preferência não cria identidade confirmada");
+  guardarOrigemOrcar("invalido", disco);
+  assert.equal(lerOrigemOrcar("invalido", disco), false);
+  assert.doesNotThrow(() => guardarOrigemOrcar(ID, null));
+  assert.equal(lerOrigemOrcar(ID, null), false);
+});
+
+test("UUID antigo removido ou encerrado não transmite opt-out a novo lead pela página normal", async () => {
+  const disco = discoEmMemoria();
+  guardarOrigemOrcar(ID, disco);
+  assert.equal(origemOrcarDoLead(ID, undefined, ID), true);
+  assert.equal(origemOrcarDoLead(OUTRO_ID, undefined, ID), false, "ref antiga exige o mesmo UUID");
+  assert.equal(origemOrcarDoLead(OUTRO_ID, undefined, null), false, "descarte em 404/410/encerrado limpa referência");
+  assert.equal(origemOrcarDoLead(OUTRO_ID, "orcar", null), true, "página /orcar continua explícita");
+  const criacaoNormal = new CriacaoLead({
+    armazenamento: disco, gerarId: () => OUTRO_ID, consultar: async () => null,
+    enviar: async (tentativa) => {
+      assert.equal(tentativa.origem_formulario, undefined, "preferência local de outro UUID não altera o POST novo");
+      return ack(OUTRO_ID);
+    },
+  });
+  assert.equal((await criacaoNormal.enviar(INICIAL)).ok, true);
+});
+
+test("lead confirmado diferente de tentativa /orcar antiga não herda a preferência", () => {
+  const disco = discoEmMemoria();
+  disco.setItem(CHAVE_TENTATIVA, JSON.stringify({ id: ID, snapshotId: "antiga", estado: INICIAL, origem_formulario: "orcar" }));
+  const criacao = new CriacaoLead({
+    armazenamento: disco, leadConfirmadoAtual: OUTRO_ID,
+    consultar: async () => ack(OUTRO_ID), enviar: async () => ack(OUTRO_ID),
+  });
+  assert.equal(criacao.obterTentativa(), null);
+  assert.equal(origemOrcarDoLead(OUTRO_ID, undefined, criacao.obterTentativa()?.id ?? null), false);
+  assert.equal(lerTentativa(disco)?.origem_formulario, "orcar", "slot alheio é preservado sem aplicar ao lead atual");
 });

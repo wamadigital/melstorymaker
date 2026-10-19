@@ -69,6 +69,13 @@ Estas decisões já foram tomadas e não devem ser reabertas durante o desenvolv
 
 Quem chega pelo anúncio de casamento passa antes pela LP `/casamento` e entra no formulário por `/formulario?evento=casamento`: as mesmas duas portas, mas "Quero um orçamento" pula a escolha de categoria (vai direto à pergunta do WhatsApp) e "Falar com a Mel" abre o WhatsApp com a mensagem de casamento. O resto do fluxo é o mesmo.
 
+Para quem já conversa com a Mel no WhatsApp, ela envia `https://melstorymaker.com.br/orcar`.
+Esse link abre direto na escolha do evento e grava no mesmo Kanban. A conclusão
+vai para Aguardando revisão, mas **não gera nem envia a proposta automática de
+RF-28**, mesmo depois dos 15 minutos. A Mel prepara e encaminha manualmente na
+conversa aberta. Somente essa automação é suprimida; RF-25 e os lembretes por
+clique de RF-20 mantêm suas condições. Os links anteriores não mudam.
+
 ```
 [Mel no WhatsApp] envia link melstorymaker.com.br/formulario
         v
@@ -217,6 +224,15 @@ Regras do engine:
 | RF-28 | Primeira proposta automática pelo WhatsApp após 15 minutos | Nas quatro categorias/cinco artes, registra a entrada em Aguardando revisão no banco, sem depender do navegador. Depois de pelo menos 15 minutos, revalida todos os passos, telefone, coluna e ausência de envio anterior, gera o PDF e publica uma versão própria sem sobrescrever geração manual concorrente. Usa `nome` de quem respondeu, mantendo nomes compostos. Quatro partes com pausas 3/2/4s conforme copy abaixo, worker protocolo 4, RPCs V5 e flag `WHATSAPP_PROPOSTA_INICIAL_ATIVA`. Revalidação antes de cada parte; só ACK completo registra `enviado_em`, indicador e move o card para Enviado. Resultado parcial/desconhecido não é repetido. Inclui os cards atuais ainda sem envio, usando `updated_at` como limite conservador para a espera; novas entradas usam o instante exato. Voltar à revisão após envio não reenvia. Geração, envio, CRM e Kanban funcionam na nuvem, sem Mac ligado |
 
 ### Copy da primeira proposta automática — RF-28
+
+**Exceção por origem, autorizada em 19/10/2026:** leads preenchidos pelo `/orcar`
+ficam permanentemente fora do primeiro envio automático. O marcador persistido
+`origem_formulario = orcar` sobrevive à retomada em outro link e às tentativas de
+criação com resposta perdida. Para um formulário ainda incompleto iniciado por
+outro link, o próximo avanço/submit pelo `/orcar` também aplica a exceção.
+Revalidar origem no agendamento, preparo, publicação e antes de cada parte;
+preservar a reconciliação de recibos de envios já iniciados. Não mover o card
+para Enviado sem envio/ação manual confirmada.
 
 | Parte | Mensagem | Pausa antes |
 |---|---|---|
@@ -457,7 +473,7 @@ Sem número do lead: `https://wa.me/?text={mensagem_encoded}` (abre o seletor de
 |---|---|
 | Identidade e datas do lead | `id`, `created_at`, `updated_at`; o trigger atualiza `updated_at` em toda alteração |
 | Evento e funil | `categoria` tem quatro valores: `debutante`, `aniversario`, `casamento` e `corporativo`. `status` tem os seis estados da seção 8 |
-| Formulário | `respostas` em jsonb e `passo_atual`; armazenam respostas e ponto de retomada do preenchimento |
+| Formulário | `respostas` em jsonb e `passo_atual`; armazenam respostas e ponto de retomada do preenchimento. `origem_formulario` é `formulario` por padrão ou `orcar`, que exclui somente a primeira proposta automática de RF-28 |
 | Colunas promovidas | `nome_display`, `data_evento`, `email`, `whatsapp`, extraídos das respostas para consulta do painel e contato |
 | Proposta | `pdf_url`, `pdf_gerado_em`, `enviado_em`, `slug`; o código curto nasce ao gerar o PDF e mantém o link estável |
 | Acompanhamento | `lembrete_7_em`, `lembrete_30_em`, `lembrete_email_em`, `chamado_whatsapp_em`; registram cobranças e ações explícitas da Mel |
