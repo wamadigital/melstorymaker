@@ -21,7 +21,7 @@ type Ctx = { params: Promise<{ id: string }> };
 export const maxDuration = 60;
 
 const uuid = z.string().uuid();
-const corpoSubmit = z.object({ base: corpoBaseLead.optional() });
+const corpoSubmit = z.object({ base: corpoBaseLead.optional(), origem_formulario: z.literal("orcar").optional() });
 
 /**
  * POST /api/leads/[id]/submit -- fecha o formulario (RF-07).
@@ -97,7 +97,12 @@ export async function POST(req: Request, { params }: Ctx) {
   }
 
   const promovidas = colunasPromovidas(lead.categoria, respostas);
-  const escrita = await atualizarVersaoLead(lead, { status: "aguardando_revisao", ...promovidas });
+  const escrita = await atualizarVersaoLead(lead, {
+    status: "aguardando_revisao", ...promovidas,
+    // No mesmo CAS da conclusão: nenhum intervalo com proposta automática
+    // habilitada para um formulário concluído pelo link manual da Mel.
+    ...(parsed.data.origem_formulario === "orcar" && { origem_formulario: "orcar" }),
+  });
 
   if (escrita.tipo === "erro") {
     console.error("[leads] falha no submit", escrita.erro);

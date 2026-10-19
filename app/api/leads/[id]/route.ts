@@ -16,6 +16,7 @@ const corpoPatch = z.object({
   passo_atual: z.string().nullable().optional(),
   categoria: z.enum(CATEGORIAS).optional(),
   base: corpoBaseLead.optional(),
+  origem_formulario: z.literal("orcar").optional(),
 }).refine(
   (valor) => !valor.base || (valor.categoria !== undefined && valor.respostas !== undefined && Object.hasOwn(valor, "passo_atual")),
   { message: "Com base, envie categoria, respostas e passo_atual completos." },
@@ -36,7 +37,7 @@ export async function GET(_req: Request, { params }: Ctx) {
 
   const { data, error } = await supabaseAdmin()
     .from("leads")
-    .select("id, categoria, status, respostas, passo_atual")
+    .select("id, categoria, status, respostas, passo_atual, origem_formulario")
     .eq("id", id)
     .maybeSingle();
 
@@ -138,15 +139,23 @@ export async function PATCH(req: Request, { params }: Ctx) {
       respostas: limparRespostasOrfas(categoria, recebidasValidas),
       passo_atual,
     }, lead)) {
-      return NextResponse.json({ ok: true, categoria: lead.categoria, respostas: lead.respostas ?? {}, passo_atual: lead.passo_atual });
+      // O replay pode confirmar respostas idênticas, mas o link /orcar ainda
+      // precisa guardar sua preferência antes de concluir o formulário.
+      if (parsed.data.origem_formulario !== "orcar") {
+        return NextResponse.json({ ok: true, categoria: lead.categoria, respostas: lead.respostas ?? {}, passo_atual: lead.passo_atual });
+      }
+    } else {
+      return NextResponse.json(
+        { erro: "Esse formulário mudou em outra tela. Suas respostas continuam neste aparelho.", codigo: "conflito_respostas" },
+        { status: 409 },
+      );
     }
-    return NextResponse.json(
-      { erro: "Esse formulário mudou em outra tela. Suas respostas continuam neste aparelho.", codigo: "conflito_respostas" },
-      { status: 409 },
-    );
   }
 
-  const escrita = await atualizarVersaoLead(lead, { categoria, respostas, passo_atual, ...colunasPromovidas(categoria, respostas) });
+  const escrita = await atualizarVersaoLead(lead, {
+    categoria, respostas, passo_atual, ...colunasPromovidas(categoria, respostas),
+    ...(parsed.data.origem_formulario === "orcar" && { origem_formulario: "orcar" }),
+  });
 
   if (escrita.tipo === "erro") {
     console.error("[leads] falha no autosave", escrita.erro);

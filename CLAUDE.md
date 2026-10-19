@@ -33,6 +33,7 @@ Schema do banco: aplicar `supabase/schema.sql` manualmente no SQL Editor do Supa
 ```
 app/formulario         Form público multi-etapas
 app/orcamento          O mesmo form, abrindo direto na categoria (link que a Mel manda)
+app/orcar              Form para contatos já em conversa: sem proposta automática no WhatsApp
 app/continuar          Link do lembrete por e-mail: grava o lead no navegador e segue para /formulario
 app/casamento          LP de venda de casamento (destino dos anúncios): página, manifesto de Reels, conteúdo
 components/lp          Ilhas da LP: galeria e visualizador de Reels, hero, CTA rastreado, barra fixa
@@ -139,6 +140,28 @@ primeira data. O owner confirmou explicitamente: voltar à revisão depois de
 receber proposta NÃO dispara novamente. Ícone de WhatsApp passa a quatro linhas,
 incluindo Proposta comercial, somente com ACK. CRM durável continua no trigger;
 o evento Site é disparado após o COMMIT do primeiro ACK.
+
+## Formulário para conversas já abertas — `/orcar`, autorizado em 19/10/2026
+
+`/orcar` reutiliza a árvore e o formulário público, abrindo na escolha do evento,
+e grava no mesmo Kanban. Somente a proposta inicial automática de RF-28 fica
+desligada para esses leads: a Mel gera/encaminha a proposta manualmente na
+conversa existente. Lembrete de formulário (RF-25), lembretes por clique de
+7/30 dias, notificações internas e demais controles continuam iguais.
+
+`leads.origem_formulario` registra `formulario` por padrão e `orcar` para esse
+fluxo. O marcador é próprio, fora das respostas e da atribuição Meta; não
+depende de referrer, query string ou navegador aberto. Uma retomada incompleta
+pelo `/orcar` grava o marcador no próximo avanço/submit, nunca só ao visitar.
+Uma vez marcado, não volta ao envio automático ao abrir outra URL. Preservar
+o marcador também nas tentativas de criação com resposta de rede perdida.
+
+Aplicar manualmente `supabase/formulario-orcar.sql` antes do backend novo;
+o bloco também encerra `schema.sql`. O banco bloqueia o agendamento, a reserva
+de preparo, a publicação do PDF automático e cada autorização de parte de
+`proposta_inicial_15m`. ACKs tardios continuam reconciliados. Não alterar o
+worker/Railway nem as flags globais para introduzir essa exceção por lead.
+`/formulario` e `/orcamento` conservam o comportamento anterior.
 
 ## Lembrete de formulário — regra autorizada em 16/10/2026
 

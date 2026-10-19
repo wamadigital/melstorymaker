@@ -250,3 +250,44 @@ test("tentativa invalida retorna 400 e passo null novo segue normalizacao existe
     assert.equal(tarefas.length, 1);
   });
 });
+
+test("/orcar cria no mesmo Kanban nas quatro categorias e preserva as duas artes de aniversário", async () => {
+  const { resolverTemplateId } = await import("@/lib/form/engine");
+  const casos: { categoria: Categoria; respostas: Respostas; template: string }[] = [
+    { categoria: "casamento", respostas: { noivos: "Ana & João" }, template: "casamento" },
+    { categoria: "debutante", respostas: { debutante: "Ana" }, template: "debutante" },
+    { categoria: "corporativo", respostas: { empresa: "Empresa fictícia" }, template: "corporativo" },
+    { categoria: "aniversario", respostas: { aniversariante: "Ana", idade: "14" }, template: "aniversario_infantil" },
+    { categoria: "aniversario", respostas: { aniversariante: "Ana", idade: "15" }, template: "aniversario_adulto" },
+  ];
+  for (const caso of casos) {
+    await comBanco([], async (banco, tarefas) => {
+      const { POST } = await import("./route");
+      const r = await POST(requisicao({ ...payload(), categoria: caso.categoria,
+        respostas: { contato_whatsapp: "19988887777", ...caso.respostas }, origem_formulario: "orcar" }));
+      assert.equal(r.status, 201);
+      const criado = await r.json();
+      assert.equal(criado.status, "incompleto", "mesmo início de Kanban");
+      assert.equal(criado.origem_formulario, "orcar");
+      assert.equal(banco.salvas.get(ID)?.origem_formulario, "orcar");
+      assert.equal(resolverTemplateId(criado.categoria, criado.respostas), caso.template);
+      assert.equal(tarefas.length, 1, "tracking permanece na criação normal");
+      const replay = await POST(requisicao(payload()));
+      assert.equal(replay.status, 200);
+      assert.equal((await replay.json()).origem_formulario, "orcar");
+      assert.equal(banco.insercoes, 1);
+    });
+  }
+});
+
+test("criação aceita somente opt-out literal e não permite reativar proposta", async () => {
+  await comBanco([], async (banco) => {
+    const { POST } = await import("./route");
+    for (const origem_formulario of ["formulario", "outro", "", false, true, null, 1]) {
+      assert.equal((await POST(requisicao({ ...payload(), origem_formulario }))).status, 400);
+    }
+    assert.equal(banco.insercoes, 0);
+    assert.equal((await POST(requisicao(payload()))).status, 201, "clientes normais continuam sem marcador");
+    assert.equal(banco.salvas.get(ID)?.origem_formulario, undefined, "default permanece responsabilidade do banco");
+  });
+});

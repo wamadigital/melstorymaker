@@ -25,7 +25,7 @@ Object.assign(process.env, {
 const require = createRequire(import.meta.url);
 const nextServer = require("next/server") as { after: (tarefa: () => unknown) => void };
 const ID = "3f1c2a9e-8b7d-4c6e-9a1b-2c3d4e5f6a7b";
-type Linha = { id: string; categoria: Categoria; status: Status; respostas: Respostas | null; passo_atual: string | null; updated_at: string; rastreio?: unknown };
+type Linha = { id: string; categoria: Categoria; status: Status; respostas: Respostas | null; passo_atual: string | null; updated_at: string; rastreio?: unknown; origem_formulario?: "formulario" | "orcar" };
 const completas: Respostas = {
   contato_whatsapp: "19988887777", nome: "Ana Fictícia", noivos: "Ana & João",
   data: "2099-10-10", horario: "16:00", local_cerimonia: "Cerimônia fictícia",
@@ -561,5 +561,76 @@ test("falha da IA preserva formulário concluído e nomes originais sem logar co
     assert.equal(banco.linha.status, enviado.status);
     assert.equal(banco.filtros.length, 0);
     assert.equal(JSON.stringify(avisos.mock.calls.map((c) => c.arguments)).includes("dados privados"), false);
+  });
+});
+
+test("GET expõe somente a preferência necessária à retomada e autosave normal não a reativa", async () => {
+  await comBanco({ ...linha(), origem_formulario: "orcar" }, async (banco) => {
+    const { GET, PATCH } = await import("./route");
+    const leitura = await GET(requisicao("GET"), ctx);
+    assert.equal((await leitura.json()).origem_formulario, "orcar");
+    const r = await PATCH(requisicao("PATCH", { respostas: { nome: "Nome ajustado" } }), ctx);
+    assert.equal(r.status, 200);
+    assert.equal(banco.linha.origem_formulario, "orcar");
+  });
+});
+
+test("autosave /orcar grava opt-out mesmo sem mudar nenhuma resposta", async () => {
+  const inicial = { ...linha(), origem_formulario: "formulario" as const };
+  await comBanco(inicial, async (banco) => {
+    const { PATCH } = await import("./route");
+    const r = await PATCH(requisicao("PATCH", { ...base(inicial), base: base(inicial), origem_formulario: "orcar" }), ctx);
+    assert.equal(r.status, 200);
+    assert.equal(banco.linha.origem_formulario, "orcar");
+    assert.deepEqual(banco.linha.respostas, inicial.respostas);
+    assert.equal(banco.linha.status, "incompleto");
+    assert.equal(banco.filtros.length, 1);
+  });
+});
+
+test("replay de respostas já salvas acrescenta opt-out via CAS sem descartar a preferência", async () => {
+  const antiga = linha();
+  const atual = { ...linha({ ...completas, nome: "Salvo antes do ACK" }), origem_formulario: "formulario" as const };
+  await comBanco(atual, async (banco) => {
+    const { PATCH } = await import("./route");
+    const r = await PATCH(requisicao("PATCH", { ...base(atual), base: base(antiga), origem_formulario: "orcar" }), ctx);
+    assert.equal(r.status, 200);
+    assert.equal(banco.linha.origem_formulario, "orcar");
+    assert.deepEqual(banco.linha.respostas, atual.respostas);
+    assert.equal(banco.filtros.length, 1, "opt-out exige a escrita que o replay comum dispensa");
+  });
+});
+
+test("submit /orcar fecha lead normal e guarda opt-out no mesmo CAS da coluna amarela", async () => {
+  const inicial = { ...linha(), origem_formulario: "formulario" as const };
+  await comBanco(inicial, async (banco, depois) => {
+    const { POST } = await import("./submit/route");
+    banco.antesDeGravar((patch) => {
+      assert.equal(patch.status, "aguardando_revisao");
+      assert.equal(patch.origem_formulario, "orcar", "nunca conclui habilitando a proposta inicial");
+    });
+    const r = await POST(requisicao("POST", { base: base(inicial), origem_formulario: "orcar" }), ctx);
+    assert.equal(r.status, 200);
+    assert.equal(banco.linha.status, "aguardando_revisao");
+    assert.equal(banco.linha.origem_formulario, "orcar");
+    assert.equal(depois.length, 3, "padronização, notificação e tracking permanecem");
+    const replay = await POST(requisicao("POST", { base: base(inicial) }), ctx);
+    assert.equal(replay.status, 200);
+    assert.equal(banco.linha.origem_formulario, "orcar");
+    assert.equal(depois.length, 3);
+  });
+});
+
+test("PATCH e submit recusam qualquer origem que tente reativar ou inventar modalidade", async () => {
+  const { PATCH } = await import("./route");
+  const { POST } = await import("./submit/route");
+  await comBanco({ ...linha(), origem_formulario: "orcar" }, async (banco, depois) => {
+    for (const origem_formulario of ["formulario", "outro", false, null, ""]) {
+      assert.equal((await PATCH(requisicao("PATCH", { respostas: { nome: "Não gravar" }, origem_formulario }), ctx)).status, 400);
+      assert.equal((await POST(requisicao("POST", { origem_formulario }), ctx)).status, 400);
+    }
+    assert.equal(banco.filtros.length, 0);
+    assert.equal(banco.linha.origem_formulario, "orcar");
+    assert.equal(depois.length, 0);
   });
 });
