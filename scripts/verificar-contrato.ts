@@ -226,6 +226,24 @@ function cenarios(): Cenario[] {
 
   lista.push(
     cenario(
+      "casamento-civil-valor-manual",
+      "casamento",
+      "Pacote Principal",
+      (d) => {
+        d.servico.adicionais = [adicional("casamento", "casamento.civil", "Pacote Principal", { valorUnitario: 600_00 })];
+      },
+      {
+        deveConter: [
+          "Cobertura do casamento civil, no valor de R$ 600,00 (seiscentos reais).",
+          "R$ 2.090,00 (dois mil e noventa reais)",
+          "já incluído o serviço adicional",
+        ],
+      },
+    ),
+  );
+
+  lista.push(
+    cenario(
       "casamento · anuente + making of da noiva",
       "casamento",
       "Pacote Principal",

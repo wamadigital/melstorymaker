@@ -56,13 +56,15 @@ async function registrarTestes() {
   const { PainelAssinatura } = await import("./PainelAssinatura");
   const { FormPagamento } = await import("./FormPagamento");
   const { FormEvento } = await import("./FormEvento");
+  const { FormServico } = await import("./FormServico");
   const { FormQuemAssina } = await import("./FormQuemAssina");
   const { SecaoContrato } = await import("./SecaoContrato");
   const { VisualizadorPaginado } = await import("../PreviaProposta");
   const { ID, idClausula } = await import("./campos");
   const { PREFIXO_NAO_INCORPORADO } = await import("./estado");
   const { dadosContratoSchema } = await import("@/lib/contrato/tipos");
-  const { adicionalDoCatalogo, novoAdicional, pacoteDoCatalogo } = await import("@/lib/contrato/catalogo");
+  const { adicionalDoCatalogo, catalogoDaArte, novoAdicional, pacoteDoCatalogo } = await import("@/lib/contrato/catalogo");
+  const { TEMPLATES } = await import("@/lib/form/types");
   const { pagamentoDoPreset } = await import("@/lib/contrato/pagamento");
   const { montarContrato } = await import("@/lib/contrato/montar");
   type Tipos = typeof import("@/lib/contrato/tipos");
@@ -429,6 +431,58 @@ async function registrarTestes() {
       interpretacao: { textoFonte: texto, pendencias: [], grupos: [] },
     });
     assert.ok(mudado.includes("O texto mudou depois da última leitura da IA"));
+  });
+
+  test("casamento civil: a opção de incluir aparece somente no catálogo de casamento", () => {
+    for (const templateId of TEMPLATES) {
+      const pacote = catalogoDaArte(templateId).pacotes[0];
+      const dados = dadosCasamento();
+      const markup = html(
+        h(FormServico, {
+          templateId,
+          servico: { ...dados.servico, pacote: pacote.nome, escopo: pacote.escopo, adicionais: [] },
+          onServico: nada,
+          dataEvento: dados.evento.data,
+        }),
+      );
+      assert.equal(markup.includes('aria-label="Incluir Casamento civil"'), templateId === "casamento", templateId);
+      if (templateId === "casamento") {
+        assert.match(markup, /Casamento civil<\/p><p[^>]*>valor a combinar/);
+      } else {
+        assert.ok(!markup.includes("Casamento civil"), templateId);
+      }
+    }
+  });
+
+  test("casamento civil incluído: valor manual, sem quantidade e com a soma no total", () => {
+    const dados = dadosCasamento();
+    const civil = adicionalDoCatalogo("casamento", "casamento.civil");
+    assert.ok(civil);
+    const incluido = novoAdicional(civil, dados.servico.pacote, dados.servico.tabela);
+    const renderCivil = (valorUnitario: number) =>
+      html(
+        h(FormServico, {
+          templateId: "casamento",
+          servico: { ...dados.servico, valorPacote: 149000, adicionais: [{ ...incluido, valorUnitario }] },
+          onServico: nada,
+          dataEvento: dados.evento.data,
+        }),
+      );
+
+    const semValor = renderCivil(incluido.valorUnitario);
+    const campoVazio = new RegExp(`<input[^>]*id="${ID.adValor(0)}"[^>]*>`).exec(semValor)?.[0] ?? "";
+    assert.ok(campoVazio, "campo para informar o preço do civil");
+    assert.match(campoVazio, /value=""/);
+    assert.match(semValor, /Sem preço na arte: digite o combinado\./);
+    assert.ok(!semValor.includes('id="ct-ad-0-quantidade"'), "serviço com valor fechado");
+    assert.ok(!semValor.includes(`id="${ID.adMinutos(0)}"`), "sem duração de making of");
+    assert.match(semValor, /aria-label="Casamento civil: já incluído"/);
+
+    const comValor = renderCivil(60000);
+    const campoManual = new RegExp(`<input[^>]*id="${ID.adValor(0)}"[^>]*>`).exec(comValor)?.[0] ?? "";
+    assert.match(campoManual, /value="600,00"/);
+    assert.match(comValor, /Adicionais<\/dt><dd[^>]*>R\$ 600,00<\/dd>/);
+    assert.match(comValor, /Total do contrato<\/p><p[^>]*>R\$ 2\.090,00<\/p>/);
   });
 
   // ------------------------------------------------------ UI-08 e ensaio --

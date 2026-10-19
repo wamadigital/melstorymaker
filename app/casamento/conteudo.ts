@@ -103,8 +103,9 @@ export function pacotesDaLp(): PacoteLp[] {
 export function adicionaisDaLp(): string[] {
   // Só os da arte do casamento: o catálogo também devolve a locomoção e o
   // "Outro serviço", que valem para toda arte e não são opção para o lead.
+  // O casamento civil é combinado à parte no contrato e não entra na LP.
   return catalogoDaArte("casamento")
-    .adicionais.filter((a) => a.id.startsWith("casamento."))
+    .adicionais.filter((a) => a.id.startsWith("casamento.") && a.tipo !== "casamento_civil")
     .map((a) => (a.tipo === "making_of" ? a.descricaoContrato : a.nome));
 }
 

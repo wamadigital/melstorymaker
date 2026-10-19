@@ -49,6 +49,18 @@ test("adicionais: making of na forma do contrato, o resto com o nome da arte", (
   assert.ok(!a.some((x) => /locomo|outro servi/i.test(x)), `adicional que não é da arte: ${a.join(", ")}`);
 });
 
+test("casamento civil fica só no contrato e os adicionais da LP são preservados", () => {
+  const a = adicionaisDaLp();
+  assert.ok(!a.includes("Casamento civil"));
+  assert.deepEqual(a, [
+    "Hora adicional",
+    "Reels ou trend adicional",
+    "Making of da noiva",
+    "Making of do noivo",
+    "Cantinho Polaroid",
+  ]);
+});
+
 test("telefone legível a partir do MEL_WHATSAPP", () => {
   assert.equal(telefoneLegivel("5519992808396"), "(19) 99280-8396");
   assert.equal(telefoneLegivel("19992808396"), "(19) 99280-8396");

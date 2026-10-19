@@ -671,6 +671,47 @@ test("sem stories: sem a clausula do Instagram e sem o item dos stories", () => 
   );
 });
 
+test("casamento civil discrimina o valor manual e compoe o total e as parcelas sem alterar as horas do pacote", () => {
+  for (const pacote of ["Pacote Principal", "Pacote Real Time", "Personalizado"]) {
+    const dados = dadosDe("casamento", pacote, {
+      servico: { adicionais: [adicional("casamento", "casamento.civil", pacote, { valorUnitario: 60000 })] },
+    });
+    const { documento } = montarContrato(dados, contextoDe("casamento"));
+    conferirDocumento(documento, dados);
+    assert.ok(clausulaResolvida(documento, "adicionais").paragrafos.includes(
+      "A. Cobertura do casamento civil, no valor de R$ 600,00 (seiscentos reais).",
+    ));
+    const total = dados.servico.valorPacote + 60000;
+    assert.equal(totalContrato(dados.servico), total);
+    assert.equal(totalDeTabela(dados.servico, "casamento"), pacote === "Personalizado" ? null : total);
+    assert.equal(escopoEfetivo(dados.servico).minutosCobertura, dados.servico.escopo.minutosCobertura);
+    const parcelas = calcularParcelas(total, dados.pagamento.parcelas);
+    assert.equal(parcelas.reduce((s, p) => s + p.valor, 0), total);
+  }
+});
+
+test("casamento civil sem valor manual impede a geracao do contrato", () => {
+  const dados = dadosDe("casamento", "Pacote Principal", {
+    servico: { adicionais: [adicional("casamento", "casamento.civil", "Pacote Principal")] },
+  });
+  assert.deepEqual(faltantes(dados, contextoDe("casamento")), ["Valor do adicional “Cobertura do casamento civil”"]);
+  assert.throws(() => montarContrato(dados, contextoDe("casamento")), CamposFaltandoContratoError);
+});
+
+test("montagem recusa casamento civil nas outras modalidades pelo tipo ou pelo id", () => {
+  const civil = adicional("casamento", "casamento.civil", "Pacote Principal", { valorUnitario: 60000 });
+  for (const t of TEMPLATES.filter((t) => t !== "casamento")) {
+    for (const ad of [civil, { ...civil, id: "livre-1" }, { ...civil, tipo: "outro" }]) {
+      const pacote = catalogoDaArte(t).pacotes[0].nome;
+      const dados = dadosDe(t, pacote, { servico: { adicionais: [ad] } });
+      assert.ok(faltantes(dados, contextoDe(t)).includes(
+        "Casamento civil: adicional exclusivo da modalidade Casamentos. Remova-o deste contrato.",
+      ), `${t}/${ad.id}/${ad.tipo}`);
+      assert.throws(() => montarContrato(dados, contextoDe(t)), CamposFaltandoContratoError);
+    }
+  }
+});
+
 test("adicionais variados: hora extra, trend por unidade, locomocao e servico livre, com o total conferido", () => {
   const dados = dadosDe("aniversario_infantil", "Pacote Luxo", {
     servico: {

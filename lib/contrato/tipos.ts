@@ -192,6 +192,7 @@ export type EscopoEfetivo = Escopo & {
 export const TIPOS_ADICIONAL = [
   "hora_adicional",
   "making_of",
+  "casamento_civil",
   "reels",
   "trend",
   "storymaker",

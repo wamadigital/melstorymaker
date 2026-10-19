@@ -341,6 +341,7 @@ Detalhe (`/admin/leads/[id]`):
 | Status | Um botão de próximo passo e ação separada de Lead perdido; usam as mesmas regras de movimentação do quadro |
 | Qualificação | Marcação manual de Lead qualificado, independente das seis raias; confirma interesse real e compatibilidade do evento com o serviço. Exige WhatsApp válido; não depende de terminar o formulário nem de gerar proposta. Erro da marcação fica no próprio bloco e preserva respostas não salvas |
 | Contrato | Dados, texto, PDF e assinatura eletrônica, em seção própria; não altera o status do lead automaticamente. Ao terminar a assinatura, oferece mover para Virou cliente |
+| Extra de casamento civil | Somente na modalidade Casamentos, o contrato oferece o adicional opcional “Casamento civil”, com descrição editável e valor preenchido manualmente pela Mel. O valor aparece nos serviços adicionais e compõe o total e as parcelas do contrato; sem valor, a geração do texto é bloqueada |
 | Exclusão | Confirmação informa proposta, contrato e arquivos que serão removidos; contrato desconhecido exige aviso conservador sobre assinado, trilha e envio ainda aberto |
 | Falha de leitura | Lead ilegível mostra erro e retentativa; lead realmente inexistente retorna 404. Contrato ilegível bloqueia sua seção e mantém lead/proposta acessíveis |
 

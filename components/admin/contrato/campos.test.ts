@@ -101,6 +101,15 @@ test("adicional e citado pela posicao ou pela descricao, e o atalho vai para o a
   assert.equal(campoDoFaltante("Duração do adicional “Making of da noiva”", d), ID.adMinutos(1));
 });
 
+test("casamento civil de outra modalidade aponta para o bloco Servico para remover o extra", () => {
+  const civil = adicionalDoCatalogo("casamento", "casamento.civil");
+  assert.ok(civil);
+  const d = dados({ servico: { tabela: "2027", adicionais: [novoAdicional(civil, "", "2027")] } });
+  const mensagem = faltantes(d, ctx("corporativo", "corporativo")).find((f) => f.startsWith("Casamento civil:"));
+  assert.ok(mensagem);
+  assert.equal(campoDoFaltante(mensagem, d), ID.blocoServico);
+});
+
 test("frases do pagamento levam a parcela certa (pela letra) ou ao bloco", () => {
   const d = dados({});
   assert.equal(campoDoFaltante("Parcela B: informe a data de vencimento.", d), ID.pgData(1));

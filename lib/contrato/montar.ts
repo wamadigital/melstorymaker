@@ -491,6 +491,12 @@ export function faltantes(dados: DadosContrato, ctx: ContextoMontagem): string[]
 
   s.adicionais.forEach((ad, i) => {
     const nome = ad.descricao.trim() ? `“${ad.descricao.trim()}”` : `nº ${i + 1}`;
+    if (
+      (ad.tipo === "casamento_civil" || ad.id === "casamento.civil") &&
+      (ctx.categoria !== "casamento" || ctx.templateId !== "casamento")
+    ) {
+      f.push("Casamento civil: adicional exclusivo da modalidade Casamentos. Remova-o deste contrato.");
+    }
     if (vazio(ad.descricao)) f.push(`Descrição do adicional nº ${i + 1}`);
     if (ad.valorUnitario <= 0) f.push(`Valor do adicional ${nome}`);
     if (ad.tipo === "making_of" && ad.minutos <= 0) f.push(`Duração do adicional ${nome}`);
