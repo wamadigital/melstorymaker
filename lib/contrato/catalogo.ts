@@ -145,6 +145,17 @@ const CATALOGO: Record<TemplateId, ArteCatalogo> = {
     ],
     adicionais: [
       {
+        // Extra exclusivo do contrato, autorizado em 19/10/2026. Nao tem
+        // preco de tabela: o valor e sempre o que a Mel combinar e digitar.
+        id: "casamento.civil",
+        tipo: "casamento_civil",
+        nome: "Casamento civil",
+        descricaoContrato: "Cobertura do casamento civil",
+        valor: porTabela({}),
+        unidade: null,
+        observacaoArte: null,
+      },
+      {
         id: "casamento.hora_adicional",
         tipo: "hora_adicional",
         nome: "Hora adicional",

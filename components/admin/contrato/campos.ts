@@ -235,6 +235,7 @@ export function campoDoFaltante(texto: string, dados: DadosContrato): string | n
   }
 
   // --- servico
+  if (t.startsWith("Casamento civil:")) return ID.blocoServico;
   if (t === "Pacote") return ID.svPacote;
   if (t.startsWith("Valor do pacote")) return ID.svValor;
   if (t.startsWith("Valor total do contrato")) return ID.svValor;

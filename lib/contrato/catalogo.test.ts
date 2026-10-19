@@ -118,6 +118,25 @@ test("adicional por id em qualquer arte: a unidade e do item vendido, nao da art
   assert.equal(adicionalPorId("nao.existe"), null);
 });
 
+test("casamento civil e exclusivo do casamento e sempre nasce sem preco de tabela", () => {
+  const civil = adicionalDoCatalogo("casamento", "casamento.civil");
+  assert.ok(civil);
+  for (const t of TEMPLATES) {
+    assert.equal(catalogoDaArte(t).adicionais.some((a) => a.id === civil.id), t === "casamento", t);
+    assert.equal(adicionalDoCatalogo(t, civil.id) !== null, t === "casamento", t);
+  }
+  for (const tabela of TABELAS_PRECO) {
+    assert.equal(valorCatalogoAdicional(civil, "Pacote Principal", tabela), null);
+    const novo = novoAdicional(civil, "Pacote Principal", tabela);
+    assert.equal(novo.id, "casamento.civil");
+    assert.equal(novo.tipo, "casamento_civil");
+    assert.equal(novo.valorUnitario, 0, tabela);
+    assert.equal(novo.quantidade, 1);
+    assert.equal(novo.descricao, "Cobertura do casamento civil");
+  }
+  assert.equal(civil.unidade, null, "valor fechado, digitado pela Mel");
+});
+
 test("todo adicional tem nome e descricao para o contrato (exceto o 'outro', que a Mel escreve)", () => {
   for (const t of TEMPLATES) {
     const { adicionais } = catalogoDaArte(t);
