@@ -248,23 +248,30 @@ export function QuadroLeads({
       {/* grid-cols LITERAL, e nao derivado de STATUS.length: o scanner do
           Tailwind nao le string interpolada. Status novo no enum = mexer aqui e
           na FaixaDestinos. */}
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
-        {STATUS.map((status) => (
-          <Raia
-            key={status}
-            status={status}
-            coluna={colunas[status]}
-            cartoes={agrupadas[status]}
-            termo={termo}
-            aberta={aberta[status]}
-            onAlternar={() => setAberta((a) => ({ ...a, [status]: !a[status] }))}
-            arrastandoDe={colunaArrastada}
-            temProposta={!!leadArrastado?.pdf_url}
-            movendo={movendo}
-            onMover={mover}
-            agoraMs={agoraMs}
-          />
-        ))}
+      <div
+        className="w-full overflow-x-auto pb-2"
+        role="region"
+        aria-label="Quadro de leads"
+        tabIndex={0}
+      >
+        <div className="grid grid-cols-[minmax(248px,1fr)] gap-3 sm:grid-cols-[repeat(2,minmax(248px,1fr))] lg:grid-cols-[repeat(6,minmax(248px,1fr))]">
+          {STATUS.map((status) => (
+            <Raia
+              key={status}
+              status={status}
+              coluna={colunas[status]}
+              cartoes={agrupadas[status]}
+              termo={termo}
+              aberta={aberta[status]}
+              onAlternar={() => setAberta((a) => ({ ...a, [status]: !a[status] }))}
+              arrastandoDe={colunaArrastada}
+              temProposta={!!leadArrastado?.pdf_url}
+              movendo={movendo}
+              onMover={mover}
+              agoraMs={agoraMs}
+            />
+          ))}
+        </div>
       </div>
 
       <FaixaDestinos

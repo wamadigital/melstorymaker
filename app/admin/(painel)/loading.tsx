@@ -16,16 +16,18 @@ export default function CarregandoQuadro() {
         <div className="h-10 w-36 shrink-0 animate-pulse rounded-lg bg-foreground/5 sm:w-44" />
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
-        {STATUS.map((status) => (
-          <div key={status} className="overflow-hidden rounded-lg border">
-            <div className={cn("h-11", TEMA_COLUNA[status].fundo)} />
-            <div className={cn("space-y-2 p-2", TEMA_COLUNA[status].corpo)}>
-              <div className="h-20 animate-pulse rounded-lg bg-card" />
-              <div className="h-20 animate-pulse rounded-lg bg-card" />
+      <div className="w-full overflow-x-auto pb-2">
+        <div className="grid grid-cols-[minmax(248px,1fr)] gap-3 sm:grid-cols-[repeat(2,minmax(248px,1fr))] lg:grid-cols-[repeat(6,minmax(248px,1fr))]">
+          {STATUS.map((status) => (
+            <div key={status} className="overflow-hidden rounded-lg border">
+              <div className={cn("h-11", TEMA_COLUNA[status].fundo)} />
+              <div className={cn("space-y-2 p-2", TEMA_COLUNA[status].corpo)}>
+                <div className="h-20 animate-pulse rounded-lg bg-card" />
+                <div className="h-20 animate-pulse rounded-lg bg-card" />
+              </div>
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
     </div>
   );
