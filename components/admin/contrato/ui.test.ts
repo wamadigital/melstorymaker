@@ -59,7 +59,7 @@ async function registrarTestes() {
   const { FormServico } = await import("./FormServico");
   const { FormQuemAssina } = await import("./FormQuemAssina");
   const { SecaoContrato } = await import("./SecaoContrato");
-  const { VisualizadorPaginado } = await import("../PreviaProposta");
+  const { PreviaProposta, VisualizadorPaginado } = await import("../PreviaProposta");
   const { ID, idClausula } = await import("./campos");
   const { PREFIXO_NAO_INCORPORADO } = await import("./estado");
   const { dadosContratoSchema } = await import("@/lib/contrato/tipos");
@@ -572,7 +572,20 @@ async function registrarTestes() {
     assert.ok(!semPdf.includes("Ver e editar os dados do contrato"), "antes do PDF o formulario fica aberto");
   });
 
-  test("na previa do celular ha 'Abrir PDF em tela cheia' para a mesma URL, em outra aba", () => {
+  for (const documento of ["proposta", "contrato"] as const) {
+    test(`prévia de ${documento} usa canvas no desktop e celular, sem depender de iframe`, () => {
+      const url = "/api/admin/leads/x/contrato/arquivo?tipo=rascunho&v=1";
+      const markup = html(h(PreviaProposta, { url, documento }));
+      assert.match(markup, /<canvas\b/, "a prévia já monta o visualizador em qualquer largura");
+      assert.ok(!markup.includes("<iframe"), "não delega a prévia ao leitor nativo");
+      assert.match(markup, /max-w-2xl/, "a página mantém largura de leitura no desktop");
+      assert.match(markup, new RegExp(`aria-label="Página 1 d[ao] ${documento}"`));
+      assert.match(markup, /Abrir PDF em tela cheia/);
+      assert.match(markup, /href="\/api\/admin\/leads\/x\/contrato\/arquivo\?tipo=rascunho&amp;v=1"/);
+    });
+  }
+
+  test("na previa ha 'Abrir PDF em tela cheia' para a mesma URL, em outra aba", () => {
     const url = "/api/admin/leads/x/contrato/arquivo?tipo=rascunho&v=1";
     const markup = html(h(VisualizadorPaginado, { url, documento: "contrato" }));
     const link = /<a [^>]*>(?:(?!<\/a>)[\s\S])*Abrir PDF em tela cheia/.exec(markup)?.[0] ?? "";
