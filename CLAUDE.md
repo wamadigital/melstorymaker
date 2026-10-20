@@ -334,6 +334,17 @@ antes de STARTED; não há disparo automático quando o histórico amadurece.
 - **Filtro de período no quadro** (pedido do owner em 07/10/2026): select à direita da busca, na mesma linha e bem mais estreito, com "Todo o período" (o padrão, que não ocupa a URL), "Hoje", "Esta semana" e "Este mês", em `?periodo=`. Conta pela CHEGADA do lead (`created_at`) e vale igual para as seis colunas: lead de agosto enviado hoje não entra em "Hoje". O corte é a meia-noite de São Paulo, com a semana começando na segunda (`inicioDoPeriodo`, `lib/admin/periodo.ts`, com teste), porque o quadro roda em UTC na Vercel e "hoje" começaria às 21h da véspera. Com o período ao lado, o placeholder da busca virou "Buscar nome": "Buscar por nome" cortava no meio a 360-375px.
 - Nunca commitar `.env`, App Password ou service role key. Nunca expor a service role no bundle do client.
 
+## CTA da última tentativa — ajuste de 20/10/2026
+
+O card só oferece Última tentativa depois de cumprir os dois prazos: 30 dias
+desde o envio da proposta e 15 dias desde o ACK completo do primeiro lembrete
+da mesma revisão. Durante a espera, não exibir botão, frase substituta, alerta
+vermelho nem prioridade de cobrança disponível. O ícone mantém o histórico do
+que já foi enviado. O quadro agenda a releitura no vencimento mais tardio dos
+dois prazos, para a ação reaparecer sem clique de tentativa. Essa apresentação
+não substitui a validação atual de conversas, conexão e duplicidade pelo worker
+antes do envio; não fazer disparos nem consultar o WhatsApp ao renderizar cards.
+
 ## PDF: gotchas obrigatórios
 
 1. pdf-lib usa origem no canto INFERIOR esquerdo da página. Converter coordenadas vindas do Figma (origem superior esquerda): `y_pdf = alturaPagina - y_figma - tamanhoFonte`.

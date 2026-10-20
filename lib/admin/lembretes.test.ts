@@ -3,6 +3,7 @@ import { test } from "node:test";
 import {
   diasCorridos,
   estadoLembrete,
+  prazoUltimaTentativa,
   SEM_LEMBRETE,
   TEMA_COBRANCA,
   TEMA_ULTIMA_TENTATIVA,
@@ -87,6 +88,61 @@ test("cobrar apaga o alerta, e o selo diz qual cobrança foi feita", () => {
 test("aos 30 dias o alerta volta, mesmo com a cobrança de 7 dias já feita", () => {
   const cobrado7 = enviadoHa(31, { disparos_whatsapp: [ack(7, 20, 31)] });
   assert.equal(estadoLembrete(cobrado7, "enviado", AGORA).pendente, 30);
+});
+
+test("última tentativa aguarda 15 dias completos desde o primeiro ACK nas duas colunas", () => {
+  const lead = enviadoHa(45, { disparos_whatsapp: [ack(7, 15, 45)] });
+  assert.equal(prazoUltimaTentativa(lead, AGORA), AGORA);
+  for (const coluna of ["enviado", "esfriou"] as const) {
+    for (const atraso of [-1, 0, 1]) {
+      const estado = estadoLembrete(lead, coluna, AGORA + atraso);
+      assert.equal(estado.marco, 30, `${coluna}/${atraso}: conserva o marco`);
+      assert.equal(estado.cobrado, 7, `${coluna}/${atraso}: conserva o ACK e seu ícone`);
+      assert.equal(estado.pendente, atraso < 0 ? null : 30, `${coluna}/${atraso}`);
+      assert.equal(temaCobranca(coluna, estado), atraso < 0 ? null : TEMA_ULTIMA_TENTATIVA);
+    }
+  }
+});
+
+test("lead antigo que recebeu o primeiro lembrete agora não reoferece nenhuma mensagem", () => {
+  const lead = enviadoHa(60, { disparos_whatsapp: [ack(7, 0, 60)] });
+  for (const coluna of ["enviado", "esfriou"] as const) {
+    assert.deepEqual(estadoLembrete(lead, coluna, AGORA), { dias: 60, marco: 30, pendente: null, cobrado: 7 });
+  }
+  assert.equal(prazoUltimaTentativa(lead, AGORA), AGORA + 15 * DIA);
+});
+
+test("quinze dias após o ACK não antecipam os trinta dias da proposta", () => {
+  const lead = enviadoHa(29, { disparos_whatsapp: [ack(7, 20, 29)] });
+  assert.equal(prazoUltimaTentativa(lead, AGORA), AGORA + DIA);
+  for (const coluna of ["enviado", "esfriou"] as const) {
+    assert.equal(estadoLembrete(lead, coluna, AGORA).pendente, null);
+    assert.equal(estadoLembrete(lead, coluna, AGORA + DIA).pendente, 30);
+  }
+});
+
+test("ACK inválido, futuro ou anterior à proposta não libera a última tentativa", () => {
+  const lead = enviadoHa(45);
+  for (const enviado_em of ["inválido", new Date(AGORA + 1).toISOString(), new Date(AGORA - 46 * DIA).toISOString()]) {
+    const registro = { ...ack(7, 20, 45), enviado_em };
+    const candidato = { ...lead, disparos_whatsapp: [registro] };
+    assert.equal(prazoUltimaTentativa(candidato, AGORA), null, enviado_em);
+    for (const coluna of ["enviado", "esfriou"] as const) {
+      assert.equal(estadoLembrete(candidato, coluna, AGORA).pendente, 7, enviado_em);
+      assert.equal(estadoLembrete(candidato, coluna, AGORA).cobrado, null, enviado_em);
+    }
+  }
+});
+
+test("exceção de teste não prolonga a liberação nem substitui o prazo normal depois de expirar", () => {
+  const normal = enviadoHa(45, { disparos_whatsapp: [ack(7, 1, 45)] });
+  const lead = { ...normal, teste_whatsapp: { marco: 30 as const, expiraEm: new Date(AGORA + DIA).toISOString() } };
+  for (const coluna of ["enviado", "esfriou"] as const) {
+    assert.equal(estadoLembrete(lead, coluna, AGORA).pendente, 30);
+    assert.equal(estadoLembrete(lead, coluna, AGORA + DIA).pendente, null);
+    assert.equal(estadoLembrete(lead, coluna, AGORA + 14 * DIA).pendente, 30);
+  }
+  assert.equal(prazoUltimaTentativa(lead, AGORA), AGORA + 14 * DIA);
 });
 
 test("lead de mês e meio sem primeiro lembrete oferece Relembrar cliente antes da última tentativa", () => {
@@ -183,12 +239,14 @@ test("revisões separadas por microssegundos continuam distintas no cartão", ()
   const anterior = "2026-08-01T12:00:00.123455+00:00";
   assert.equal(Date.parse(proposta), Date.parse(anterior), "Date.parse descarta os microssegundos");
   const lead = { ...enviadoHa(31), enviado_em: proposta, disparos_whatsapp: [{
-    tipo: "lembrete_proposta_7d" as const, enviado_em: new Date(AGORA - DIA).toISOString(),
+    tipo: "lembrete_proposta_7d" as const, enviado_em: new Date(AGORA - 20 * DIA).toISOString(),
     proposta_enviado_em: anterior,
   }] };
   assert.equal(estadoLembrete(lead, "esfriou", AGORA).pendente, 7);
+  assert.equal(prazoUltimaTentativa(lead, AGORA), null);
   lead.disparos_whatsapp[0].proposta_enviado_em = proposta;
   assert.equal(estadoLembrete(lead, "esfriou", AGORA).pendente, 30);
+  assert.equal(prazoUltimaTentativa(lead, AGORA), Math.max(Date.parse(proposta) + 30 * DIA, AGORA - 5 * DIA));
 });
 
 test("a mensagem de cobrança leva o link da proposta de volta", () => {

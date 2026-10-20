@@ -35,6 +35,40 @@ test("trinta dias só agenda quando o primeiro ACK pertence à proposta vigente"
   })], AGORA), null, "revisões diferentes no mesmo milissegundo não servem como ACK");
 });
 
+test("agenda o fim da espera de 15 dias mesmo quando a proposta já passou dos trinta", () => {
+  for (const status of ["enviado", "esfriou"] as const) {
+    const atual = lead(45, { status, disparos_whatsapp: [ack(7, 45, 14)] });
+    assert.equal(atrasoProximaMudancaLembrete([atual], AGORA), DIA);
+    assert.equal(atrasoProximaMudancaLembrete([atual], AGORA + DIA - 1), 1);
+    assert.equal(atrasoProximaMudancaLembrete([atual], AGORA + DIA), null);
+    assert.equal(atrasoProximaMudancaLembrete([atual], AGORA + DIA + 1), null);
+  }
+});
+
+test("o timer escolhe o prazo posterior e não antecipa a liberação no trigésimo dia", () => {
+  const atual = lead(29, { disparos_whatsapp: [ack(7, 29, 1)] });
+  assert.equal(atrasoProximaMudancaLembrete([atual], AGORA), DIA, "atualiza o marco aos trinta dias");
+  assert.equal(atrasoProximaMudancaLembrete([atual], AGORA + DIA), 13 * DIA);
+  assert.equal(atrasoProximaMudancaLembrete([atual], AGORA + 14 * DIA), null);
+});
+
+test("ACK inválido, futuro ou de outra proposta não fabrica prazo futuro", () => {
+  for (const enviado_em of ["inválido", new Date(AGORA + 1).toISOString(), iso(46)]) {
+    assert.equal(atrasoProximaMudancaLembrete([lead(45, {
+      disparos_whatsapp: [{ ...ack(7, 45), enviado_em }],
+    })], AGORA), null, enviado_em);
+  }
+  assert.equal(atrasoProximaMudancaLembrete([lead(45, { disparos_whatsapp: [ack(7, 46, 20)] })], AGORA), null);
+});
+
+test("expirar o teste restaura a espera normal e depois agenda o ACK7 mais quinze dias", () => {
+  const atual = lead(45, { disparos_whatsapp: [ack(7, 45, 1)],
+    teste_whatsapp: { marco: 30, expiraEm: new Date(AGORA + DIA).toISOString() } });
+  assert.equal(atrasoProximaMudancaLembrete([atual], AGORA), DIA);
+  assert.equal(atrasoProximaMudancaLembrete([atual], AGORA + DIA), 13 * DIA);
+  assert.equal(atrasoProximaMudancaLembrete([atual], AGORA + 14 * DIA), null);
+});
+
 test("ignora demais colunas e entradas sem data válida", () => {
   for (const status of STATUS) {
     assert.equal(atrasoProximaMudancaLembrete([lead(6, { status })], AGORA),

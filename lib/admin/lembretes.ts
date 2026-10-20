@@ -24,6 +24,7 @@ import type { DisparoWhatsApp } from "@/lib/admin/tipos";
 
 export const DIAS_LEMBRETE_1 = 7;
 export const DIAS_LEMBRETE_2 = 30;
+export const DIAS_ENTRE_LEMBRETES = 15;
 
 /** Os dois marcos de cobranca. `null` = o lead nao esta em nenhum deles. */
 export type Marco = 7 | 30;
@@ -74,6 +75,28 @@ export function diasCorridos(desdeIso: string, agoraMs: number): number {
   return Math.floor((agoraMs - desde) / 86_400_000);
 }
 
+/** Somente confirmações da proposta vigente, anteriores ao instante do quadro. */
+function ultimoAckNesteEnvio(lead: CamposLembrete, tipo: DisparoWhatsApp["tipo"], agoraMs: number): number | null {
+  const enviadoMs = Date.parse(lead.enviado_em ?? "");
+  if (!Number.isFinite(enviadoMs) || !Number.isFinite(agoraMs)) return null;
+  let ultimo: number | null = null;
+  for (const disparo of lead.disparos_whatsapp ?? []) {
+    const instante = Date.parse(disparo.enviado_em);
+    // A comparação textual conserva a revisão exata, inclusive microssegundos.
+    if (disparo.tipo === tipo && disparo.proposta_enviado_em === lead.enviado_em &&
+      instante >= enviadoMs && instante <= agoraMs) ultimo = Math.max(ultimo ?? instante, instante);
+  }
+  return ultimo;
+}
+
+/** Prazo normal, sem estender ou fabricar uma autorização temporária de teste. */
+export function prazoUltimaTentativa(lead: CamposLembrete, agoraMs: number): number | null {
+  const seteMs = ultimoAckNesteEnvio(lead, "lembrete_proposta_7d", agoraMs);
+  if (seteMs === null) return null;
+  return Math.max(Date.parse(lead.enviado_em!) + DIAS_LEMBRETE_2 * 86_400_000,
+    seteMs + DIAS_ENTRE_LEMBRETES * 86_400_000);
+}
+
 /**
  * Em que ponto da cobranca este lead esta.
  *
@@ -97,16 +120,8 @@ export function estadoLembrete(
   const dias = diasCorridos(lead.enviado_em, agoraMs);
   // A marcação manual antiga não prova um envio pelo MCP. O histórico conserva
   // esses carimbos, mas a nova sequência só avança com um ACK real do worker.
-  // Ambos os carimbos de revisão vêm do mesmo banco. Comparar o texto preserva
-  // microssegundos que Date.parse truncaria. ACK tardio de outra revisão não
-  // satisfaz o pré-requisito, mesmo quando chegou depois da proposta atual.
-  const enviadoMs = Date.parse(lead.enviado_em);
-  const nesteEnvio = (tipo: DisparoWhatsApp["tipo"]) => Number.isFinite(enviadoMs) &&
-    (lead.disparos_whatsapp ?? []).some((disparo) => disparo.tipo === tipo &&
-      disparo.proposta_enviado_em === lead.enviado_em &&
-      Date.parse(disparo.enviado_em) >= enviadoMs && Date.parse(disparo.enviado_em) <= agoraMs);
-  const cobrado7 = nesteEnvio("lembrete_proposta_7d");
-  const cobrado30 = nesteEnvio("lembrete_proposta_30d");
+  const cobrado7 = ultimoAckNesteEnvio(lead, "lembrete_proposta_7d", agoraMs) !== null;
+  const cobrado30 = ultimoAckNesteEnvio(lead, "lembrete_proposta_30d", agoraMs) !== null;
   const cobrado: Marco | null = cobrado30 ? 30 : cobrado7 ? 7 : null;
   const marcoTeste = lead.teste_whatsapp && Date.parse(lead.teste_whatsapp.expiraEm) > agoraMs
     ? lead.teste_whatsapp.marco : null;
@@ -117,8 +132,14 @@ export function estadoLembrete(
     dias >= DIAS_LEMBRETE_2 && (cobrado7 || cobrado30 || marcoTeste === 30) ? 30 : dias >= DIAS_LEMBRETE_1 ? 7 : null;
 
   const jaCobrado = marco === 30 ? cobrado30 : marco === 7 ? cobrado7 : true;
+  const prazo30 = prazoUltimaTentativa(lead, agoraMs);
+  // Ter chegado ao marco de 30 dias não libera outra conversa imediatamente
+  // após o primeiro lembrete. Durante a espera, conserva ACK/ícone e não volta
+  // a oferecer o lembrete de 7 dias. O servidor revalida também o WhatsApp.
+  const aguardandoIntervalo = marco === 30 && marcoTeste !== 30 &&
+    (prazo30 === null || agoraMs < prazo30);
 
-  return { dias, marco, pendente: jaCobrado ? null : marco, cobrado };
+  return { dias, marco, pendente: jaCobrado || aguardandoIntervalo ? null : marco, cobrado };
 }
 
 /** Coluna do banco que guarda a data de cada marco. */
