@@ -5,7 +5,9 @@ import {
   type PedidoAssinatura,
   type ProvedorAssinatura,
   type ResultadoConsulta,
+  type ResultadoEnvio,
 } from "@/lib/assinatura/adapter";
+import { EnvioAssinaturaIncertoError } from "@/lib/assinatura/envio-incerto";
 import { ILoveApi, montarToken } from "@/lib/assinatura/ilovepdf";
 import { pacoteDoCatalogo, precoPacote } from "@/lib/contrato/catalogo";
 import { montarContrato } from "@/lib/contrato/montar";
@@ -120,7 +122,7 @@ test("Cancelar envio de pedido que sumiu da plataforma (404 no void e na consult
   mock.restoreAll();
 });
 
-test("Cancelar envio com o token ilegível também destrava, e manda conferir o painel da iLoveAPI", async () => {
+test("Cancelar envio com o token ilegível também destrava, e manda conferir o painel da plataforma", async () => {
   capturarLogs();
   const banco = envioAberto("registro-corrompido");
   // Sem rota nenhuma: o token ilegivel e recusado antes de qualquer chamada.
@@ -130,7 +132,7 @@ test("Cancelar envio com o token ilegível também destrava, e manda conferir o 
   const corpo = await resposta.json();
   assert.equal(corpo.registro.status, "pdf_gerado");
   assert.equal(corpo.registro.assinatura_status, "cancelado");
-  assert.match(corpo.aviso, /confira no painel da iLoveAPI/);
+  assert.match(corpo.aviso, /confira no painel da plataforma de assinatura/);
   mock.restoreAll();
 });
 
@@ -318,5 +320,333 @@ test("escrita de outra aba entre a leitura e a reserva: o contrato não é envia
   );
   assert.equal(pedidos.length, 0, "nada saiu para a plataforma");
   assert.equal(banco.linha.status, "pdf_gerado");
+  mock.restoreAll();
+});
+
+// --------------------------------------------------- envio de resultado incerto --
+
+const TOKEN_INCERTO = "assinafy-documento-ficticio-opaco";
+
+function resultadoIncerto(p: PedidoAssinatura): ResultadoEnvio {
+  return {
+    token: TOKEN_INCERTO,
+    status: "enviado",
+    signatarios: p.signatarios.map((s) => ({ ...s, status: "pendente" as const, assinadoEm: null })),
+  };
+}
+
+for (const [codigo, statusEsperado] of [
+  ["timeout", 504],
+  ["rede", 502],
+  ["resposta_invalida", 502],
+  ["http", 502],
+] as const) {
+  test(`envio incerto (${codigo}) guarda token e signatários, mantém a reserva e impede novo clique`, async () => {
+    const logs = capturarLogs();
+    const banco = contratoPjComPdf();
+    const causa = new AssinaturaError("Erro bruto: cliente-privado@example.com, CPF 123.456.789-09", {
+      codigo,
+      etapa: "assignment",
+      status: codigo === "http" ? 503 : null,
+    });
+    let chamadas = 0;
+    const cancelados: string[] = [];
+    const provedor = provedorFalso({
+      nome: "assinafy",
+      enviar: async (p) => {
+        await p.antesDeNotificar?.(resultadoIncerto(p));
+        assert.equal(banco.linha.assinatura_token, TOKEN_INCERTO, "token persistido antes de poder notificar");
+        assert.equal(banco.linha.assinatura_enviada_em, null, "preparação não afirma envio confirmado");
+        chamadas++;
+        throw new EnvioAssinaturaIncertoError(resultadoIncerto(p), causa);
+      },
+      cancelar: async (token) => { cancelados.push(token); },
+    });
+    const io = ioCom(banco, provedor);
+    const escritas: Array<Parameters<IoAssinatura["salvar"]>> = [];
+    io.salvar = async (...args) => {
+      escritas.push(args);
+      return banco.io.salvar(...args);
+    };
+
+    await assert.rejects(enviarParaAssinatura(ID, LEAD, banco.linha, io), (e) => {
+      recusa(statusEsperado, /Não consegui confirmar se os convites/)(e);
+      assert.match((e as Recusa).message, /“Atualizar status”.*“Cancelar envio”/);
+      const registro = (e as Recusa).extra.registro;
+      assert.equal(typeof registro, "object");
+      assert.ok(registro && typeof registro === "object" && !("assinatura_token" in registro), "token não sai na resposta pública");
+      assert.doesNotMatch((e as Recusa).message, /cliente-privado|123\.456|assinafy-documento/);
+      return true;
+    });
+
+    assert.equal(banco.linha.status, "enviado");
+    assert.equal(banco.linha.assinatura_provedor, "assinafy");
+    assert.equal(banco.linha.assinatura_token, TOKEN_INCERTO);
+    assert.equal(banco.linha.assinatura_status, "enviado");
+    assert.equal(banco.linha.assinatura_signatarios?.length, 2);
+    assert.equal(banco.linha.assinatura_signatarios?.[0].email, "roberto@alfa.example.com");
+    assert.equal(banco.linha.assinatura_enviada_em, null, "resultado incerto ainda não confirma a data de envio");
+    assert.equal(escritas.length, 3, "reserva, preparação e persistência; nenhuma escrita desfaz o envio");
+    assert.deepEqual(escritas[1][2], { status: ["enviado"], token: null });
+    assert.deepEqual(escritas[2][2], { status: ["enviado"], token: TOKEN_INCERTO });
+    assert.deepEqual(cancelados, [], "pedido recuperável não é cancelado automaticamente");
+
+    await assert.rejects(enviarParaAssinatura(ID, LEAD, banco.linha, io), recusa(409, /já está aguardando/));
+    assert.equal(chamadas, 1, "novo clique não repete os convites");
+    assert.ok(logs.some((linha) => linha.includes(`assinatura ${codigo === "http" ? "resposta_invalida" : codigo}`)));
+    assert.ok(!logs.some((linha) => /@|123\.456|assinafy-documento|Roberto/.test(linha)), "logs não contêm causa, token ou signatários");
+    mock.restoreAll();
+  });
+}
+
+test("erro seguro anterior ao envio desfaz a reserva e permite uma nova tentativa", async () => {
+  capturarLogs();
+  const banco = contratoPjComPdf();
+  const rejeitado = provedorFalso({
+    nome: "assinafy",
+    enviar: async () => {
+      throw new AssinaturaError("Confira os dados antes de enviar.", { codigo: "pedido_invalido", etapa: "upload" });
+    },
+  });
+
+  await assert.rejects(
+    enviarParaAssinatura(ID, LEAD, banco.linha, ioCom(banco, rejeitado)),
+    recusa(422, "Confira os dados antes de enviar."),
+  );
+  assert.equal(banco.linha.status, "pdf_gerado");
+  assert.equal(banco.linha.assinatura_token, null);
+  assert.equal(banco.linha.assinatura_enviada_em, null);
+
+  const pedidos: PedidoAssinatura[] = [];
+  const resposta = await enviarParaAssinatura(ID, LEAD, banco.linha, ioCom(banco, provedorQueEnvia(pedidos)));
+  assert.equal(resposta.status, 200);
+  assert.equal(pedidos.length, 1);
+  mock.restoreAll();
+});
+
+test("o guard impede gravar token incerto se outra aba cancelar durante o envio; o pedido órfão é cancelado", async () => {
+  capturarLogs();
+  const banco = contratoPjComPdf();
+  const cancelados: string[] = [];
+  const provedor = provedorFalso({
+    nome: "assinafy",
+    enviar: async (p) => {
+      await p.antesDeNotificar?.(resultadoIncerto(p));
+      banco.deFora({ status: "pdf_gerado", assinatura_status: "cancelado", assinatura_token: null });
+      throw new EnvioAssinaturaIncertoError(resultadoIncerto(p));
+    },
+    cancelar: async (token) => { cancelados.push(token); },
+  });
+
+  await assert.rejects(
+    enviarParaAssinatura(ID, LEAD, banco.linha, ioCom(banco, provedor)),
+    recusa(409, /contrato mudou enquanto era enviado/),
+  );
+  assert.deepEqual(cancelados, [TOKEN_INCERTO]);
+  assert.equal(banco.linha.status, "pdf_gerado");
+  assert.equal(banco.linha.assinatura_status, "cancelado");
+  assert.equal(banco.linha.assinatura_token, null, "a escrita incerta não sobrescreve o cancelamento");
+  mock.restoreAll();
+});
+
+for (const falhaCancelamento of [false, true]) {
+  test(`falha ao guardar envio incerto tenta cancelar o pedido órfão (${falhaCancelamento ? "cancelamento falha" : "cancelamento confirmado"})`, async () => {
+    const logs = capturarLogs();
+    const banco = contratoPjComPdf();
+    const cancelados: string[] = [];
+    const provedor = provedorFalso({
+      nome: "assinafy",
+      enviar: async (p) => { throw new EnvioAssinaturaIncertoError(resultadoIncerto(p)); },
+      cancelar: async (token) => {
+        cancelados.push(token);
+        if (falhaCancelamento) throw new Error("corpo privado cliente-privado@example.com");
+      },
+    });
+    const io = ioCom(banco, provedor);
+    io.salvar = async (id, patch, condicao) => {
+      if (patch.assinatura_token) throw new Error("falha de banco com cliente-privado@example.com");
+      return banco.io.salvar(id, patch, condicao);
+    };
+
+    await assert.rejects(
+      enviarParaAssinatura(ID, LEAD, banco.linha, io),
+      recusa(falhaCancelamento ? 500 : 409, falhaCancelamento ? /painel da plataforma de assinatura/ : /cancelei o envio/),
+    );
+    assert.deepEqual(cancelados, [TOKEN_INCERTO]);
+    assert.equal(banco.linha.status, "enviado", "a falha não destrava um envio possivelmente notificado");
+    assert.equal(banco.linha.assinatura_token, null);
+    assert.ok(!logs.some((linha) => /@|assinafy-documento/.test(linha)), "nem erros de banco/cancelamento expõem corpo ou token");
+    mock.restoreAll();
+  });
+}
+
+test("enquanto o provedor confirma o envio, o token já está guardado e o segundo clique é recusado", async () => {
+  capturarLogs();
+  const banco = contratoPjComPdf();
+  let pronto!: () => void;
+  const preparado = new Promise<void>((resolve) => { pronto = resolve; });
+  let concluir!: () => void;
+  const confirmacao = new Promise<void>((resolve) => { concluir = resolve; });
+  let notificacoes = 0;
+  const provedor = provedorFalso({
+    nome: "assinafy",
+    enviar: async (p) => {
+      const resultado = resultadoIncerto(p);
+      await p.antesDeNotificar?.(resultado);
+      pronto();
+      await confirmacao;
+      notificacoes++;
+      return resultado;
+    },
+  });
+  const io = ioCom(banco, provedor);
+  const enviando = enviarParaAssinatura(ID, LEAD, banco.linha, io);
+  await preparado;
+
+  assert.equal(banco.linha.status, "enviado");
+  assert.equal(banco.linha.assinatura_token, TOKEN_INCERTO);
+  assert.equal(banco.linha.assinatura_enviada_em, null);
+  await assert.rejects(enviarParaAssinatura(ID, LEAD, banco.linha, io), recusa(409, /já está aguardando/));
+  assert.equal(notificacoes, 0);
+
+  concluir();
+  const resposta = await enviando;
+  assert.equal(resposta.status, 200);
+  assert.equal(banco.linha.assinatura_token, TOKEN_INCERTO);
+  assert.ok(banco.linha.assinatura_enviada_em);
+  assert.equal(notificacoes, 1);
+  mock.restoreAll();
+});
+
+test("falha ao guardar token antes da notificação interrompe o envio e desfaz a reserva segura", async () => {
+  capturarLogs();
+  const banco = contratoPjComPdf();
+  let notificacoes = 0;
+  const provedor = provedorFalso({
+    nome: "assinafy",
+    enviar: async (p) => {
+      const resultado = resultadoIncerto(p);
+      await p.antesDeNotificar?.(resultado);
+      notificacoes++;
+      return resultado;
+    },
+  });
+  const io = ioCom(banco, provedor);
+  io.salvar = async (id, patch, condicao) => {
+    if (patch.assinatura_token) throw new Error("Banco indisponível.");
+    return banco.io.salvar(id, patch, condicao);
+  };
+
+  await assert.rejects(enviarParaAssinatura(ID, LEAD, banco.linha, io), /Banco indisponível/);
+  assert.equal(notificacoes, 0);
+  assert.equal(banco.linha.status, "pdf_gerado");
+  assert.equal(banco.linha.assinatura_token, null);
+  mock.restoreAll();
+});
+
+test("cancelamento de outra aba antes do hook impede a notificação sem sobrescrever o estado", async () => {
+  capturarLogs();
+  const banco = contratoPjComPdf();
+  let notificacoes = 0;
+  const provedor = provedorFalso({
+    nome: "assinafy",
+    enviar: async (p) => {
+      banco.deFora({ status: "pdf_gerado", assinatura_status: "cancelado" });
+      const resultado = resultadoIncerto(p);
+      await p.antesDeNotificar?.(resultado);
+      notificacoes++;
+      return resultado;
+    },
+  });
+
+  await assert.rejects(enviarParaAssinatura(ID, LEAD, banco.linha, ioCom(banco, provedor)), recusa(409, /mudou antes do envio/));
+  assert.equal(notificacoes, 0);
+  assert.equal(banco.linha.status, "pdf_gerado");
+  assert.equal(banco.linha.assinatura_status, "cancelado");
+  assert.equal(banco.linha.assinatura_token, null);
+  mock.restoreAll();
+});
+
+test("rejeição segura da notificação desfaz apenas a reserva com o token preparado", async () => {
+  capturarLogs();
+  const banco = contratoPjComPdf();
+  const provedor = provedorFalso({
+    nome: "assinafy",
+    enviar: async (p) => {
+      await p.antesDeNotificar?.(resultadoIncerto(p));
+      throw new AssinaturaError("A plataforma recusou os convites.", { codigo: "pedido_invalido", etapa: "assignment", status: 422 });
+    },
+  });
+  const io = ioCom(banco, provedor);
+  let guardaRollback: Parameters<IoAssinatura["salvar"]>[2];
+  io.salvar = async (id, patch, condicao) => {
+    if (patch.status === "pdf_gerado") guardaRollback = condicao;
+    return banco.io.salvar(id, patch, condicao);
+  };
+
+  await assert.rejects(enviarParaAssinatura(ID, LEAD, banco.linha, io), recusa(422, /recusou os convites/));
+  assert.deepEqual(guardaRollback, { status: ["enviado"], token: TOKEN_INCERTO });
+  assert.equal(banco.linha.status, "pdf_gerado");
+  assert.equal(banco.linha.assinatura_token, null);
+  mock.restoreAll();
+});
+
+for (const status of ["enviado", "concluido"] as const) {
+  test(`consulta válida confirma data de envio pendente quando o pedido está ${status}`, async () => {
+    capturarLogs();
+    const banco = envioAberto(TOKEN_INCERTO);
+    banco.deFora({ assinatura_provedor: "assinafy", assinatura_enviada_em: null });
+    const provedor = provedorFalso({
+      nome: "assinafy",
+      consultar: async () => ({ status, signatarios: [], concluidoEm: status === "concluido" ? "2026-10-20T20:00:00.000Z" : null }),
+      baixarAssinado: async () => new TextEncoder().encode("%PDF-1.7 contrato fictício assinado"),
+      baixarTrilha: async () => new TextEncoder().encode("%PDF-1.7 certificado fictício"),
+    });
+
+    const registro = await sincronizar(ID, banco.linha, ioCom(banco, provedor));
+    assert.ok(registro?.assinatura_enviada_em, "a consulta confirma o envio que antes era incerto");
+    assert.equal(banco.linha.assinatura_enviada_em, registro?.assinatura_enviada_em);
+    assert.equal(banco.linha.assinatura_enviada_em, banco.linha.assinatura_atualizada_em);
+    assert.equal(banco.linha.status, status === "concluido" ? "assinado" : "enviado");
+    mock.restoreAll();
+  });
+}
+
+for (const status of ["cancelado", "recusado", "expirado"] as const) {
+  test(`consulta ${status} não transforma preparação em envio confirmado`, async () => {
+    capturarLogs();
+    const banco = envioAberto(TOKEN_INCERTO);
+    const provedor = provedorFalso({
+      nome: "assinafy",
+      consultar: async () => ({ status, signatarios: [], concluidoEm: null }),
+    });
+
+    await sincronizar(ID, banco.linha, ioCom(banco, provedor));
+    assert.equal(banco.linha.assinatura_enviada_em, null);
+    assert.equal(banco.linha.status, "pdf_gerado");
+    mock.restoreAll();
+  });
+}
+
+test("consulta preserva a data de um envio já confirmado", async () => {
+  capturarLogs();
+  const banco = envioAberto(TOKEN_INCERTO);
+  const enviadaEm = "2026-10-19T13:00:00.000Z";
+  banco.deFora({ assinatura_enviada_em: enviadaEm });
+  await sincronizar(ID, banco.linha, ioCom(banco, provedorFalso({ nome: "assinafy" })));
+  assert.equal(banco.linha.assinatura_enviada_em, enviadaEm);
+  mock.restoreAll();
+});
+
+test("consulta sem confirmação dos convites mantém a data de envio pendente", async () => {
+  capturarLogs();
+  const banco = envioAberto(TOKEN_INCERTO);
+  const provedor = provedorFalso({
+    nome: "assinafy",
+    consultar: async () => { throw new AssinaturaError("A plataforma ainda não confirmou os convites.", { codigo: "resposta_invalida", etapa: "assignment" }); },
+  });
+  await assert.rejects(sincronizar(ID, banco.linha, ioCom(banco, provedor)), recusa(502, /não confirmou os convites/));
+  assert.equal(banco.linha.status, "enviado");
+  assert.equal(banco.linha.assinatura_enviada_em, null);
   mock.restoreAll();
 });

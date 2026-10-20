@@ -686,7 +686,7 @@ O MVP está pronto quando este cenário roda sem intervenção técnica:
 
 1. Tracking de abertura de e-mail e da proposta (exigiria migrar para um serviço transacional)
 2. Aceite da proposta na própria página (proposta como link web, PDF como derivado)
-3. Cobrança do sinal (Stripe/Pix). O contrato em si entrou no escopo em 29/09/2026, a pedido do owner: gerado no painel a partir do lead, com IA para as condições especiais e assinatura eletrônica pela iLoveAPI. Regras no CLAUDE.md, regra 8c e seção "Contrato: gotchas obrigatórios".
+3. Cobrança do sinal (Stripe/Pix). O contrato em si entrou no escopo em 29/09/2026, a pedido do owner: gerado no painel a partir do lead, com IA para as condições especiais. Em 20/10/2026, o owner autorizou substituir a iLoveAPI pela Assinafy nos novos pedidos de assinatura, mantendo confirmação manual, contratos anteriores e armazenamento privado. Envio por e-mail, sem adicionais pagos; limite do plano bloqueia novos pedidos sem contratar nada automaticamente. Regras no CLAUDE.md, regra 8c e seção "Contrato: gotchas obrigatórios".
 4. Notificação de novo lead pra Mel
 5. Funil de abandono por etapa pra otimizar as perguntas
 6. Precificação dinâmica por pacote no formulário

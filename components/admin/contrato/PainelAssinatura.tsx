@@ -126,7 +126,7 @@ export function PainelAssinatura({
             className={CLASSE_LINK_BOTAO}
           >
             <Download className="mr-1.5 size-4" />
-            Baixar trilha de auditoria
+            {registro.assinatura_provedor === "assinafy" ? "Baixar certificado de assinatura" : "Baixar trilha de auditoria"}
           </a>
         </div>
         <Signatarios registro={registro} />
@@ -148,9 +148,9 @@ export function PainelAssinatura({
     return (
       <div className="space-y-3">
         <p className="text-sm">
-          Enviado para assinatura
-          {registro.assinatura_enviada_em ? ` em ${dataHoraLocal(registro.assinatura_enviada_em)}` : ""}. Cada
-          pessoa recebe o link por e-mail; o contrato fecha quando todas assinarem.
+          {registro.assinatura_enviada_em
+            ? `Enviado para assinatura em ${dataHoraLocal(registro.assinatura_enviada_em)}. Cada pessoa recebe o link por e-mail; o contrato fecha quando todas assinarem.`
+            : "Confirmando o envio para assinatura. Use “Atualizar status” para conferir o andamento."}
         </p>
         {registro.assinatura_provedor === "dry-run" && (
           <Recado tom="atencao">

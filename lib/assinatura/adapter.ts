@@ -11,7 +11,7 @@ import type {
 } from "@/lib/contrato/tipos";
 
 // Assinatura eletronica do contrato. Mesmo desenho do MailAdapter: nenhuma rota
-// fala com a iLoveAPI direto, tudo passa por `ProvedorAssinatura`, e por isso a
+// fala com a plataforma direto, tudo passa por `ProvedorAssinatura`, e por isso a
 // trava do ASSINATURA_DRY_RUN nao tem como ser contornada por engano. O envio so
 // acontece por clique explicito da Mel (decisao do owner, 29/09/2026) -- nada
 // aqui dispara sozinho.
@@ -36,6 +36,11 @@ export type PedidoAssinatura = {
   mensagem: string;
   /** Prazo para assinar. A iLoveAPI aceita de 1 a 130. */
   diasValidade: number;
+  /**
+   * Persiste a identificacao externa antes de disparar os convites. Obrigatorio
+   * no Assinafy para recuperar o envio se a funcao cair; legado/dry run ignoram.
+   */
+  antesDeNotificar?: (resultado: ResultadoEnvio) => Promise<void>;
 };
 
 export type ResultadoEnvio = {
@@ -66,7 +71,7 @@ export type SignatarioConhecido = {
   nome?: string;
 };
 
-export const NOMES_PROVEDOR = ["ilovepdf", "dry-run"] as const;
+export const NOMES_PROVEDOR = ["assinafy", "ilovepdf", "dry-run"] as const;
 export type NomeProvedor = (typeof NOMES_PROVEDOR)[number];
 
 export interface ProvedorAssinatura {
@@ -104,7 +109,7 @@ const DIAS_VALIDADE_MAX = 130;
 export type CodigoErroAssinatura =
   /** A plataforma respondeu com erro HTTP. */
   | "http"
-  /** A conta da iLoveAPI esta sem credito de assinatura. */
+  /** O plano/saldo da plataforma nao permite o envio. */
   | "sem_creditos"
   | "timeout"
   | "rede"
@@ -170,7 +175,7 @@ export function pedidoInalcancavel(e: unknown): e is AssinaturaError {
 }
 
 /**
- * Sem chave da iLoveAPI e com o dry run desligado. Classe separada (e nao um
+ * Sem credenciais do provedor e com o dry run desligado. Classe separada (e nao um
  * AssinaturaError) porque a resposta e outra: 503, "nao configurado", e nao uma
  * falha da plataforma. Uma rota que so testasse `instanceof AssinaturaError`
  * trataria configuracao faltando como plataforma fora do ar.
@@ -470,11 +475,24 @@ function semArquivoDeTeste(etapa: string): AssinaturaError {
 
 // ---------------------------------------------------------------- fabrica --
 
-export type ConfigAssinatura = { dryRun: boolean; publicKey: string | undefined };
+export type ConfigAssinatura = {
+  dryRun: boolean;
+  /** Novos envios usam Assinafy; iLoveAPI fica disponivel para rollback. */
+  provedor?: "assinafy" | "ilovepdf";
+  apiKey?: string;
+  accountId?: string;
+  ambiente?: "production" | "sandbox";
+  /** Preservada para consultas/cancelamentos de envios legados. */
+  publicKey?: string;
+};
 
 function lerConfig(): ConfigAssinatura {
   return {
     dryRun: Boolean(env.ASSINATURA_DRY_RUN),
+    provedor: env.ASSINATURA_PROVEDOR,
+    apiKey: env.ASSINAFY_API_KEY?.trim() || undefined,
+    accountId: env.ASSINAFY_ACCOUNT_ID?.trim() || undefined,
+    ambiente: env.ASSINAFY_AMBIENTE,
     publicKey: env.ILOVEAPI_PUBLIC_KEY?.trim() || undefined,
   };
 }
@@ -486,33 +504,45 @@ export function assinaturaEmDryRun(): boolean {
 
 /**
  * Da para clicar em "Enviar para assinatura"? Sim no dry run (e assim que o
- * fluxo inteiro e testado sem conta nenhuma) e sim com a chave da iLoveAPI.
+ * fluxo inteiro e testado sem conta nenhuma) e sim com as credenciais do
+ * provedor escolhido para novos envios. Uma chave legada nao liga o Assinafy.
  * Nao, e o botao fica desabilitado com explicacao, sem nenhum dos dois.
  */
 export function assinaturaConfigurada(): boolean {
   const c = lerConfig();
-  return c.dryRun || Boolean(c.publicKey);
+  if (c.dryRun) return true;
+  return (c.provedor ?? "assinafy") === "assinafy"
+    ? Boolean(c.apiKey && c.accountId)
+    : Boolean(c.publicKey);
 }
 
 /**
- * A decisao, sem passar pelo env: exportada para teste. O cliente da iLoveAPI
- * entra por import dinamico, como o GmailAdapter -- quem so usa o dry run nao
+ * A decisao, sem passar pelo env: exportada para teste. Os clientes entram
+ * por import dinamico, como o GmailAdapter -- quem so usa o dry run nao
  * carrega o modulo.
  */
 export async function escolherProvedor(c: ConfigAssinatura): Promise<ProvedorAssinatura> {
   if (c.dryRun) return new ProvedorDryRun();
-  if (!c.publicKey) throw new AssinaturaNaoConfiguradaError();
+  if ((c.provedor ?? "assinafy") === "assinafy") {
+    if (!c.apiKey?.trim() || !c.accountId?.trim()) throw new AssinaturaNaoConfiguradaError();
+    const { Assinafy } = await import("./assinafy");
+    return new Assinafy({
+      apiKey: c.apiKey.trim(),
+      accountId: c.accountId.trim(),
+      ambiente: c.ambiente ?? "production",
+    });
+  }
+  if (!c.publicKey?.trim()) throw new AssinaturaNaoConfiguradaError();
 
   const { ILoveApi } = await import("./ilovepdf");
-  return new ILoveApi({ publicKey: c.publicKey });
+  return new ILoveApi({ publicKey: c.publicKey.trim() });
 }
 
 /**
  * Provedor para um envio NOVO: segue o ASSINATURA_DRY_RUN.
  *
  * Unico ponto do sistema que decide por onde o contrato sai. A interface
- * continua existindo com um provedor so pelo mesmo motivo do MailAdapter: o dry
- * run e troca de uma linha e nenhuma rota conhece a iLoveAPI.
+ * nao conhece as credenciais nem o protocolo de cada plataforma.
  */
 export async function criarProvedorAssinatura(): Promise<ProvedorAssinatura> {
   return escolherProvedor(lerConfig());
@@ -528,5 +558,8 @@ export async function criarProvedorAssinatura(): Promise<ProvedorAssinatura> {
  */
 export async function provedorDoToken(token: string): Promise<ProvedorAssinatura> {
   if (token.startsWith(PREFIXO_TOKEN_DRY_RUN)) return new ProvedorDryRun();
-  return escolherProvedor({ ...lerConfig(), dryRun: false });
+  // O prefixo faz parte do protocolo persistido; nunca derivar esta decisao
+  // do default de novos envios. Tokens anteriores continuam na iLoveAPI.
+  const provedor = token.startsWith("assinafy-v1|") ? "assinafy" : "ilovepdf";
+  return escolherProvedor({ ...lerConfig(), dryRun: false, provedor });
 }

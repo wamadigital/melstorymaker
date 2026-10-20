@@ -75,7 +75,9 @@ export const GET = rotaDoContrato("arquivo", async (req, id) => {
   if (!bytes) throw new Recusa(404, TIPOS[tipo].ausente);
 
   const homenageado = (registro.dados?.evento?.homenageado || lead.nome_display || "").trim();
-  const nome = homenageado ? `${TIPOS[tipo].prefixo} - ${homenageado}` : TIPOS[tipo].prefixo;
+  const prefixo = tipo === "trilha" && registro.assinatura_provedor === "assinafy"
+    ? "Certificado de assinatura" : TIPOS[tipo].prefixo;
+  const nome = homenageado ? `${prefixo} - ${homenageado}` : prefixo;
 
   return new Response(new Blob([bytes as Uint8Array<ArrayBuffer>], { type: "application/pdf" }), {
     headers: {

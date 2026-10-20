@@ -14,6 +14,7 @@ import {
   type ProvedorAssinatura,
   type ResultadoEnvio,
 } from "@/lib/assinatura/adapter";
+import { EnvioAssinaturaIncertoError } from "@/lib/assinatura/envio-incerto";
 import { assinaturasDoContrato } from "@/lib/contrato/clausulas";
 import { validarEmail } from "@/lib/contrato/documento";
 import { baseDeRedacao, type ContextoMontagem } from "@/lib/contrato/montar";
@@ -62,7 +63,7 @@ export const IO_ASSINATURA: IoAssinatura = {
 
 /**
  * Status HTTP por codigo do AssinaturaError. A mensagem ja vem humana do
- * adapter; o log leva so etapa, HTTP e codigo -- o corpo de erro da iLoveAPI
+ * adapter; o log leva so etapa, HTTP e codigo -- o corpo de erro da plataforma
  * pode ecoar e-mails de quem assina.
  */
 const STATUS_DO_ERRO: Record<CodigoErroAssinatura, number> = {
@@ -108,7 +109,7 @@ async function provedorDoEnvio(
  * porque sem ela a Mel so ve "Atualizar status" falhar para sempre.
  */
 export const MENSAGEM_PEDIDO_SUMIU =
-  "Não encontrei este envio na plataforma de assinatura: ele pode ter sido apagado pelo painel da iLovePDF. Use “Cancelar envio” para destravar o contrato e enviar de novo.";
+  "Não encontrei este envio na plataforma de assinatura: ele pode ter sido apagado pelo painel dela. Use “Cancelar envio” para destravar o contrato e enviar de novo.";
 
 /** Motivo para o LOG (sem PII): so o que aconteceu, nunca quem. */
 function motivoInalcancavel(e: AssinaturaError): string {
@@ -163,12 +164,17 @@ type EstadoAnterior = Pick<
 
 /**
  * Devolve o registro a "pdf_gerado" quando o envio nao chegou a sair. Falhar
- * aqui nao pode esconder o erro original: loga e segue. O registro fica em
- * "enviado" sem token, e o "Cancelar envio" do painel o destrava.
+ * aqui nao pode esconder o erro original: loga e segue. O registro continua
+ * em "enviado", com o token preparado se houver; "Cancelar envio" o destrava.
  */
-async function desfazerReserva(id: string, anterior: EstadoAnterior, io: IoAssinatura): Promise<void> {
+async function desfazerReserva(
+  id: string,
+  anterior: EstadoAnterior,
+  io: IoAssinatura,
+  token: string | null = null,
+): Promise<void> {
   try {
-    await io.salvar(id, { status: "pdf_gerado", ...anterior }, { status: ["enviado"], token: null });
+    await io.salvar(id, { status: "pdf_gerado", ...anterior }, { status: ["enviado"], token });
   } catch {
     console.error(`[contrato] ${id} enviar: não consegui desfazer a reserva do envio`);
   }
@@ -186,8 +192,9 @@ async function desfazerReserva(id: string, anterior: EstadoAnterior, io: IoAssin
  * cliques consegue. A reserva tambem e guardada pelo `updated_at` lido: quem
  * assina foi conferido contra ESTA leitura dos dados, e uma escrita no meio
  * (outra aba corrigindo um e-mail) invalida a conferencia. O texto fica
- * travado desde a reserva. Se o envio falhar, a reserva e desfeita; se der
- * certo, o token e gravado com o mesmo guard.
+ * travado desde a reserva. Se o envio falhar antes de poder notificar, a
+ * reserva e desfeita. Se der certo ou a resposta ficar incerta com token
+ * conhecido, o token e gravado com o mesmo guard para nao repetir o pedido.
  */
 export async function enviarParaAssinatura(
   id: string,
@@ -257,6 +264,8 @@ export async function enviarParaAssinatura(
   const homenageado = (reg.dados.evento.homenageado || lead.nome_display || "").trim();
 
   let resultado: ResultadoEnvio;
+  let envioIncerto: EnvioAssinaturaIncertoError | null = null;
+  let tokenPreparado: string | null = null;
   try {
     const pdf = await io.baixarPdf(pdf_path);
     if (!pdf) throw new Recusa(409, "Não encontrei o PDF do contrato. Gere o PDF de novo.");
@@ -274,10 +283,38 @@ export async function enviarParaAssinatura(
       assunto: ASSUNTO_ASSINATURA,
       mensagem: MENSAGEM_ASSINATURA,
       diasValidade: DIAS_VALIDADE_PADRAO,
+      antesDeNotificar: async (preparado) => {
+        // Antes de qualquer convite sair, guarda o identificador consultavel.
+        // Se a funcao cair depois deste ponto, o contrato continua reservado e
+        // uma nova chamada nao dispara outro envio. O provedor nao notifica se
+        // este callback falhar ou se outra aba ja cancelou a reserva.
+        const salvo = await io.salvar(
+          id,
+          {
+            assinatura_provedor: provedor.nome,
+            assinatura_token: preparado.token,
+            assinatura_status: preparado.status,
+            assinatura_signatarios: preparado.signatarios,
+            assinatura_atualizada_em: new Date().toISOString(),
+          },
+          { status: ["enviado"], token: null },
+        );
+        if (!salvo) {
+          throw new Recusa(409, "O contrato mudou antes do envio dos convites. Confira o estado atual antes de tentar de novo.");
+        }
+        tokenPreparado = preparado.token;
+      },
     });
   } catch (e) {
-    await desfazerReserva(id, anterior, io);
-    throw recusaDaAssinatura(e, id, "enviar") ?? e;
+    if (e instanceof EnvioAssinaturaIncertoError) {
+      // A plataforma pode ja ter notificado. Mantem a reserva e guarda o
+      // token para consultar/cancelar, nunca libera outro clique de envio.
+      resultado = e.resultado;
+      envioIncerto = e;
+    } else {
+      await desfazerReserva(id, anterior, io, tokenPreparado);
+      throw recusaDaAssinatura(e, id, "enviar") ?? e;
+    }
   }
 
   const agora = new Date().toISOString();
@@ -289,10 +326,10 @@ export async function enviarParaAssinatura(
         assinatura_token: resultado.token,
         assinatura_status: resultado.status,
         assinatura_signatarios: resultado.signatarios,
-        assinatura_enviada_em: agora,
+        assinatura_enviada_em: envioIncerto ? null : agora,
         assinatura_atualizada_em: agora,
       },
-      { status: ["enviado"], token: null },
+      { status: ["enviado"], token: tokenPreparado },
     )
     .catch(() => null);
 
@@ -308,10 +345,15 @@ export async function enviarParaAssinatura(
       console.error(`[contrato] ${id} enviar: pedido órfão na plataforma (${provedor.nome}); cancelar no painel dela`);
       throw new Recusa(
         500,
-        "O envio saiu, mas não consegui registrá-lo nem cancelá-lo. Cancele o pedido no painel da iLoveAPI antes de enviar de novo.",
+        "O pedido foi criado, mas não consegui registrá-lo nem cancelá-lo. Cancele o pedido no painel da plataforma de assinatura antes de enviar de novo.",
       );
     }
     throw new Recusa(409, "O contrato mudou enquanto era enviado, então cancelei o envio. Confira e envie de novo.");
+  }
+
+  if (envioIncerto) {
+    const recusa = recusaDaAssinatura(envioIncerto, id, "enviar")!;
+    throw new Recusa(recusa.status, recusa.message, { registro: salvo });
   }
 
   console.log(`[contrato] ${id} enviado para assinatura (${provedor.nome})`);
@@ -363,6 +405,12 @@ export async function sincronizar(
     assinatura_status: r.status,
     assinatura_signatarios: r.signatarios,
     assinatura_atualizada_em: agora,
+    // Um retorno incerto ou queda da funcao pode ter deixado apenas o token
+    // preparado. A consulta valida confirma que os convites existem; so entao
+    // marca a data de envio, preservando qualquer confirmacao anterior.
+    ...(!reg.assinatura_enviada_em && (r.status === "enviado" || r.status === "concluido")
+      ? { assinatura_enviada_em: agora }
+      : {}),
   };
   const guarda = { status: ["enviado"] as const, token };
   const salvarOuReler = async (patch: PatchContrato) =>
@@ -476,7 +524,7 @@ export async function cancelarEnvio(
         aviso:
           e.codigo === "inexistente"
             ? "O envio não existia mais na plataforma de assinatura, então foi encerrado só aqui. O texto está destravado."
-            : "O registro do envio estava corrompido, então ele foi encerrado só aqui. Antes de enviar de novo, confira no painel da iLoveAPI se o pedido antigo não ficou aberto.",
+            : "O registro do envio estava corrompido, então ele foi encerrado só aqui. Antes de enviar de novo, confira no painel da plataforma de assinatura se o pedido antigo não ficou aberto.",
       });
     }
     throw recusaDaAssinatura(e, id, "cancelar") ?? e;
