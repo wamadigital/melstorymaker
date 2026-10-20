@@ -447,16 +447,16 @@ test("so link interno que troca de pagina pede confirmacao de alteracoes nao sal
 test("dados nao salvos travam o envio, inclusive o Confirmar da confirmacao ja aberta", () => {
   // Corrigir o e-mail sem salvar nao desatualiza o texto enquanto o texto
   // salvo e o PDF sao os antigos -- mas o link iria para o e-mail velho.
-  const sujo = bloqueioDoEnvio({ editandoClausula: false, desatualizado: false, sujo: true });
+  const sujo = bloqueioDoEnvio({ editandoClausula: false, assinantesDivergentes: false, sujo: true });
   assert.ok(sujo && /não salvas/.test(sujo));
-  assert.equal(bloqueioDoEnvio({ editandoClausula: false, desatualizado: false, sujo: false }), null);
+  assert.equal(bloqueioDoEnvio({ editandoClausula: false, assinantesDivergentes: false, sujo: false }), null);
   assert.match(
-    bloqueioDoEnvio({ editandoClausula: true, desatualizado: true, sujo: true }) ?? "",
+    bloqueioDoEnvio({ editandoClausula: true, assinantesDivergentes: true, sujo: true }) ?? "",
     /cláusula que você está editando/,
   );
   assert.match(
-    bloqueioDoEnvio({ editandoClausula: false, desatualizado: true, sujo: true }) ?? "",
-    /gere o texto e o PDF de novo/,
+    bloqueioDoEnvio({ editandoClausula: false, assinantesDivergentes: true, sujo: true }) ?? "",
+    /quem assina não correspondem ao texto salvo/,
   );
 
   // O motivo e o mesmo para os dois botoes.

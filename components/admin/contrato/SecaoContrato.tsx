@@ -51,6 +51,7 @@ import type { Lead, Status } from "@/lib/form/types";
 import { TABELA_BASE } from "@/lib/pdf/precos";
 import { dataHoraLocal } from "@/lib/pdf/formatadores";
 import { cn } from "@/lib/utils";
+import { assinantesConferemComDados } from "@/lib/contrato/assinantes";
 import {
   Bloco,
   Campo,
@@ -349,6 +350,10 @@ function SecaoCarregada({
   const desatualizado = useMemo(
     () => !travado && textoDesatualizado(documento, dadosAdiados, ctx),
     [travado, documento, dadosAdiados, ctx],
+  );
+  const assinantesDivergentes = useMemo(
+    () => !!documento && (!ctx || !assinantesConferemComDados(documento, dadosAdiados, ctx)),
+    [documento, dadosAdiados, ctx],
   );
   const problemasDocumento = useMemo(() => (documento ? validarDocumento(documento) : []), [documento]);
   const avisos = useMemo(
@@ -811,13 +816,11 @@ function SecaoCarregada({
     ? "Gere o texto do contrato primeiro."
     : editandoClausula
       ? "Salve ou cancele a cláusula que você está editando."
-      : desatualizado
-        ? "Os dados mudaram depois que o texto foi gerado. Gere o texto de novo antes do PDF."
-        : problemasDocumento.length > 0
-          ? "Corrija os problemas do texto (acima) antes do PDF."
-          : clausulaIaComProblema
-            ? `A cláusula “${clausulaIaComProblema.titulo}”, escrita pela IA, tem problemas: edite o texto para liberar o PDF.`
-            : null;
+      : problemasDocumento.length > 0
+        ? "Corrija os problemas do texto (acima) antes do PDF."
+        : clausulaIaComProblema
+          ? `A cláusula “${clausulaIaComProblema.titulo}”, escrita pela IA, tem problemas: edite o texto para liberar o PDF.`
+          : null;
 
   const temPdf =
     !!registro?.pdf_gerado_em &&
@@ -913,7 +916,7 @@ function SecaoCarregada({
           rotulo="Observações para o contrato"
           dica={
             iaDisponivel
-              ? "A IA transforma isto numa cláusula no estilo dos seus contratos. Mudou as observações depois de gerar o texto? Gere o texto de novo para a cláusula acompanhar."
+              ? "A IA usa estas observações ao gerar o texto. Alterações aqui não mudam o texto já salvo: você pode editar as condições especiais diretamente no contrato, preservando as demais edições."
               : "A IA não está configurada neste ambiente: as observações ficam salvas, mas não viram cláusula sozinhas. Você pode escrever a cláusula no texto do contrato."
           }
         >
@@ -1112,10 +1115,10 @@ function SecaoCarregada({
           }
         >
           {desatualizado && (
-            <Recado tom="atencao">
-              Os dados mudaram depois que este texto foi gerado. Toque em “Gerar o texto de novo” para refazer
-              o texto com os dados atuais.
-            </Recado>
+            <p className="text-sm text-muted-foreground">
+              Os campos foram alterados. O PDF usará o texto salvo abaixo, incluindo suas edições manuais.
+              Confira o texto antes de gerar o arquivo; ele não será reescrito automaticamente.
+            </p>
           )}
           {progressoEm("texto")}
           {recadoEm("texto")}
@@ -1176,6 +1179,11 @@ function SecaoCarregada({
               </a>
             )}
           </div>
+          {!travado && (
+            <p className="text-xs text-muted-foreground">
+              Usa o texto salvo do contrato, incluindo as edições manuais. Não gera um novo texto nem usa IA.
+            </p>
+          )}
           {!travado && motivoSemPdf && <p className="text-xs text-muted-foreground">{motivoSemPdf}</p>}
           {!temPdf && registro?.pdf_gerado_em && !travado && (
             <p className="text-xs text-muted-foreground">
@@ -1205,7 +1213,7 @@ function SecaoCarregada({
               statusLead={statusLead}
               assinaturaConfigurada={assinaturaConfigurada}
               assinaturaDryRun={assinaturaDryRun}
-              bloqueioEnvio={bloqueioDoEnvio({ editandoClausula, desatualizado, sujo })}
+              bloqueioEnvio={bloqueioDoEnvio({ editandoClausula, assinantesDivergentes, sujo })}
               acao={
                 acao === "enviar" || acao === "consultar" || acao === "cancelar" || acao === "mover"
                   ? acao

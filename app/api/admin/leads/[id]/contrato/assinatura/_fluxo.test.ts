@@ -312,7 +312,7 @@ for (const marcaAnterior of ["iLovePDF", "iLoveAPI"]) {
 
     await assert.rejects(
       enviarParaAssinatura(ID, LEAD, antes, io),
-      recusa(409, /Gere o texto e o PDF de novo antes de enviar pelo Assinafy/),
+      recusa(409, /Edite essa cláusula e gere o PDF de novo antes de enviar pelo Assinafy/),
     );
     assert.equal(salvar.mock.callCount(), 0, "nem a reserva foi gravada");
     assert.equal(baixarPdf.mock.callCount(), 0, "nenhum arquivo foi acessado");
@@ -337,6 +337,35 @@ test("contratante PJ vai à plataforma com o nome do representante; a razão soc
   assert.ok(!pedidos[0].signatarios.some((s) => /Ltda/.test(s.nome)));
   // No bloco impresso a parte continua sendo a empresa.
   assert.equal(banco.linha.documento?.assinaturas[0].nome, "Alfa Eventos Fictícios Ltda.");
+  assert.equal(banco.linha.status, "enviado");
+  mock.restoreAll();
+});
+
+test("envio usa o PDF do texto manual mesmo quando valor e data dos dados mudaram", async () => {
+  capturarLogs();
+  const banco = contratoPjComPdf();
+  const documento = banco.linha.documento!;
+  const dados = banco.linha.dados;
+  documento.clausulas[0] = {
+    ...documento.clausulas[0],
+    origem: "editada",
+    paragrafos: ["Texto fictício conferido e editado manualmente pela Mel."],
+  };
+  dados.servico.valorPacote += 50000;
+  dados.evento.data = "2027-06-01";
+  const pdf = pdfDe(documento);
+  banco.arquivos.set(banco.linha.pdf_path!, pdf.bytes);
+  banco.deFora({ dados, documento, pdf_sha256: sha256Hex(pdf.bytes) });
+  const pedidos: PedidoAssinatura[] = [];
+
+  const resposta = await enviarParaAssinatura(ID, LEAD, banco.linha, ioCom(banco, provedorQueEnvia(pedidos)));
+
+  assert.equal(resposta.status, 200);
+  assert.equal(pedidos.length, 1);
+  assert.deepEqual(pedidos[0].pdf, pdf.bytes, "a plataforma falsa recebe o PDF do texto que a Mel conferiu");
+  assert.deepEqual(banco.linha.documento, documento, "nenhuma clausula foi remontada pelos dados");
+  assert.equal(pedidos[0].signatarios[0].nome, "Roberto Alves Exemplo");
+  assert.equal(pedidos[0].signatarios[0].email, "roberto@alfa.example.com");
   assert.equal(banco.linha.status, "enviado");
   mock.restoreAll();
 });

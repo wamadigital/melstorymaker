@@ -555,6 +555,64 @@ async function registrarTestes() {
 
   // ------------------------------------------------------------- UI-09 --
 
+  function botaoPeloTexto(markup: string, texto: string): string {
+    const botao = markup.match(/<button\b[^>]*>[\s\S]*?<\/button>/g)?.find((b) => b.includes(texto));
+    assert.ok(botao, `botão ${texto} presente`);
+    return botao;
+  }
+
+  function comTextoManualEDadosAlterados(status: "redigido" | "pdf_gerado"): RegistroContrato {
+    const reg = registro(status);
+    reg.dados.servico.valorPacote += 20000;
+    reg.dados.evento.data = "2027-08-21";
+    const prazo = reg.documento!.clausulas.find((c) => c.id === "prazos")!;
+    prazo.paragrafos = ["Entrega combinada manualmente pela Mel em doze dias úteis."];
+    prazo.origem = "editada";
+    return reg;
+  }
+
+  test("PDF usa o texto manual salvo mesmo depois de alterar valor e data nos campos", () => {
+    const reg = comTextoManualEDadosAlterados("redigido");
+    const textoAntes = JSON.stringify(reg.documento);
+    const markup = comRoteador(h(SecaoContrato, { lead: LEAD_CASAMENTO, registro: reg, ...FLAGS }));
+    assert.doesNotMatch(botaoPeloTexto(markup, "Gerar PDF"), /\bdisabled=""/);
+    assert.match(markup, /Entrega combinada manualmente pela Mel em doze dias úteis\./);
+    assert.match(markup, /O PDF usará o texto salvo abaixo, incluindo suas edições manuais/);
+    assert.doesNotMatch(markup, /Toque em “Gerar o texto de novo”|Gere o texto de novo antes do PDF/);
+    assert.match(
+      botaoPeloTexto(markup, "Revisar de novo com IA"), /\bdisabled=""/,
+      "a revisão por IA mantém a proteção de anonimização para dados divergentes",
+    );
+    assert.equal(JSON.stringify(reg.documento), textoAntes, "não remonta nem substitui o texto salvo");
+  });
+
+  test("valor/data diferentes do modelo não bloqueiam enviar o PDF conferido do texto manual", () => {
+    const reg = comTextoManualEDadosAlterados("pdf_gerado");
+    const markup = comRoteador(h(SecaoContrato, { lead: LEAD_CASAMENTO, registro: reg, ...FLAGS }));
+    assert.doesNotMatch(botaoPeloTexto(markup, "Gerar o PDF de novo"), /\bdisabled=""/);
+    assert.doesNotMatch(botaoPeloTexto(markup, "Enviar para assinatura"), /\bdisabled=""/);
+  });
+
+  test("e-mail de assinante alterado permite compilar o texto, mas bloqueia envio ao destinatário divergente", () => {
+    const reg = comTextoManualEDadosAlterados("pdf_gerado");
+    reg.dados.contratante.pf.email = "outro.destinatario@exemplo.com.br";
+    const markup = comRoteador(h(SecaoContrato, { lead: LEAD_CASAMENTO, registro: reg, ...FLAGS }));
+    assert.doesNotMatch(botaoPeloTexto(markup, "Gerar o PDF de novo"), /\bdisabled=""/);
+    assert.match(botaoPeloTexto(markup, "Enviar para assinatura"), /\bdisabled=""/);
+    assert.match(markup, /Os dados de quem assina não correspondem ao texto salvo/);
+  });
+
+  test("cláusula da IA ainda com problemas continua bloqueando o PDF", () => {
+    const reg = comTextoManualEDadosAlterados("redigido");
+    reg.documento!.clausulas.push({
+      id: "condicoes_especiais", titulo: "DAS CONDIÇÕES ESPECIAIS", origem: "ia",
+      paragrafos: ["Condição ainda não conferida."], problemas: ["Prazo sem origem nos dados."],
+    });
+    const markup = comRoteador(h(SecaoContrato, { lead: LEAD_CASAMENTO, registro: reg, ...FLAGS }));
+    assert.match(botaoPeloTexto(markup, "Gerar PDF"), /\bdisabled=""/);
+    assert.match(markup, /edite o texto para liberar o PDF/);
+  });
+
   test("com o PDF gerado o formulario fica recolhido em 'Ver e editar os dados do contrato'", () => {
     const markup = comRoteador(h(SecaoContrato, { lead: LEAD_CASAMENTO, registro: registro("pdf_gerado"), ...FLAGS }));
     const i = markup.indexOf("<details");

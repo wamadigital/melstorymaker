@@ -20,6 +20,8 @@ function problemasDaIa(doc: DocumentoContrato): string[] {
 
 /**
  * POST /api/admin/leads/[id]/contrato/pdf -- "Gerar PDF".
+ * Compila exclusivamente o documento salvo que o painel exibe. Os campos
+ * podem ter mudado: nao remontar o modelo nem sobrescrever edicoes manuais.
  *
  * Bloqueia (422, com a lista) se o texto nao valida ou se ha clausula da IA
  * com problema: um numero que nao existe nos dados ou um trecho que o CDC
