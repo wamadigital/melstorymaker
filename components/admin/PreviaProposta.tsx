@@ -229,9 +229,10 @@ export function VisualizadorPaginado({ url, documento }: { url: string; document
   }
 
   return (
-    <div className="mx-auto w-full max-w-2xl space-y-3">
+    <div className="mx-auto w-full max-w-2xl space-y-3 sm:max-w-[min(42rem,calc(70vh*595/842))]">
       {/* A caixa tem a proporcao da pagina e o canvas usa object-contain: a
-          pagina aparece inteira, sem rolagem propria e sem corte. */}
+          pagina aparece inteira, sem rolagem propria e sem corte. No desktop
+          a largura tambem encaixa a pagina em 70% da altura da janela. */}
       <div
         ref={caixaRef}
         onTouchStart={iniciarToque}

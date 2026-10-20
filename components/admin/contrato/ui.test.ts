@@ -579,6 +579,11 @@ async function registrarTestes() {
       assert.match(markup, /<canvas\b/, "a prévia já monta o visualizador em qualquer largura");
       assert.ok(!markup.includes("<iframe"), "não delega a prévia ao leitor nativo");
       assert.match(markup, /max-w-2xl/, "a página mantém largura de leitura no desktop");
+      assert.ok(
+        markup.includes("sm:max-w-[min(42rem,calc(70vh*595/842))]"),
+        "acima de 640px a página A4 também cabe em 70% da altura da janela",
+      );
+      assert.match(markup, /\bw-full\b/, "o celular mantém a largura disponível");
       assert.match(markup, new RegExp(`aria-label="Página 1 d[ao] ${documento}"`));
       assert.match(markup, /Abrir PDF em tela cheia/);
       assert.match(markup, /href="\/api\/admin\/leads\/x\/contrato\/arquivo\?tipo=rascunho&amp;v=1"/);
