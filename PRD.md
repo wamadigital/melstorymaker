@@ -321,7 +321,7 @@ Quadro (`/admin`):
 | Busca e filtros | Busca pelo nome do sujeito do evento, categoria e período de chegada (Todo o período, Hoje, Esta semana, Este mês), mantidos na URL. A semana começa na segunda-feira e os cortes usam São Paulo |
 | Ordem e limite | Mais novos primeiro em todas as raias; até 50 cartões por raia, com contagem total e aviso quando existem outros resultados |
 | Movimentação | Arraste ou menu do cartão; não permite voltar para Novo. Enviado e Esfriou exigem PDF; Cliente e Perdido não exigem. Uma tela desatualizada recebe aviso e recarrega o estado real |
-| Desktop e celular | Seis colunas no desktop, duas no tablet e seções recolhíveis empilhadas no celular. Lead perdido começa recolhida no celular; Esfriou começa aberta |
+| Desktop e celular | Kanban ocupa toda a largura da tela, sem limite máximo no painel. Cada coluna tem largura mínima de 248 px e se expande com o espaço disponível. São seis colunas no desktop, duas no tablet e seções recolhíveis empilhadas no celular; quando necessário, a rolagem horizontal fica dentro do quadro. Lead perdido começa recolhida no celular; Esfriou começa aberta |
 | Cores | Novo em slate, revisão em âmbar, Enviado em azul, Cliente em verde, Esfriou em cinza frio e Perdido em stone. Aos 30 dias do envio, cobrança pendente deixa o cartão vermelho |
 | Contato de abandono | Em Novo e com WhatsApp válido, a conversa abre vazia; a caixa “já chamei” silencia o botão. Com e-mail, o lembrete explícito da Mel permite continuar o formulário e trava por sete dias |
 | Cobrança da proposta | Somente em Enviado e Esfriou, aos sete e 30 dias do envio. Cobrança marcada silencia o cartão; reenviar por e-mail reinicia a contagem sem apagar os carimbos anteriores, que deixam de silenciar o novo envio |

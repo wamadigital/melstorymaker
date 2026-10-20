@@ -45,7 +45,7 @@ export function ColunaKanban({
     <section
       ref={refDrop}
       className={cn(
-        "flex flex-col overflow-hidden rounded-lg border transition-all",
+        "flex min-w-[248px] flex-col overflow-hidden rounded-lg border transition-all",
         alvo && "ring-2 ring-inset",
         alvo && tema.alvo,
         apagada && "opacity-50",
@@ -67,8 +67,7 @@ export function ColunaKanban({
           )}
         >
           <span aria-hidden className={cn("size-2 shrink-0 rounded-sm", tema.ponto)} />
-          {/* `title`: com seis colunas, "Aguardando revisão" corta em telas de
-              ~1280px. O leitor de tela ja le o texto inteiro. */}
+          {/* O título completo continua disponível mesmo quando truncado. */}
           <span title={ROTULO_STATUS[status]} className={cn("truncate text-sm font-semibold", tema.titulo)}>
             {ROTULO_STATUS[status]}
           </span>
@@ -91,7 +90,7 @@ export function ColunaKanban({
           "space-y-2 p-2",
           // Rolagem so no desktop: no mobile quem rola e a pagina, senao a
           // secao viraria uma caixinha rolavel dentro de outra.
-          "sm:flex-1 sm:overflow-y-auto sm:overscroll-contain",
+          "sm:flex-1 sm:overflow-y-auto sm:overscroll-y-contain",
           tema.corpo,
           !aberta && "hidden sm:block",
         )}
