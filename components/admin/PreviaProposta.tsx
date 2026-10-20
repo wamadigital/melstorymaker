@@ -5,11 +5,8 @@ import { ChevronLeft, ChevronRight, Loader2, Maximize2 } from "lucide-react";
 import type { PDFDocumentLoadingTask, PDFDocumentProxy, RenderTask } from "pdfjs-dist";
 import { Button } from "@/components/ui/button";
 
-// O mesmo `sm` do Tailwind: acima disso vale o <iframe>, abaixo o nosso.
-const LARGURA_SM = 640;
-
 // A mesma previa serve a proposta e o contrato. O nome entra no titulo do
-// iframe (leitor de tela), na navegacao e nos recados de erro -- e "contrato"
+// visualizador, na navegacao e nos recados de erro -- e "contrato"
 // e masculino, entao o artigo vem junto em vez de ser montado na hora.
 const NOMES = {
   proposta: { da: "da proposta", a: "a proposta" },
@@ -20,54 +17,12 @@ type DocumentoPrevia = keyof typeof NOMES;
 /**
  * Previa da proposta no painel.
  *
- * No desktop continua o <iframe>: o visualizador nativo do navegador da rolagem
- * continua, zoom e impressao de graca, e ali ele funciona.
- *
- * No celular ele NAO funciona: o WebKit desenha o PDF dentro do iframe como uma
- * miniatura de uma pagina so, com barra de rolagem propria e sem jeito de
- * chegar nas outras paginas. Por isso abaixo de 640px a previa e desenhada por
- * nos, pagina inteira e uma de cada vez, com paginacao embaixo.
+ * PDF.js desenha a mesma previa em todas as larguras. O leitor nativo dentro
+ * de um iframe pode ficar cinza no desktop e limitar a navegacao no celular;
+ * aqui os erros de carga aparecem e a paginacao funciona nos dois casos.
  */
 export function PreviaProposta({ url, documento = "proposta" }: { url: string; documento?: DocumentoPrevia }) {
-  const [celular, setCelular] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    const raiz = document.documentElement;
-    const aplicar = () => setCelular(raiz.clientWidth < LARGURA_SM);
-    aplicar();
-
-    // Dois gatilhos de proposito. O matchMedia e o caminho canonico, mas o
-    // `change` dele nao chega em todo lugar (emulacao de dispositivo e parte
-    // dos WebView nao reavaliam a media); o ResizeObserver pega a mudanca de
-    // tamanho de fato. Quem decide e sempre o clientWidth, entao os dois
-    // chegando juntos so recalculam o mesmo valor.
-    const mq = window.matchMedia(`(max-width: ${LARGURA_SM - 1}px)`);
-    mq.addEventListener("change", aplicar);
-    const ro = new ResizeObserver(aplicar);
-    ro.observe(raiz);
-
-    return () => {
-      mq.removeEventListener("change", aplicar);
-      ro.disconnect();
-    };
-  }, []);
-
-  // Enquanto nao sabemos a largura, uma caixa do tamanho certo: evita o pulo do
-  // layout e impede que o iframe carregue o PDF a toa no celular.
-  if (celular === null) {
-    return <div className="aspect-[595/842] w-full rounded-lg border bg-muted sm:aspect-auto sm:h-[70vh]" />;
-  }
-
-  if (celular) return <VisualizadorPaginado url={url} documento={documento} />;
-
-  return (
-    <iframe
-      key={url}
-      src={url}
-      title={`Prévia ${NOMES[documento].da}`}
-      className="h-[70vh] w-full rounded-lg border bg-muted"
-    />
-  );
+  return <VisualizadorPaginado url={url} documento={documento} />;
 }
 
 // Acima disso a memoria do canvas cresce sem ninguem enxergar diferenca: a arte
@@ -173,6 +128,8 @@ export function VisualizadorPaginado({ url, documento }: { url: string; document
   }, [url]);
 
   // ----------------------------------------------------------------- medicao
+  // O erro troca a caixa pelo recado. Ao tentar outra URL, ela volta ao DOM
+  // e precisa ser medida/observada de novo, sem reutilizar o no removido.
   useEffect(() => {
     const caixa = caixaRef.current;
     if (!caixa) return;
@@ -181,7 +138,7 @@ export function VisualizadorPaginado({ url, documento }: { url: string; document
     const ro = new ResizeObserver(([entrada]) => setLargura(entrada.contentRect.width));
     ro.observe(caixa);
     return () => ro.disconnect();
-  }, []);
+  }, [erro]);
 
   // ------------------------------------------------------------------ pintura
   useEffect(() => {
@@ -272,16 +229,22 @@ export function VisualizadorPaginado({ url, documento }: { url: string; document
   }
 
   return (
-    <div className="space-y-3">
+    <div className="mx-auto w-full max-w-2xl space-y-3 sm:max-w-[min(42rem,calc(70vh*595/842))]">
       {/* A caixa tem a proporcao da pagina e o canvas usa object-contain: a
-          pagina aparece inteira, sem rolagem propria e sem corte. */}
+          pagina aparece inteira, sem rolagem propria e sem corte. No desktop
+          a largura tambem encaixa a pagina em 70% da altura da janela. */}
       <div
         ref={caixaRef}
         onTouchStart={iniciarToque}
         onTouchEnd={terminarToque}
         className="relative aspect-[595/842] w-full overflow-hidden rounded-lg border bg-muted"
       >
-        <canvas ref={canvasRef} className="size-full object-contain" />
+        <canvas
+          ref={canvasRef}
+          role="img"
+          aria-label={`Página ${pagina} ${NOMES[documento].da}`}
+          className="size-full object-contain"
+        />
 
         {pintando && (
           <div className="absolute inset-0 grid place-items-center bg-muted/70">

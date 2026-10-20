@@ -336,7 +336,7 @@ Detalhe (`/admin/leads/[id]`):
 | Respostas | Campos editáveis derivados da árvore do formulário e botão Salvar respostas; editar não substitui sozinho o PDF existente |
 | Contato | E-mail e WhatsApp do lead; Chamar no WhatsApp somente em Novo, com número válido e sem proposta gerada |
 | Proposta | Gerar/Regerar, preview, enviar por e-mail, enviar via WhatsApp e baixar PDF. E-mail exige PDF e endereço cadastrado; WhatsApp da proposta exige PDF |
-| Preview | Visualizador nativo em iframe no desktop; PDF paginado em canvas abaixo de 640px, com abertura em tela cheia |
+| Preview | PDF.js em canvas paginado em todas as larguras, tanto na proposta quanto no contrato, com abertura em tela cheia. Abaixo de 640px usa a largura disponível; no desktop limita a largura a 672px e encaixa a página em até 70% da altura da janela. Falhas de carga/renderização mostram mensagem em vez de uma área cinza |
 | Histórico | Datas de geração e envio, no fuso de São Paulo |
 | Status | Um botão de próximo passo e ação separada de Lead perdido; usam as mesmas regras de movimentação do quadro |
 | Qualificação | Marcação manual de Lead qualificado, independente das seis raias; confirma interesse real e compatibilidade do evento com o serviço. Exige WhatsApp válido; não depende de terminar o formulário nem de gerar proposta. Erro da marcação fica no próprio bloco e preserva respostas não salvas |
