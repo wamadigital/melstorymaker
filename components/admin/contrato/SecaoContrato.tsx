@@ -666,7 +666,14 @@ function SecaoCarregada({
     let enviou = false;
     await executar("enviar", "assinatura", async () => {
       const r = await chamar<{ registro: RegistroContrato; dryRun?: boolean }>(`${base}/assinatura`, "POST");
-      if (!r.ok) return falhou("assinatura", r);
+      if (!r.ok) {
+        falhou("assinatura", r);
+        // Uma resposta incerta pode ja ter guardado o pedido. Rele o registro
+        // publico para trocar o botao de envio pelas acoes de conferir/cancelar,
+        // sem anunciar sucesso nem repetir o POST. O 409 ja relê em `falhou`.
+        if (r.status !== 409) await recarregar();
+        return;
+      }
       aplicarRegistro(r.json.registro);
       enviou = true;
       // Em dry run o proprio painel ja mostra "Envio de teste": um segundo

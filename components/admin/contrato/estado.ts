@@ -417,7 +417,7 @@ export function motivoSemEnvio(opcoes: {
   rotulosComEmailInvalido: readonly string[];
 }): string | null {
   if (!opcoes.assinaturaConfigurada) {
-    return "A assinatura eletrônica não está configurada neste ambiente (falta a chave da iLoveAPI).";
+    return "A assinatura eletrônica não está configurada neste ambiente. Confira as credenciais do provedor no servidor.";
   }
   if (opcoes.bloqueioEnvio) return opcoes.bloqueioEnvio;
   if (opcoes.rotulosComEmailInvalido.length > 0) {

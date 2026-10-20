@@ -36,6 +36,10 @@ process.env.MAIL_DRY_RUN = "1";
 process.env.APP_URL = "https://melstorymaker.com.br";
 process.env.MEL_WHATSAPP = "5519988887777";
 process.env.ASSINATURA_DRY_RUN = "1";
+process.env.ASSINATURA_PROVEDOR = "assinafy";
+process.env.ASSINAFY_API_KEY = "test-api-key-never-sent";
+process.env.ASSINAFY_ACCOUNT_ID = "account-ficticia";
+process.env.ASSINAFY_AMBIENTE = "sandbox";
 delete process.env.ILOVEAPI_PUBLIC_KEY;
 delete process.env.ILOVEAPI_SECRET_KEY;
 
@@ -321,12 +325,22 @@ test("dry run recusa token de envio de verdade em vez de fingir que cancelou", a
 // ------------------------------------------------------------------ fabrica --
 
 test("com dry run ligado o provedor é sempre o de teste, mesmo com chave", async () => {
-  assert.equal((await escolherProvedor({ dryRun: true, publicKey: "project_public_x" })).nome, "dry-run");
+  assert.equal((await escolherProvedor({ dryRun: true, provedor: "ilovepdf", publicKey: "project_public_x" })).nome, "dry-run");
+  assert.equal((await escolherProvedor({ dryRun: true, apiKey: "api-key", accountId: "conta" })).nome, "dry-run");
   assert.equal((await escolherProvedor({ dryRun: true, publicKey: undefined })).nome, "dry-run");
 });
 
-test("sem dry run e sem chave, a assinatura não está configurada", async () => {
-  await assert.rejects(escolherProvedor({ dryRun: false, publicKey: undefined }), (e) => {
+test("sem dry run e sem credenciais do provedor escolhido, a assinatura não está configurada", async () => {
+  const configs = [
+    { dryRun: false },
+    { dryRun: false, apiKey: "api-key" },
+    { dryRun: false, accountId: "conta" },
+    { dryRun: false, apiKey: " ", accountId: "conta" },
+    // Uma chave iLoveAPI antiga nao ativa nem substitui o Assinafy.
+    { dryRun: false, publicKey: "project_public_x" },
+    { dryRun: false, provedor: "ilovepdf" as const, publicKey: undefined },
+  ];
+  for (const c of configs) await assert.rejects(escolherProvedor(c), (e) => {
     assert.ok(e instanceof AssinaturaNaoConfiguradaError);
     // Nao e AssinaturaError: a rota responde 503, e nao "plataforma fora do ar".
     assert.ok(!(e instanceof AssinaturaError));
@@ -335,8 +349,19 @@ test("sem dry run e sem chave, a assinatura não está configurada", async () =>
   });
 });
 
-test("sem dry run e com chave, o provedor é a iLoveAPI", async () => {
-  const provedor = await escolherProvedor({ dryRun: false, publicKey: "project_public_x" });
+test("novos envios usam Assinafy por padrão sem tocar na rede", async () => {
+  const rede = mock.method(globalThis, "fetch", () => { throw new Error("nenhuma chamada esperada"); });
+  try {
+    const provedor = await escolherProvedor({ dryRun: false, apiKey: "api-key", accountId: "conta" });
+    assert.equal(provedor.nome, "assinafy");
+    assert.equal(rede.mock.callCount(), 0);
+  } finally {
+    rede.mock.restore();
+  }
+});
+
+test("rollback explícito seleciona iLoveAPI, mesmo com Assinafy configurado", async () => {
+  const provedor = await escolherProvedor({ dryRun: false, provedor: "ilovepdf", publicKey: "project_public_x", apiKey: "api-key", accountId: "conta" });
   assert.equal(provedor.nome, "ilovepdf");
 });
 
@@ -358,6 +383,9 @@ test("o env do desenvolvimento (dry run, sem chave) libera o botão e usa o prov
 
 test("envio existente segue o provedor que o fez, não o env de agora", { skip: envSemAssinatura }, async () => {
   assert.equal((await provedorDoToken("dry-1234")).nome, "dry-run");
+  // O dry run so afeta novos envios. O token Assinafy existente conserva seu
+  // provedor, e a fabrica nao consulta nem envia nada ao criar a instancia.
+  assert.equal((await provedorDoToken("assinafy-v1|eyJhY2NvdW50SWQiOiJhY2NvdW50LWZpY3RpY2lhIn0")).nome, "assinafy");
   // Token de verdade com o dry run ligado vai para a iLoveAPI -- que aqui nao
   // tem chave, entao a resposta honesta e "nao configurada", nunca o dry run.
   await assert.rejects(provedorDoToken("api84.ilovepdf.com|tr-abc"), AssinaturaNaoConfiguradaError);

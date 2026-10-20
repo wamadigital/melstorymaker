@@ -65,7 +65,14 @@ const schema = z
     // inteira e levar junto o PDF da proposta e o e-mail.
     ANTHROPIC_API_KEY: z.string().optional(),
 
-    // --- Contrato: assinatura eletronica (iLoveAPI) --------------------------
+    // --- Contrato: assinatura eletronica ------------------------------------
+    // Default para NOVOS envios. Consultas e cancelamentos usam o provedor do
+    // token persistido, mesmo quando este seletor ou o dry run mudam.
+    ASSINATURA_PROVEDOR: z.enum(["assinafy", "ilovepdf"]).default("assinafy"),
+    ASSINAFY_API_KEY: z.string().optional(),
+    ASSINAFY_ACCOUNT_ID: z.string().optional(),
+    ASSINAFY_AMBIENTE: z.enum(["production", "sandbox"]).default("production"),
+    // iLoveAPI legada: nao remover enquanto houver envios nesse provedor.
     // Todas opcionais. Sem a chave publica e com o dry run desligado, o botao
     // "Enviar para assinatura" fica desabilitado com explicacao, e a rota
     // responde 503. A secreta so seria usada para assinar o JWT localmente
