@@ -223,7 +223,8 @@ function Personalizado({
 
       {leituraVelha && (
         <p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
-          O texto mudou depois da última leitura da IA. Gere o texto do contrato de novo para ela conferir.
+          O texto mudou depois da última leitura da IA. Para preservar suas edições, ajuste a cláusula de
+          pagamento diretamente no contrato. Gerar o texto de novo refaz o contrato a partir dos campos.
         </p>
       )}
 

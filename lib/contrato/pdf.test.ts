@@ -461,6 +461,21 @@ test("emoji, soft hyphen e espaço duro não viram quadradinho nem partem a pala
 
 // ------------------------------------------------------------ PDF real --
 
+test("o PDF contém a redação manual salva sem restaurar o parágrafo do modelo", async () => {
+  const documento = contratoFicticio();
+  const prazo = documento.clausulas.find((c) => c.id === "prazos")!;
+  const textoAntigo = prazo.paragrafos.join(" ");
+  prazo.paragrafos = ["Entrega combinada manualmente pela Mel em doze dias úteis."];
+  prazo.origem = "editada";
+  const antes = JSON.stringify(documento);
+
+  const pdf = await renderizarContrato(documento);
+  const textoPdf = colapsar((await lerPdf(pdf.bytes)).map((p) => p.texto).join(" "));
+  assert.match(textoPdf, /Entrega combinada manualmente pela Mel em doze dias úteis\./);
+  assert.ok(!textoPdf.includes(colapsar(textoAntigo)), "o trecho substituído não reaparece no arquivo");
+  assert.equal(JSON.stringify(documento), antes, "a compilação não altera o documento aprovado");
+});
+
 test("gera o contrato completo: reabre com o pdf-lib e o número de páginas bate", async () => {
   const r = await renderCasamento();
   if (process.env.CONTRATO_AMOSTRA) await writeFile(process.env.CONTRATO_AMOSTRA, r.bytes);

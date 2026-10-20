@@ -2,9 +2,8 @@
 // "alteracao nao salva", como a extracao da IA entra nos campos, quando o texto
 // gerado ficou velho em relacao aos dados, e quais avisos mostrar.
 //
-// Tudo aqui decide o que a Mel ve e o que ela consegue clicar (o botao do PDF
-// trava com texto velho), entao mora num modulo puro e testado em vez de
-// espalhado pelos componentes.
+// Tudo aqui decide o que a Mel ve e o que ela consegue clicar, entao mora
+// num modulo puro e testado em vez de ficar espalhado pelos componentes.
 
 import { limparCnpj, limparCpf, normalizarEmail, somenteDigitos } from "@/lib/contrato/documento";
 import {
@@ -187,8 +186,9 @@ export function mesclarContratante(
  *
  * Remonta o contrato a partir dos dados ATUAIS (os mesmos `montarContrato` que
  * a rota usa) e compara com o salvo. Se a Mel trocou o valor, o CPF ou a data
- * depois de gerar o texto, o PDF sairia com o numero antigo -- e o botao do PDF
- * trava ate ela gerar o texto de novo.
+ * depois de gerar o texto, os campos ja nao descrevem o mesmo documento.
+ * Para gerar PDF, isso so informa a Mel: o arquivo compila o texto salvo,
+ * sem remonta-lo. A revisao por IA exige dados correspondentes para anonimizar.
  *
  * Fica de fora da comparacao, de proposito:
  * - clausula que a Mel editou a mao, ou que a IA escreveu: nao ha como
@@ -392,15 +392,15 @@ export function linkSaiDaPagina(opcoes: {
  */
 export function bloqueioDoEnvio(opcoes: {
   editandoClausula: boolean;
-  desatualizado: boolean;
+  assinantesDivergentes: boolean;
   sujo: boolean;
 }): string | null {
   if (opcoes.editandoClausula) return "Salve ou cancele a cláusula que você está editando.";
-  if (opcoes.desatualizado) {
-    return "Os dados mudaram depois do texto: gere o texto e o PDF de novo antes de enviar.";
+  if (opcoes.assinantesDivergentes) {
+    return "Os dados de quem assina não correspondem ao texto salvo. Confira nome, documento e e-mail antes de enviar.";
   }
   if (opcoes.sujo) {
-    return "Há alterações não salvas nos dados do contrato: salve o rascunho (e, se o texto mudar, gere o texto e o PDF de novo) antes de enviar.";
+    return "Há alterações não salvas nos dados do contrato: salve o rascunho antes de enviar.";
   }
   return null;
 }

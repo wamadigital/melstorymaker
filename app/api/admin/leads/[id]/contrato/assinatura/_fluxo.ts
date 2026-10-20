@@ -15,10 +15,10 @@ import {
   type ResultadoEnvio,
 } from "@/lib/assinatura/adapter";
 import { EnvioAssinaturaIncertoError } from "@/lib/assinatura/envio-incerto";
-import { assinaturasDoContrato } from "@/lib/contrato/clausulas";
+import { assinantesConferemComDados } from "@/lib/contrato/assinantes";
 import { validarEmail } from "@/lib/contrato/documento";
-import { baseDeRedacao, type ContextoMontagem } from "@/lib/contrato/montar";
-import type { Assinante, DadosContrato, DocumentoContrato, RegistroContrato } from "@/lib/contrato/tipos";
+import type { ContextoMontagem } from "@/lib/contrato/montar";
+import type { DadosContrato, DocumentoContrato, RegistroContrato } from "@/lib/contrato/tipos";
 import {
   ErroBancoContrato,
   baixarPdf,
@@ -120,8 +120,6 @@ function motivoInalcancavel(e: AssinaturaError): string {
 
 // ------------------------------------------------------------ quem assina --
 
-const chave = (a: Assinante) => [a.papel, a.rotulo, a.nome, a.documento, a.email].join("\u0000");
-
 /**
  * Quem assina no TEXTO e quem os DADOS dizem hoje sao as mesmas pessoas, com
  * os mesmos documentos e e-mails?
@@ -132,17 +130,7 @@ const chave = (a: Assinante) => [a.papel, a.rotulo, a.nome, a.documento, a.email
  * Compara pela mesma funcao que monta o bloco de assinaturas.
  */
 function conferirQuemAssina(documento: DocumentoContrato, dados: DadosContrato, ctx: ContextoMontagem): void {
-  let esperado: Assinante[] | null = null;
-  try {
-    esperado = assinaturasDoContrato(baseDeRedacao(dados, ctx));
-  } catch {
-    esperado = null;
-  }
-  const iguais =
-    esperado !== null &&
-    esperado.length === documento.assinaturas.length &&
-    esperado.every((a, i) => chave(a) === chave(documento.assinaturas[i]));
-  if (!iguais) {
+  if (!assinantesConferemComDados(documento, dados, ctx)) {
     throw new Recusa(
       409,
       "Os dados de quem assina mudaram depois que o texto foi gerado. Gere o texto e o PDF de novo antes de enviar.",
@@ -232,15 +220,15 @@ export async function enviarParaAssinatura(
     throw recusaDaAssinatura(e, id, "enviar") ?? e;
   }
 
-  // PDFs antigos mantem o texto aprovado. A troca de provedor exige que a Mel
-  // gere e confira um novo texto/PDF, sem reescrever o documento salvo aqui.
+  // PDFs antigos mantem o texto aprovado. A troca de provedor exige corrigir
+  // a clausula e conferir outro PDF, sem reescrever as demais edicoes da Mel.
   if (
     provedor.nome === "assinafy" &&
     documento.clausulas.some((c) => c.id === "assinatura_eletronica" && c.paragrafos.some((p) => /\biLove(?:PDF|API)\b/i.test(p)))
   ) {
     throw new Recusa(
       409,
-      "O contrato ainda indica a plataforma anterior de assinatura. Gere o texto e o PDF de novo antes de enviar pelo Assinafy.",
+      "A cláusula de assinatura ainda cita a plataforma anterior. Edite essa cláusula e gere o PDF de novo antes de enviar pelo Assinafy.",
     );
   }
 
