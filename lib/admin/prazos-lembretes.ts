@@ -1,4 +1,4 @@
-import { DIAS_LEMBRETE_1, DIAS_LEMBRETE_2, estadoLembrete, temCobranca } from "@/lib/admin/lembretes";
+import { DIAS_LEMBRETE_1, DIAS_LEMBRETE_2, estadoLembrete, prazoUltimaTentativa, temCobranca } from "@/lib/admin/lembretes";
 import type { LeadCartao } from "@/lib/admin/tipos";
 
 type CamposPrazo = Pick<LeadCartao,
@@ -22,12 +22,13 @@ export function atrasoProximaMudancaLembrete(cartoes: readonly CamposPrazo[], ag
     if (!Number.isFinite(enviadoMs)) continue;
     const atual = estadoLembrete(lead, lead.status, agoraMs);
 
-    for (const dias of [DIAS_LEMBRETE_1, DIAS_LEMBRETE_2]) {
-      const instante = enviadoMs + dias * 86_400_000;
-      if (instante <= agoraMs) continue;
+    const instantes = [enviadoMs + DIAS_LEMBRETE_1 * 86_400_000,
+      enviadoMs + DIAS_LEMBRETE_2 * 86_400_000, prazoUltimaTentativa(lead, agoraMs)];
+    for (const instante of instantes) {
+      if (instante === null || instante <= agoraMs) continue;
       const futuro = estadoLembrete(lead, lead.status, instante);
-      // Sem ACK do primeiro lembrete, chegar a 30 não libera a última
-      // tentativa. A exceção de teste também é avaliada no instante futuro.
+      // A liberação pode ficar depois do 30º dia: também precisa completar
+      // 15 dias do primeiro ACK. A exceção de teste expira no prazo original.
       if (futuro.marco !== atual.marco || futuro.pendente !== atual.pendente) considerar(instante);
     }
 

@@ -70,6 +70,16 @@ test("outras colunas mantêm somente created_at descendente, inclusive Enviado",
   }
 });
 
+test("a espera após o primeiro ACK sai da prioridade vermelha e volta no prazo exato", () => {
+  const aguardando = lead("aguardando", 45, { disparos_whatsapp: [ack(7, 45, 15)] });
+  const primeiro = lead("primeiro", 8);
+  assert.equal(prioridadeEsfriou(aguardando, AGORA - 1), 2);
+  assert.ok(compararCartoesNaColuna(aguardando, primeiro, "esfriou", AGORA - 1) > 0);
+  assert.equal(prioridadeEsfriou(aguardando, AGORA), 0);
+  assert.ok(compararCartoesNaColuna(aguardando, primeiro, "esfriou", AGORA) < 0);
+  assert.equal(prioridadeEsfriou(aguardando, AGORA + 1), 0);
+});
+
 test("snapshots em curso, enviados ou indeterminados saem das prioridades acionáveis", () => {
   for (const marco of [7, 30] as const) {
     const dias = marco === 7 ? 8 : 40;
