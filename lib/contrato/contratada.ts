@@ -26,7 +26,6 @@ export const CONTRATADA = {
   cidadeAssinatura: "Campinas/SP",
   /** Foro do contrato com pessoa JURIDICA (domicilio da CONTRATADA). PF usa o domicilio da CONTRATANTE. */
   foroPJ: "Monte Mor/SP",
-  plataformaAssinatura: "iLovePDF",
   /**
    * Qualificacao completa, como vai depois de "**CONTRATADA:**". Termina em
    * ponto, como as das outras partes.

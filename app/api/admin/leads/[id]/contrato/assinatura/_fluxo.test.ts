@@ -287,6 +287,41 @@ function provedorQueEnvia(pedidos: PedidoAssinatura[]): ProvedorAssinatura {
   });
 }
 
+for (const marcaAnterior of ["iLovePDF", "iLoveAPI"]) {
+  test(`Assinafy recusa contrato que declara ${marcaAnterior} antes da reserva e de acessar o PDF`, async () => {
+    const banco = contratoPjComPdf();
+    const documento = banco.linha.documento!;
+    const clausula = documento.clausulas.find((c) => c.id === "assinatura_eletronica")!;
+    clausula.paragrafos = clausula.paragrafos.map((p) =>
+      p.replace("pela plataforma identificada no respectivo registro de assinaturas", `pela plataforma ${marcaAnterior}`),
+    );
+    assert.ok(clausula.paragrafos.some((p) => p.includes(marcaAnterior)), "fixture representa o texto antigo");
+    const pdf = pdfDe(documento);
+    const caminho = banco.linha.pdf_path!;
+    banco.arquivos.set(caminho, pdf.bytes);
+    banco.deFora({ documento, pdf_sha256: sha256Hex(pdf.bytes) });
+    const antes = banco.linha;
+    const enviar = mock.fn(provedorQueEnvia([]).enviar);
+    const salvar = mock.fn(banco.io.salvar);
+    const baixarPdf = mock.fn(banco.io.baixarPdf);
+    const io = {
+      ...ioCom(banco, provedorFalso({ nome: "assinafy", enviar })),
+      salvar,
+      baixarPdf,
+    };
+
+    await assert.rejects(
+      enviarParaAssinatura(ID, LEAD, antes, io),
+      recusa(409, /Gere o texto e o PDF de novo antes de enviar pelo Assinafy/),
+    );
+    assert.equal(salvar.mock.callCount(), 0, "nem a reserva foi gravada");
+    assert.equal(baixarPdf.mock.callCount(), 0, "nenhum arquivo foi acessado");
+    assert.equal(enviar.mock.callCount(), 0, "nada foi enviado à plataforma");
+    assert.deepEqual(banco.linha, antes, "o documento antigo permanece intacto");
+    assert.deepEqual(banco.arquivos.get(caminho), pdf.bytes, "o PDF antigo permanece intacto");
+  });
+}
+
 test("contratante PJ vai à plataforma com o nome do representante; a razão social fica no PDF", async () => {
   capturarLogs();
   const banco = contratoPjComPdf();

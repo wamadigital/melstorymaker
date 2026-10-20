@@ -1106,7 +1106,7 @@ export function clausulaCondicoesEspeciais(paragrafosIa: readonly string[] | nul
 /** 16. DA ASSINATURA ELETRÔNICA */
 export function clausulaAssinaturaEletronica(): Clausula {
   return clausula("assinatura_eletronica", [
-    `As partes reconhecem como válida e eficaz a assinatura deste instrumento por meio eletrônico, pela plataforma ${CONTRATADA.plataformaAssinatura}, nos termos do art. 10, § 2º, da Medida Provisória nº 2.200-2/2001, e declaram que a versão eletrônica, acompanhada do respectivo registro de assinaturas, constitui o original deste contrato.`,
+    "As partes reconhecem como válida e eficaz a assinatura deste instrumento por meio eletrônico, pela plataforma identificada no respectivo registro de assinaturas, nos termos do art. 10, § 2º, da Medida Provisória nº 2.200-2/2001, e declaram que a versão eletrônica, acompanhada do respectivo registro de assinaturas, constitui o original deste contrato.",
   ]);
 }
 
