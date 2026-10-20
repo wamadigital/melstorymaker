@@ -314,6 +314,8 @@ Rotas:
 
 Quadro (`/admin`):
 
+No quadro e no detalhe, o cabeçalho mobile oferece o ícone “Atualizar aplicativo” à direita do logo, com área de toque de 44px. Ele faz uma navegação completa para a página atual com URL renovada, preservando filtros, âncora, login e o aviso de alterações não salvas do contrato. Assim, o painel instalado como aplicativo busca a versão publicada sem depender da barra do navegador.
+
 | Elemento | Comportamento |
 |---|---|
 | Raias | Novo, Aguardando revisão, Enviado, Virou cliente, Esfriou e Lead perdido, nessa ordem |

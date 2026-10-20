@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { BotaoAtualizar } from "@/components/admin/BotaoAtualizar";
 import { BotaoSair } from "@/components/admin/BotaoSair";
 import { LogoMel } from "@/components/marca/LogoMel";
 import { Toaster } from "@/components/ui/sonner";
@@ -10,12 +11,15 @@ export default function LayoutPainel({ children }: { children: React.ReactNode }
       <header className="border-b bg-card">
         {/* O quadro usa toda a largura da tela. O detalhe do lead mantém
             sua própria largura de leitura dentro do conteúdo. */}
-        <div className="flex h-14 w-full items-center justify-between px-5">
+        <div className="flex h-14 w-full items-center justify-between gap-3 px-5">
           {/* A assinatura da marca no lugar da palavra "Propostas". h-7 = 28px;
               a largura sai do viewBox, mantendo a proporcao 274x38. */}
-          <Link href="/admin" aria-label="Ir para os leads">
-            <LogoMel className="h-7 w-auto text-foreground" />
-          </Link>
+          <div className="flex min-w-0 items-center gap-2">
+            <Link href="/admin" aria-label="Ir para os leads" className="min-w-0">
+              <LogoMel className="h-7 w-auto max-w-full text-foreground" />
+            </Link>
+            <BotaoAtualizar />
+          </div>
           <BotaoSair />
         </div>
       </header>
