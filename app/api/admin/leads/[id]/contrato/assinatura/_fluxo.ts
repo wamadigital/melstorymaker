@@ -232,6 +232,18 @@ export async function enviarParaAssinatura(
     throw recusaDaAssinatura(e, id, "enviar") ?? e;
   }
 
+  // PDFs antigos mantem o texto aprovado. A troca de provedor exige que a Mel
+  // gere e confira um novo texto/PDF, sem reescrever o documento salvo aqui.
+  if (
+    provedor.nome === "assinafy" &&
+    documento.clausulas.some((c) => c.id === "assinatura_eletronica" && c.paragrafos.some((p) => /\biLove(?:PDF|API)\b/i.test(p)))
+  ) {
+    throw new Recusa(
+      409,
+      "O contrato ainda indica a plataforma anterior de assinatura. Gere o texto e o PDF de novo antes de enviar pelo Assinafy.",
+    );
+  }
+
   const anterior: EstadoAnterior = {
     assinatura_provedor: reg.assinatura_provedor,
     assinatura_token: reg.assinatura_token,
