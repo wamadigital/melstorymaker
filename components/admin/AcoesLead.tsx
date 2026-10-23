@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Check, Loader2, Mail, MessageCircle, MoreVertical, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -17,6 +17,7 @@ import { ROTULO_STATUS, TEMA_COLUNA } from "@/lib/admin/rotulos";
 import { recusarMovimento } from "@/lib/admin/status";
 import { avisoPropostaEnviada, textoExclusao } from "@/lib/admin/acoes";
 import { STATUS, type Status } from "@/lib/form/types";
+import { validarTelefoneBr } from "@/lib/form/validacao";
 import { linkPropostaWhatsApp } from "@/lib/whatsapp";
 import { cn } from "@/lib/utils";
 
@@ -26,6 +27,9 @@ type Props = {
   pdfUrl: string | null;
   whatsapp: string | null;
   temEmail: boolean;
+  qualificadoEm: string | null;
+  onQualificacaoAlterada: (qualificadoEm: string | null) => void;
+  hrefDetalhe?: string;
   /** Coluna atual. Com ela (e `onMover`) o menu ganha o grupo "Mover para". */
   status?: Status;
   /** O quadro ja tem um request deste lead em voo. */
@@ -49,13 +53,47 @@ export function AcoesLead({
   pdfUrl,
   whatsapp,
   temEmail,
+  qualificadoEm,
+  onQualificacaoAlterada,
+  hrefDetalhe,
   status,
   ocupadoExterno = false,
   onMover,
 }: Props) {
   const router = useRouter();
-  const [ocupado, setOcupado] = useState<null | "email" | "excluir">(null);
+  const [ocupado, setOcupado] = useState<null | "email" | "excluir" | "qualificacao">(null);
+  const qualificando = useRef(false);
   const travado = ocupado !== null || ocupadoExterno;
+  const whatsappValido = !!whatsapp && !validarTelefoneBr(whatsapp);
+
+  async function alternarQualificacao() {
+    if (qualificando.current || travado || (!qualificadoEm && !whatsappValido)) return;
+    qualificando.current = true;
+    setOcupado("qualificacao");
+    try {
+      const r = await fetch(`/api/admin/leads/${id}/qualificacao`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ qualificado: !qualificadoEm, base_qualificado_em: qualificadoEm }),
+      });
+      const json = await r.json().catch(() => ({}));
+      const marcaConfirmada = json.qualificado_em === null || typeof json.qualificado_em === "string";
+      if (!r.ok) {
+        if (r.status === 409 && marcaConfirmada) onQualificacaoAlterada(json.qualificado_em);
+        throw new Error(json.erro ?? "Não consegui salvar a qualificação.");
+      }
+      if (!marcaConfirmada) throw new Error("Não consegui confirmar a marcação. Tente de novo.");
+      onQualificacaoAlterada(json.qualificado_em);
+      toast.success(json.qualificado_em ? "Lead marcado como qualificado." : "Qualificação removida.");
+    } catch (e) {
+      toast.error(e instanceof TypeError ? "Não consegui conectar. Tente de novo." : (e as Error).message);
+    } finally {
+      qualificando.current = false;
+      setOcupado(null);
+      // Releitura também em conflito ou telefone alterado em outra aba.
+      router.refresh();
+    }
+  }
 
   async function enviarEmail() {
     setOcupado("email");
@@ -126,9 +164,18 @@ export function AcoesLead({
           Enviar WhatsApp
         </DropdownMenuItem>
 
-        <DropdownMenuItem onClick={() => router.push(`/admin/leads/${id}`)}>
+        <DropdownMenuItem onClick={() => router.push(hrefDetalhe ?? `/admin/leads/${id}`)}>
           <Pencil />
           Editar
+        </DropdownMenuItem>
+
+        <DropdownMenuItem
+          disabled={travado || (!qualificadoEm && !whatsappValido)}
+          title={!qualificadoEm && !whatsappValido ? "Salve um WhatsApp válido antes de qualificar o lead." : undefined}
+          onClick={alternarQualificacao}
+        >
+          <Check />
+          {qualificadoEm ? "Desmarcar lead qualificado" : "Marcar como lead qualificado"}
         </DropdownMenuItem>
 
         {/* Caminho sem gesto para mover o cartao. E o principal no celular (onde

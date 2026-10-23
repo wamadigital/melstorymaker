@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import { Check, FileText, GripVertical, Mail } from "lucide-react";
 import { AcoesLead } from "@/components/admin/AcoesLead";
 import { BotaoLembrete } from "@/components/admin/BotaoLembrete";
@@ -22,6 +23,8 @@ type Props = {
   /** Coluna em que o cartao esta sendo desenhado (pode ser a otimista). */
   coluna: Status;
   onMover?: (id: string, para: Status) => void;
+  /** Mantém a sequência e os filtros do quadro ao abrir o detalhe. */
+  hrefDetalhe?: string;
   /** Request de movimentacao em voo: trava o cartao e mostra o spinner. */
   movendo?: boolean;
   /** Copia flutuante dentro do DragOverlay. */
@@ -49,14 +52,26 @@ export function CartaoLead({
   lead,
   coluna,
   onMover,
+  hrefDetalhe,
   movendo = false,
   sobreposto = false,
   arrastando = false,
   handle,
   agoraMs,
 }: Props) {
+  const marcaDoBanco = lead.qualificado_em ?? null;
+  const [qualificadoEm, setQualificadoEm] = useState(marcaDoBanco);
+  const [qualificacaoDoBanco, setQualificacaoDoBanco] = useState(marcaDoBanco);
+  // O retorno da ação atualiza o selo sem esperar o refresh. Novas props
+  // confirmadas pelo servidor continuam sincronizando a marca depois disso.
+  if (marcaDoBanco !== qualificacaoDoBanco) {
+    setQualificacaoDoBanco(marcaDoBanco);
+    setQualificadoEm(marcaDoBanco);
+  }
   const tema = TEMA_COLUNA[coluna];
   const nome = lead.nome_display ?? "";
+  const localCerimonia = lead.categoria === "casamento" ? lead.local_cerimonia?.trim() : null;
+  const localFesta = lead.categoria === "casamento" ? lead.local_festa?.trim() : null;
   // "Parou em: Local da festa" (RF-09) so faz sentido em quem nao terminou.
   const parouEm = coluna === "incompleto" ? rotuloPasso(lead.categoria, lead.passo_atual) : null;
 
@@ -128,7 +143,8 @@ export function CartaoLead({
 
       <div className="min-w-0 flex-1">
         <Link
-          href={`/admin/leads/${lead.id}`}
+          href={hrefDetalhe ?? `/admin/leads/${lead.id}`}
+          prefetch={false}
           className="block min-w-0 space-y-1 pt-3 pr-9 pb-1 pl-3"
           // No overlay o cartao e so pintura: navegar dali nao faz sentido.
           tabIndex={sobreposto ? -1 : undefined}
@@ -145,8 +161,14 @@ export function CartaoLead({
             {rotuloCategoria(lead.categoria)}
             {lead.data_evento && <> · {dataEvento(lead.data_evento)}</>}
           </p>
+          {(localCerimonia || localFesta) && (
+            <div className="space-y-0.5 text-[0.6875rem] leading-snug break-words text-muted-foreground">
+              {localCerimonia && <p><span className="font-medium">Cerimônia:</span> {localCerimonia}</p>}
+              {localFesta && <p><span className="font-medium">Festa:</span> {localFesta}</p>}
+            </div>
+          )}
           {parouEm && <p className="truncate text-xs text-muted-foreground">Parou em: {parouEm}</p>}
-          {lead.qualificado_em && (
+          {qualificadoEm && (
             <p className="flex items-center gap-1 text-[0.6875rem] text-muted-foreground">
               <Check aria-hidden="true" className="size-3 shrink-0" strokeWidth={3} />
               Lead qualificado
@@ -207,6 +229,9 @@ export function CartaoLead({
             pdfUrl={lead.pdf_url}
             whatsapp={lead.whatsapp}
             temEmail={!!lead.email}
+            qualificadoEm={qualificadoEm}
+            onQualificacaoAlterada={setQualificadoEm}
+            hrefDetalhe={hrefDetalhe}
             status={coluna}
             ocupadoExterno={movendo}
             onMover={(para) => onMover(lead.id, para)}

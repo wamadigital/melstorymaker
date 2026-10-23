@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { CATEGORIAS, STATUS, type Categoria, type Status } from "@/lib/form/types";
+import { STATUS, type Status } from "@/lib/form/types";
 import { COLUNAS_CARTAO, type LeadCartao } from "@/lib/admin/tipos";
 import { FiltrosLeads } from "@/components/admin/FiltrosLeads";
 import { QuadroLeads, type Coluna } from "@/components/admin/QuadroLeads";
@@ -8,23 +8,17 @@ import { esfriarParados } from "@/lib/supabase/esfriar";
 import { lerDisparosWhatsApp } from "@/lib/supabase/disparos-whatsapp";
 import { lerTestesWhatsApp } from "@/lib/supabase/testes-whatsapp";
 import { lerEsfriouPrioritario } from "@/lib/supabase/esfriou-prioritario";
-import { FRASE_PERIODO, ehPeriodo, inicioDoPeriodo } from "@/lib/admin/periodo";
-
-type Busca = { q?: string; categoria?: string; periodo?: string };
+import { FRASE_PERIODO, inicioDoPeriodo } from "@/lib/admin/periodo";
+import { normalizarFiltrosNavegacao, type BuscaNavegacao } from "@/lib/admin/navegacao";
 
 /** Teto por coluna. "Novo" e a raia gorda (formularios abandonados). */
 const LIMITE_COLUNA = 50;
 
-function ehCategoria(v: string | undefined): v is Categoria {
-  return !!v && (CATEGORIAS as readonly string[]).includes(v);
-}
-
-export default async function PaginaLeads({ searchParams }: { searchParams: Promise<Busca> }) {
-  const { q, categoria, periodo: periodoUrl } = await searchParams;
-  const termo = (q ?? "").trim();
+export default async function PaginaLeads({ searchParams }: { searchParams: Promise<BuscaNavegacao> }) {
+  const filtros = normalizarFiltrosNavegacao(await searchParams);
+  const { q: termo, categoria, periodo } = filtros;
   // Sem `periodo` na URL (ou com lixo nela) e todo o periodo: o padrao nao
   // ocupa a URL, como a categoria "Todas".
-  const periodo = ehPeriodo(periodoUrl) ? periodoUrl : "todo";
 
   // Um relogio so: o mesmo "agora" esfria os parados e desce para os cartoes.
   const agoraMs = Date.now();
@@ -51,10 +45,10 @@ export default async function PaginaLeads({ searchParams }: { searchParams: Prom
 
     // As demais raias mantêm a chegada. Esfriou é consultada separadamente:
     // primeiro escolhe pendências por prioridade, depois aplica o teto visual.
-    c = c.order("created_at", { ascending: false });
+    c = c.order("created_at", { ascending: false }).order("id", { ascending: true });
 
     if (termo) c = c.ilike("nome_display", `%${termo}%`);
-    if (ehCategoria(categoria)) c = c.eq("categoria", categoria);
+    if (categoria) c = c.eq("categoria", categoria);
     if (desde) c = c.gte("created_at", desde);
     return c;
   };
@@ -65,7 +59,7 @@ export default async function PaginaLeads({ searchParams }: { searchParams: Prom
   // apagava a coluna inteira, enquanto as outras carregavam normalmente.
   const respostas = await Promise.all(
     STATUS.map((status) => status === "esfriou"
-      ? lerEsfriouPrioritario({ termo, categoria: ehCategoria(categoria) ? categoria : undefined,
+      ? lerEsfriouPrioritario({ termo, categoria,
         desde, agoraMs, limite: LIMITE_COLUNA })
       : lerComRetentativa(`coluna ${status}`, () => consultar(status))),
   );
@@ -101,7 +95,7 @@ export default async function PaginaLeads({ searchParams }: { searchParams: Prom
   ) as Record<Status, Coluna>;
 
   const totalGeral = STATUS.reduce((s, status) => s + colunas[status].total, 0);
-  const filtrando = !!termo || ehCategoria(categoria) || periodo !== "todo";
+  const filtrando = !!termo || !!categoria || periodo !== "todo";
 
   return (
     <div className="space-y-5">
@@ -117,7 +111,7 @@ export default async function PaginaLeads({ searchParams }: { searchParams: Prom
       </div>
 
       <FiltrosLeads
-        categoriaAtual={ehCategoria(categoria) ? categoria : "todas"}
+        categoriaAtual={categoria ?? "todas"}
         termoAtual={termo}
         periodoAtual={periodo}
       />
@@ -131,7 +125,7 @@ export default async function PaginaLeads({ searchParams }: { searchParams: Prom
       {/* `Date.now()` do SERVIDOR, descido como prop: a contagem de cobranca
           precisa dar o mesmo numero no HTML e na hidratacao, senao o cartao
           pisca de cor na fronteira do 7o dia. */}
-      <QuadroLeads colunas={colunas} termo={termo} periodo={periodo} agoraMs={agoraMs} />
+      <QuadroLeads colunas={colunas} termo={termo} periodo={periodo} agoraMs={agoraMs} filtros={filtros} />
     </div>
   );
 }

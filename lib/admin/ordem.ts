@@ -8,8 +8,20 @@ import type { Lead, Status } from "@/lib/form/types";
  * Comparar o instante evita que precisões diferentes do Postgres alterem a
  * ordem de datas equivalentes.
  */
-export function maisNovoPrimeiro(a: Pick<Lead, "created_at">, b: Pick<Lead, "created_at">): number {
-  return (Date.parse(b.created_at) || 0) - (Date.parse(a.created_at) || 0);
+type Chegada = Pick<Lead, "created_at"> & Partial<Pick<Lead, "id">>;
+
+function microsRestantes(data: string): number {
+  const fracao = /\.(\d+)(?:Z|[+-]\d{2}:?\d{2})$/i.exec(data)?.[1] ?? "";
+  return Number(fracao.padEnd(6, "0").slice(3, 6));
+}
+
+export function maisNovoPrimeiro(a: Chegada, b: Chegada): number {
+  const instante = (Date.parse(b.created_at) || 0) - (Date.parse(a.created_at) || 0);
+  // Postgres preserva microssegundos; Date.parse sozinho trunca depois de 3 casas.
+  const micros = microsRestantes(b.created_at) - microsRestantes(a.created_at);
+  const idA = a.id ?? "";
+  const idB = b.id ?? "";
+  return instante || micros || (idA < idB ? -1 : idA > idB ? 1 : 0);
 }
 
 type CamposPrioridade = Pick<LeadCartao,
@@ -38,8 +50,8 @@ export function prioridadeEsfriou(lead: CamposPrioridade, agoraMs: number): 0 | 
 
 /** A coluna desenhada também cobre o destino otimista de um arraste. */
 export function compararCartoesNaColuna(
-  a: CamposPrioridade & Pick<Lead, "created_at">,
-  b: CamposPrioridade & Pick<Lead, "created_at">,
+  a: CamposPrioridade & Chegada,
+  b: CamposPrioridade & Chegada,
   coluna: Status,
   agoraMs: number,
 ): number {
