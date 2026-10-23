@@ -3,7 +3,7 @@
   "crons": [
     {
       "path": "/api/cron/manter-ativo",
-      "schedule": "0 9 * * *"
+      "schedule": "0 3 * * *"
     },
     {
       "path": "/api/cron/meta-crm",

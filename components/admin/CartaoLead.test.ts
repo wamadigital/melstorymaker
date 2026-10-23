@@ -5,6 +5,7 @@ import { runInNewContext } from "node:vm";
 import ts from "typescript";
 import type { ComponentProps } from "react";
 import type { CartaoLead } from "./CartaoLead";
+import { eventoPassado } from "../../lib/admin/evento-passado";
 
 type Props = ComponentProps<typeof CartaoLead>;
 type Elemento = { type: string; props: { children?: unknown; [key: string]: unknown } };
@@ -12,7 +13,7 @@ const fonte = ts.transpileModule(readFileSync(new URL("./CartaoLead.tsx", import
   compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2022 },
 }).outputText;
 
-function montar(extra: Partial<Props["lead"]> = {}, hrefDetalhe?: string) {
+function montar(extra: Partial<Props["lead"]> = {}, hrefDetalhe?: string, extraProps: Partial<Omit<Props, "lead">> = {}) {
   const slots: unknown[] = [];
   let indice = 0;
   let props: Props = {
@@ -25,6 +26,7 @@ function montar(extra: Partial<Props["lead"]> = {}, hrefDetalhe?: string) {
     },
     coluna: "aguardando_revisao", agoraMs: Date.parse("2026-10-23T12:00:00.000Z"),
     hrefDetalhe, onMover() {},
+    ...extraProps,
   };
   const mod: { exports: { CartaoLead?: (p: Props) => Elemento } } = { exports: {} };
   const jsx = (type: string, props: Elemento["props"]) => ({ type, props });
@@ -38,7 +40,7 @@ function montar(extra: Partial<Props["lead"]> = {}, hrefDetalhe?: string) {
       } };
       if (nome === "react/jsx-runtime") return { jsx, jsxs: jsx };
       if (nome === "next/link") return { default: "Link" };
-      if (nome === "lucide-react") return { Check: "Check", FileText: "FileText", GripVertical: "GripVertical", Mail: "Mail" };
+      if (nome === "lucide-react") return { CalendarCheck: "CalendarCheck", Check: "Check", FileText: "FileText", GripVertical: "GripVertical", Mail: "Mail" };
       if (nome.startsWith("@/components/admin/")) {
         const componente = nome.split("/").at(-1)!;
         return { [componente]: componente };
@@ -49,8 +51,9 @@ function montar(extra: Partial<Props["lead"]> = {}, hrefDetalhe?: string) {
       if (nome === "@/lib/admin/ordem") return { prioridadeEsfriou: () => 2 };
       if (nome === "@/lib/admin/lembrete-email") return { estadoLembreteEmail: () => ({ visivel: false }) };
       if (nome === "@/lib/admin/acoes") return { linkContatoInicial: () => null };
+      if (nome === "@/lib/admin/evento-passado") return { eventoPassado };
       if (nome === "@/lib/admin/rotulos") return {
-        TEMA_COLUNA: { aguardando_revisao: { barra: "amarelo" } },
+        TEMA_COLUNA: Object.fromEntries(["incompleto", "aguardando_revisao", "enviado", "virou_cliente", "esfriou", "perdido"].map((status) => [status, { barra: "cor-da-coluna" }])),
         rotuloCategoria: (categoria: string) => categoria, rotuloPasso: () => null,
       };
       if (nome === "@/lib/pdf/formatadores") return { dataHoraLocal: () => "23.10.2026", dataEvento: () => "31.08.2027" };
@@ -117,4 +120,34 @@ test("selo acompanha a confirmação do menu imediatamente e depois as props rea
   assert.match(texto(tela.render()), /Lead qualificado/);
   assert.match(texto(tela.render({ qualificado_em: "2026-10-23T12:01:00.000Z" })), /Lead qualificado/);
   assert.doesNotMatch(texto(tela.render({ qualificado_em: null })), /Lead qualificado/);
+});
+
+test("evento passado em Lead perdido fica cinza e continua clicável, com menu e arraste", () => {
+  const href = "/admin/leads/00000000-0000-4000-8000-00000000f004?categoria=casamento";
+  const arvore = montar({ data_evento: "2026-10-22", status: "perdido" }, href, {
+    coluna: "perdido", handle: { onPointerDown() {} },
+  }).render();
+  assert.equal(arvore.props["data-evento-encerrado"], true);
+  assert.match(String(arvore.props.className), /bg-zinc-100/);
+  assert.doesNotMatch(String(arvore.props.className), /opacity-|pointer-events-none/);
+  assert.equal(arvore.props["aria-disabled"], undefined);
+  assert.match(texto(arvore), /Evento encerrado/);
+  const filhos = elementos(arvore);
+  const link = filhos.find((e) => e.type === "Link");
+  assert.equal(link?.props.href, href);
+  assert.equal(link?.props.tabIndex, undefined);
+  assert.equal(filhos.find((e) => e.type === "AcoesLead")?.props.ocupadoExterno, false);
+  assert.equal(filhos.find((e) => e.type === "button")?.props.disabled, undefined);
+});
+
+test("cinza de evento encerrado não vaza para hoje, datas inválidas ou outras colunas", () => {
+  for (const data_evento of ["2026-10-23", "2026-10-24", "2026-02-29", null]) {
+    const arvore = montar({ data_evento, status: "perdido" }, undefined, { coluna: "perdido" }).render();
+    assert.equal(arvore.props["data-evento-encerrado"], undefined);
+    assert.doesNotMatch(texto(arvore), /Evento encerrado/);
+  }
+  for (const coluna of ["incompleto", "aguardando_revisao", "enviado", "virou_cliente", "esfriou"] as const) {
+    const arvore = montar({ data_evento: "2026-10-22", status: coluna }, undefined, { coluna }).render();
+    assert.equal(arvore.props["data-evento-encerrado"], undefined);
+  }
 });

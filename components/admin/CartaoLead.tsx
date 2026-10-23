@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { Check, FileText, GripVertical, Mail } from "lucide-react";
+import { CalendarCheck, Check, FileText, GripVertical, Mail } from "lucide-react";
 import { AcoesLead } from "@/components/admin/AcoesLead";
 import { BotaoLembrete } from "@/components/admin/BotaoLembrete";
 import { BotaoLembreteEmail } from "@/components/admin/BotaoLembreteEmail";
@@ -12,6 +12,7 @@ import { estadoLembrete, temaCobranca } from "@/lib/admin/lembretes";
 import { prioridadeEsfriou } from "@/lib/admin/ordem";
 import { estadoLembreteEmail } from "@/lib/admin/lembrete-email";
 import { linkContatoInicial } from "@/lib/admin/acoes";
+import { eventoPassado } from "@/lib/admin/evento-passado";
 import { DESCRICAO_COLUNA, TEMA_COLUNA, rotuloCategoria, rotuloPasso } from "@/lib/admin/rotulos";
 import type { LeadCartao } from "@/lib/admin/tipos";
 import type { Status } from "@/lib/form/types";
@@ -69,6 +70,7 @@ export function CartaoLead({
     setQualificadoEm(marcaDoBanco);
   }
   const tema = TEMA_COLUNA[coluna];
+  const encerrado = coluna === "perdido" && eventoPassado(lead.data_evento, agoraMs);
   const nome = lead.nome_display ?? "";
   const localCerimonia = lead.categoria === "casamento" ? lead.local_cerimonia?.trim() : null;
   const localFesta = lead.categoria === "casamento" ? lead.local_festa?.trim() : null;
@@ -105,12 +107,14 @@ export function CartaoLead({
 
   return (
     <div
+      data-evento-encerrado={encerrado || undefined}
       className={cn(
         "relative flex overflow-hidden rounded-lg border bg-card transition-shadow",
         "shadow-[0_1px_2px_rgb(0_0_0/6%)]",
         // Cobranca vencida pinta o cartao inteiro: dentro de uma coluna azul,
         // um cartao ambar ou vermelho e a unica coisa que a Mel precisa ver.
         alerta?.cartao,
+        encerrado && "border-zinc-300 bg-zinc-100 text-zinc-600",
         !sobreposto && "hover:border-black/15 hover:shadow-[0_2px_8px_rgb(0_0_0/8%)]",
         arrastando && "opacity-40",
         sobreposto && "rotate-2 shadow-lg",
@@ -119,7 +123,7 @@ export function CartaoLead({
     >
       {/* Barra de acento: mantem a leitura de qual coluna o cartao veio mesmo
           flutuando no overlay, onde ele perde o fundo colorido da coluna. */}
-      <span aria-hidden className={cn("w-1 shrink-0", alerta?.barra ?? tema.barra)} />
+      <span aria-hidden className={cn("w-1 shrink-0", encerrado ? "bg-zinc-400" : alerta?.barra ?? tema.barra)} />
 
       {handle && (
         <button
@@ -161,6 +165,15 @@ export function CartaoLead({
             {rotuloCategoria(lead.categoria)}
             {lead.data_evento && <> · {dataEvento(lead.data_evento)}</>}
           </p>
+          {encerrado && (
+            <p
+              className="flex items-center gap-1 text-[0.6875rem] text-zinc-600"
+              title="A data do evento já passou. O lead continua disponível para consulta."
+            >
+              <CalendarCheck aria-hidden="true" className="size-3 shrink-0" />
+              Evento encerrado
+            </p>
+          )}
           {(localCerimonia || localFesta) && (
             <div className="space-y-0.5 text-[0.6875rem] leading-snug break-words text-muted-foreground">
               {localCerimonia && <p><span className="font-medium">Cerimônia:</span> {localCerimonia}</p>}

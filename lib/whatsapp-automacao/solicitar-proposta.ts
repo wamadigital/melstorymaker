@@ -8,6 +8,7 @@ const mensagens: Record<string, string> = {
   payload_invalido: "Solicitação inválida.",
   lead_nao_encontrado: "Lead não encontrado.",
   coluna_invalida: "O lembrete só está disponível em Enviado ou Esfriou.",
+  evento_passado: "A data deste evento já passou. O lead foi encerrado; confira a data antes de solicitar outro lembrete.",
   proposta_alterada: "A proposta mudou. Atualize o card antes de solicitar o lembrete.",
   proposta_ausente: "Gere a proposta antes de enviar o lembrete.",
   telefone_invalido: "Confira o WhatsApp cadastrado neste lead.",

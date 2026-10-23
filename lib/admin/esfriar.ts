@@ -23,8 +23,8 @@ import { DIAS_LEMBRETE_1 } from "@/lib/admin/lembretes";
  * O trigger `set_updated_at` carimba toda mudanca na linha, e com o lead em
  * Enviado so acao da Mel escreve nele: por isso nao precisa de coluna nova.
  *
- * E a UNICA transicao de status que o sistema faz sozinho. "Lead perdido"
- * continua sendo decisao da Mel (RF-21). Quem executa e `esfriarParados`
+ * A expiração por data do evento é outra rotina independente (RF-29).
+ * Esta função não marca como perdido por ausência de resposta. Quem executa e `esfriarParados`
  * (`lib/supabase/esfriar.ts`), com a mesma conta desta funcao.
  */
 
