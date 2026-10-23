@@ -8,6 +8,7 @@ import { supabaseAdmin } from "./admin";
 import { lerComRetentativa } from "./consulta";
 import { lerDisparosWhatsApp } from "./disparos-whatsapp";
 import { lerTestesWhatsApp } from "./testes-whatsapp";
+import { aplicarBuscaLeads } from "./busca-leads";
 
 const TAMANHO_PAGINA = 200;
 export type ResultadoNavegacaoLead = VizinhosLead & { erro: string | null };
@@ -36,7 +37,7 @@ export async function lerNavegacaoLead(
           let consulta = db.from("leads").select(COLUNAS_CARTAO).eq("status", status)
             .order("created_at", { ascending: false }).order("id", { ascending: true })
             .range(inicio, inicio + TAMANHO_PAGINA - 1);
-          if (contexto.q) consulta = consulta.ilike("nome_display", `%${contexto.q}%`);
+          consulta = aplicarBuscaLeads(consulta, contexto.q);
           if (contexto.categoria) consulta = consulta.eq("categoria", contexto.categoria);
           if (desde) consulta = consulta.gte("created_at", desde);
           return consulta.abortSignal(AbortSignal.timeout(5_000));

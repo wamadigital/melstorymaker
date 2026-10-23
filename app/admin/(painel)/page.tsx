@@ -8,6 +8,7 @@ import { esfriarParados } from "@/lib/supabase/esfriar";
 import { lerDisparosWhatsApp } from "@/lib/supabase/disparos-whatsapp";
 import { lerTestesWhatsApp } from "@/lib/supabase/testes-whatsapp";
 import { lerEsfriouPrioritario } from "@/lib/supabase/esfriou-prioritario";
+import { aplicarBuscaLeads } from "@/lib/supabase/busca-leads";
 import { FRASE_PERIODO, inicioDoPeriodo } from "@/lib/admin/periodo";
 import { normalizarFiltrosNavegacao, type BuscaNavegacao } from "@/lib/admin/navegacao";
 
@@ -47,7 +48,7 @@ export default async function PaginaLeads({ searchParams }: { searchParams: Prom
     // primeiro escolhe pendências por prioridade, depois aplica o teto visual.
     c = c.order("created_at", { ascending: false }).order("id", { ascending: true });
 
-    if (termo) c = c.ilike("nome_display", `%${termo}%`);
+    c = aplicarBuscaLeads(c, termo);
     if (categoria) c = c.eq("categoria", categoria);
     if (desde) c = c.gte("created_at", desde);
     return c;

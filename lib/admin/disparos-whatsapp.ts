@@ -48,15 +48,18 @@ export function ehTipoDisparoWhatsApp(valor: unknown): valor is DisparoWhatsApp[
 }
 
 /**
- * Os quatro disparos atuais, sempre na mesma ordem. Somente ACKs do worker
- * marcam envio; contatos manuais e a confirmação retirada não acendem o ícone.
- * O resumo conserva envios de propostas anteriores, sem decidir elegibilidade.
+ * Checklist cumulativo, sem decidir elegibilidade ou apagar envios anteriores.
+ * A proposta também conta pelo envio registrado no CRM (inclusive Enviado e
+ * Esfriou legados sem carimbo). Os outros itens exigem seu próprio ACK.
  */
-export function resumoEnviosWhatsApp(lead: Pick<LeadCartao, "disparos_whatsapp">): ResumoEnvioWhatsApp[] {
+export function resumoEnviosWhatsApp(lead: Pick<LeadCartao, "disparos_whatsapp"> &
+  Partial<Pick<LeadCartao, "enviado_em" | "status">>): ResumoEnvioWhatsApp[] {
+  const propostaEnviada = ehDataEnvioWhatsApp(lead.enviado_em) ||
+    lead.status === "enviado" || lead.status === "esfriou";
   return TIPOS_RESUMO.map((tipo) => ({
     tipo,
     rotulo: ROTULOS[tipo],
-    enviado: (lead.disparos_whatsapp ?? []).some((disparo) =>
+    enviado: (tipo === "proposta_inicial_15m" && propostaEnviada) || (lead.disparos_whatsapp ?? []).some((disparo) =>
       disparo && disparo.tipo === tipo && ehDataEnvioWhatsApp(disparo.enviado_em)),
   }));
 }

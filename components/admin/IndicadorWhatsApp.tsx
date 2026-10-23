@@ -5,7 +5,7 @@ import { MessageCircleCheck } from "lucide-react";
 import { resumoEnviosWhatsApp } from "@/lib/admin/disparos-whatsapp";
 import type { LeadCartao } from "@/lib/admin/tipos";
 
-/** Só um dos disparos atuais confirmado pelo worker acende este sinal. */
+/** Checklist da proposta registrada no CRM e dos disparos confirmados. */
 export function IndicadorWhatsApp({
   lead,
   somenteLeitura = false,
@@ -21,7 +21,7 @@ export function IndicadorWhatsApp({
 
   if (somenteLeitura) {
     return (
-      <span aria-label="Tem mensagens enviadas no WhatsApp" className="flex size-6 items-center justify-center text-green-700 dark:text-green-400">
+      <span aria-label="Tem envios registrados" className="flex size-6 items-center justify-center text-green-700 dark:text-green-400">
         {icone}
       </span>
     );
@@ -34,7 +34,7 @@ export function IndicadorWhatsApp({
         openOnHover
         delay={200}
         closeDelay={100}
-        aria-label="Ver mensagens enviadas no WhatsApp"
+        aria-label="Ver checklist de envios"
         className="flex size-6 shrink-0 items-center justify-center rounded-md bg-green-700/5 text-green-700 transition-colors outline-none hover:bg-green-700/10 focus-visible:ring-2 focus-visible:ring-ring dark:text-green-400"
       >
         {icone}
@@ -45,7 +45,7 @@ export function IndicadorWhatsApp({
         <Popover.Positioner side="top" align="end" sideOffset={6} className="z-50">
           <Popover.Popup className="max-h-(--available-height) w-72 max-w-[calc(100vw-1.5rem)] overflow-y-auto rounded-md border bg-popover p-3 text-popover-foreground shadow-md outline-none">
             <Popover.Title className="sr-only">
-              Mensagens no WhatsApp
+              Checklist de envios
             </Popover.Title>
             <ul className="space-y-2">
               {resumo.map((envio) => (

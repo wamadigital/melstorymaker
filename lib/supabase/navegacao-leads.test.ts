@@ -4,6 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 import { lerNavegacaoLead } from "./navegacao-leads";
 import { normalizarFiltrosNavegacao } from "@/lib/admin/navegacao";
 import type { LeadCartao } from "@/lib/admin/tipos";
+import { filtroBuscaLeads } from "./busca-leads";
 
 const DIA = 86_400_000;
 const agora = Date.parse("2026-10-23T18:00:00Z");
@@ -17,7 +18,7 @@ const cartao = (n: number, extra: Partial<LeadCartao> = {}): LeadCartao => ({
 
 type LinhaHistorico = { lead_id: string; tipo: string; estado: string; enviado_em: string; ocorrido_em: string;
   proposta_enviado_em: string | null; ultimo_codigo: string | null };
-function banco(cartoes: LeadCartao[], historico: LinhaHistorico[] = [], falhar?: "leads" | "whatsapp_outbox") {
+function banco(cartoes: (LeadCartao & { respostas?: Partial<Record<string, string>> })[], historico: LinhaHistorico[] = [], falhar?: "leads" | "whatsapp_outbox") {
   const pedidos: { url: URL; metodo: string }[] = [];
   const db = createClient("https://qa.invalid", "test-key", {
     auth: { persistSession: false, autoRefreshToken: false },
@@ -35,10 +36,13 @@ function banco(cartoes: LeadCartao[], historico: LinhaHistorico[] = [], falhar?:
         assert.equal(url.searchParams.get("order"), "created_at.desc,id.asc");
         const categoria = url.searchParams.get("categoria")?.slice(3);
         const desde = url.searchParams.get("created_at")?.slice(4);
-        const termo = url.searchParams.get("nome_display")?.slice(7, -1).toLowerCase();
+        const busca = [...(url.searchParams.get("or")?.slice(1, -1) ?? "")
+          .matchAll(/(?:^|,)([\w>\-]+)\.imatch\.("(?:\\.|[^"\\])*")/g)]
+          .map(([, campo, valor]) => ({ campo, regex: new RegExp(JSON.parse(valor), "iu") }));
         const linhas = cartoes.filter(l => `eq.${l.status}` === url.searchParams.get("status") &&
           (!categoria || l.categoria === categoria) && (!desde || l.created_at >= desde) &&
-          (!termo || l.nome_display?.toLowerCase().includes(termo)))
+          (!busca.length || busca.some(({ campo, regex }) => regex.test(campo.startsWith("respostas->>")
+            ? l.respostas?.[campo.slice(12)] ?? "" : String(l[campo as keyof LeadCartao] ?? "")))))
           .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at) || a.id.localeCompare(b.id));
         return Response.json(linhas.slice(inicio, inicio + limite));
       }
@@ -77,7 +81,7 @@ test("contexto conserva busca, categoria e meia-noite de São Paulo em todas as 
   assert.equal(resultado.anterior, null);
   assert.equal(resultado.proximo?.id, id(5));
   for (const { url } of pedidos.filter(p => p.url.pathname.endsWith("/leads"))) {
-    assert.equal(url.searchParams.get("nome_display"), "ilike.%Fixture%");
+    assert.equal(url.searchParams.get("or"), `(${filtroBuscaLeads("Fixture")})`);
     assert.equal(url.searchParams.get("categoria"), "eq.casamento");
     assert.equal(url.searchParams.get("created_at"), "gte.2026-10-23T03:00:00.000Z");
   }
@@ -85,6 +89,23 @@ test("contexto conserva busca, categoria e meia-noite de São Paulo em todas as 
   assert.equal(fora.atualIncluido, false);
   assert.equal(fora.erro, null);
   assert.equal(fora.proximo, null);
+});
+
+test("navegação encontra os mesmos vizinhos por telefone, noivos e locais", async () => {
+  const termos = ["+55 (19) 98888-7777", "JOAO", "capela", "chacara"];
+  for (const q of termos) {
+    const cartoes = [cartao(1, { whatsapp: "19988887777" }), cartao(2), cartao(3)];
+    const dados = cartoes.map((c, i) => ({ ...c, respostas: i !== 1
+      ? { noivos: "Ana & João", local_cerimonia: "Capela Santa Clara", local_festa: "Chácara São José" }
+      : {} }));
+    dados[2].whatsapp = "5519988887777";
+    const { db } = banco(dados);
+    const resultado = await lerNavegacaoLead(id(1), normalizarFiltrosNavegacao({ q }), agora, db);
+    assert.equal(resultado.erro, null, q);
+    assert.equal(resultado.atualIncluido, true, q);
+    assert.equal(resultado.anterior, null, q);
+    assert.equal(resultado.proximo?.id, id(3), q);
+  }
 });
 
 test("Esfriou conserva prioridade real do histórico antes da chegada, inclusive depois dos 50", async () => {
