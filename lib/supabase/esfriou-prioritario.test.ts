@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { createClient } from "@supabase/supabase-js";
 import { lerEsfriouPrioritario } from "./esfriou-prioritario";
 import type { LeadCartao } from "@/lib/admin/tipos";
+import { filtroBuscaLeads } from "./busca-leads";
 
 const DIA = 86_400_000;
 const agoraMs = Date.parse("2026-10-15T18:00:00Z");
@@ -26,7 +27,7 @@ test("vermelho antigo entra antes do limite visual mesmo depois de mais de duas 
       if (url.pathname.endsWith("/leads")) {
         assert.equal(url.searchParams.get("status"), "eq.esfriou");
         assert.equal(url.searchParams.get("categoria"), "eq.casamento");
-        assert.equal(url.searchParams.get("nome_display"), "ilike.%Fixture%");
+        assert.equal(url.searchParams.get("or"), `(${filtroBuscaLeads("Fixture")})`);
         assert.equal(url.searchParams.get("created_at"), "gte.2026-01-01T00:00:00Z");
         const inicio = Number(url.searchParams.get("offset") ?? 0);
         const limite = Number(url.searchParams.get("limit") ?? 200);

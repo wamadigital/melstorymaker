@@ -78,9 +78,8 @@ export function FiltrosLeads({
           <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             type="search"
-            // "Buscar nome" e nao "Buscar por nome": com o periodo ao lado, a
-            // frase longa cortava no meio em 360-375px.
-            placeholder="Buscar nome"
+            placeholder="Buscar lead"
+            aria-label="Buscar por nome, telefone, noivos, local da cerimônia ou da festa"
             value={termo}
             onChange={(e) => setTermo(e.target.value)}
             className="h-10 pl-9"
@@ -107,6 +106,8 @@ export function FiltrosLeads({
           </SelectContent>
         </Select>
       </div>
+
+      <p className="text-xs text-muted-foreground">Busque por nome, telefone, noivos, local da cerimônia ou da festa.</p>
 
       <div className="flex flex-wrap gap-2">
         {ABAS.map((aba) => (

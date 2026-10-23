@@ -7,6 +7,7 @@ import { supabaseAdmin } from "./admin";
 import { lerComRetentativa } from "./consulta";
 import { lerDisparosWhatsApp } from "./disparos-whatsapp";
 import { lerTestesWhatsApp } from "./testes-whatsapp";
+import { aplicarBuscaLeads } from "./busca-leads";
 
 const TAMANHO_PAGINA = 200;
 type Entrada = { termo: string; categoria?: Categoria; desde: string | null; agoraMs: number; limite: number };
@@ -28,7 +29,7 @@ export async function lerEsfriouPrioritario(entrada: Entrada, cliente?: Supabase
       let consulta = db.from("leads").select(COLUNAS_CARTAO, { count: "exact" }).eq("status", "esfriou")
         .order("created_at", { ascending: false }).order("id", { ascending: true })
         .range(inicio, inicio + TAMANHO_PAGINA - 1);
-      if (entrada.termo) consulta = consulta.ilike("nome_display", `%${entrada.termo}%`);
+      consulta = aplicarBuscaLeads(consulta, entrada.termo);
       if (entrada.categoria) consulta = consulta.eq("categoria", entrada.categoria);
       if (entrada.desde) consulta = consulta.gte("created_at", entrada.desde);
       return consulta.abortSignal(AbortSignal.timeout(5_000));
