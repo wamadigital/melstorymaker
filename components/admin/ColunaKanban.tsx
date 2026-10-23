@@ -1,7 +1,9 @@
 "use client";
 
-import { ChevronDown } from "lucide-react";
+import { useEffect, useRef } from "react";
+import { ChevronDown, LoaderCircle } from "lucide-react";
 import { TEMA_COLUNA, ROTULO_STATUS } from "@/lib/admin/rotulos";
+import { TAMANHO_LOTE_KANBAN } from "@/lib/admin/paginacao-kanban";
 import type { Status } from "@/lib/form/types";
 import { cn } from "@/lib/utils";
 
@@ -17,6 +19,11 @@ type Props = {
   /** Ha um arraste em curso e esta coluna nao aceita o cartao. */
   apagada?: boolean;
   refDrop?: (el: HTMLElement | null) => void;
+  carregando?: boolean;
+  erroCarga?: string;
+  onCarregarMais?: () => void;
+  /** Não alterar a lista embaixo de um cartão sendo arrastado. */
+  cargaPausada?: boolean;
   children: React.ReactNode;
 };
 
@@ -36,10 +43,34 @@ export function ColunaKanban({
   alvo = false,
   apagada = false,
   refDrop,
+  carregando = false,
+  erroCarga,
+  onCarregarMais,
+  cargaPausada = false,
   children,
 }: Props) {
   const tema = TEMA_COLUNA[status];
   const idCorpo = `coluna-${status}`;
+  const sentinelaRef = useRef<HTMLDivElement>(null);
+  const carregarRef = useRef(onCarregarMais);
+  const temMais = mostrando < total;
+  const permiteCarga = !!onCarregarMais;
+
+  useEffect(() => { carregarRef.current = onCarregarMais; }, [onCarregarMais]);
+
+  useEffect(() => {
+    const alvo = sentinelaRef.current;
+    if (!alvo || !temMais || !permiteCarga || carregando || erroCarga || cargaPausada ||
+      typeof IntersectionObserver === "undefined") return;
+    let ativo = true;
+    // A viewport também considera o recorte das colunas roláveis no desktop.
+    // No celular acompanha a página; display:none do accordion não intersecta.
+    const observador = new IntersectionObserver((entradas) => {
+      if (ativo && entradas.some((entrada) => entrada.isIntersecting)) carregarRef.current?.();
+    }, { root: null, rootMargin: "0px 0px 120px 0px", threshold: 0 });
+    observador.observe(alvo);
+    return () => { ativo = false; observador.disconnect(); };
+  }, [temMais, permiteCarga, mostrando, total, carregando, erroCarga, cargaPausada, aberta]);
 
   return (
     <section
@@ -86,6 +117,7 @@ export function ColunaKanban({
 
       <div
         id={idCorpo}
+        aria-busy={carregando || undefined}
         className={cn(
           "space-y-2 p-2",
           // Rolagem so no desktop: no mobile quem rola e a pagina, senao a
@@ -97,11 +129,31 @@ export function ColunaKanban({
       >
         {children}
 
-        {mostrando < total && (
-          <p className="px-1 pt-1 text-center text-[0.6875rem] text-muted-foreground">
-            Mostrando {mostrando} de {total} — use a busca para achar um lead
-            antigo.
-          </p>
+        {(temMais || carregando || erroCarga || total > TAMANHO_LOTE_KANBAN) && (
+          <div ref={sentinelaRef} data-carregar-coluna={status} className="space-y-2 px-1 py-2 text-center">
+            <p className="text-[0.6875rem] text-muted-foreground">
+              Mostrando {mostrando} de {total}
+            </p>
+            {carregando ? (
+              <p role="status" className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
+                <LoaderCircle aria-hidden className="size-3.5 animate-spin" />
+                Carregando mais cards…
+              </p>
+            ) : erroCarga ? (
+              <p role="alert" className="text-xs text-destructive">{erroCarga}</p>
+            ) : null}
+            {!carregando && onCarregarMais && (temMais || erroCarga) && (
+              <button
+                type="button"
+                onClick={onCarregarMais}
+                disabled={cargaPausada}
+                aria-label={`${erroCarga ? "Tentar novamente em" : "Carregar mais cards de"} ${ROTULO_STATUS[status]}`}
+                className="min-h-11 rounded-md px-3 text-xs font-medium text-muted-foreground underline underline-offset-2 hover:text-foreground disabled:opacity-50"
+              >
+                {erroCarga ? "Tentar novamente" : "Carregar mais"}
+              </button>
+            )}
+          </div>
         )}
       </div>
     </section>

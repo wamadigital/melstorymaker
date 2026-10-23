@@ -22,6 +22,8 @@ import { CartaoLead, ColunaVazia } from "@/components/admin/CartaoLead";
 import { ColunaKanban } from "@/components/admin/ColunaKanban";
 import { FaixaDestinos } from "@/components/admin/FaixaDestinos";
 import { useQuadroAoVivo } from "@/components/admin/useQuadroAoVivo";
+import { useColunasPaginadas } from "@/components/admin/useColunasPaginadas";
+import type { ColunaKanbanDados } from "@/lib/admin/paginacao-kanban";
 import { compararCartoesNaColuna } from "@/lib/admin/ordem";
 import { urlDetalheLead, type FiltrosNavegacao } from "@/lib/admin/navegacao";
 import { atrasoProximaMudancaLembrete } from "@/lib/admin/prazos-lembretes";
@@ -31,7 +33,7 @@ import { FRASE_PERIODO, type Periodo } from "@/lib/admin/periodo";
 import type { LeadCartao } from "@/lib/admin/tipos";
 import { STATUS, type Status } from "@/lib/form/types";
 
-export type Coluna = { cartoes: LeadCartao[]; total: number; erro: string | null };
+export type Coluna = ColunaKanbanDados;
 
 /** O padrao do dnd-kit e em ingles, e toda string visivel do projeto e pt-BR. */
 const INSTRUCOES = {
@@ -40,10 +42,10 @@ const INSTRUCOES = {
 };
 
 export function QuadroLeads({
-  colunas,
+  colunas: colunasIniciais,
   termo,
   periodo,
-  agoraMs,
+  agoraMs: agoraServidorMs,
   filtros,
 }: {
   colunas: Record<Status, Coluna>;
@@ -68,6 +70,12 @@ export function QuadroLeads({
   const [aberta, setAberta] = useState<Record<string, boolean>>(() =>
     Object.fromEntries(STATUS.map((s) => [s, s !== "perdido"])),
   );
+  const { colunas, agoraMs, carregando, errosCarga, carregarMais } = useColunasPaginadas({
+    colunas: colunasIniciais,
+    filtros,
+    agoraMs: agoraServidorMs,
+    pausado: !!arrastando || !!movendo,
+  });
 
   const atrasoLembreteMs = useMemo(() => atrasoProximaMudancaLembrete(
     STATUS.flatMap((status) => colunas[status].cartoes), agoraMs,
@@ -240,6 +248,11 @@ export function QuadroLeads({
       onDragEnd={aoSoltar}
       onDragCancel={() => setArrastando(null)}
     >
+      {STATUS.some((status) => colunas[status].erroDisparos) && (
+        <p role="status" className="mb-3 text-xs text-muted-foreground">
+          Não consegui carregar os envios automáticos do WhatsApp. Atualize a página para conferir o histórico.
+        </p>
+      )}
       {vazio && !termo && (
         <p className="mb-3 rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
           {/* "ainda" so cabe sem o filtro de periodo: num dia sem lead, o
@@ -273,6 +286,10 @@ export function QuadroLeads({
               onMover={mover}
               agoraMs={agoraMs}
               filtros={filtros}
+              carregando={!!carregando[status]}
+              erroCarga={errosCarga[status]}
+              onCarregarMais={() => carregarMais(status)}
+              cargaPausada={!!arrastando || !!movendo}
             />
           ))}
         </div>
@@ -313,6 +330,10 @@ function Raia({
   onMover,
   agoraMs,
   filtros,
+  carregando,
+  erroCarga,
+  onCarregarMais,
+  cargaPausada,
 }: {
   status: Status;
   coluna: Coluna;
@@ -326,6 +347,10 @@ function Raia({
   onMover: (id: string, para: Status) => void;
   agoraMs: number;
   filtros: FiltrosNavegacao;
+  carregando: boolean;
+  erroCarga?: string;
+  onCarregarMais: () => void;
+  cargaPausada: boolean;
 }) {
   const router = useRouter();
   const recusa = arrastandoDe ? recusarMovimento(arrastandoDe, status, { temProposta }) : null;
@@ -349,6 +374,10 @@ function Raia({
       alvo={isOver && !proibida}
       apagada={proibida}
       refDrop={setNodeRef}
+      carregando={carregando}
+      erroCarga={erroCarga}
+      onCarregarMais={coluna.erro ? undefined : onCarregarMais}
+      cargaPausada={cargaPausada}
     >
       {coluna.erro ? (
         // Botao em vez de so a mensagem: a falha e transitoria (ver
