@@ -29,7 +29,8 @@ export type SolicitacaoWhatsApp = {
  */
 export const COLUNAS_CARTAO =
   "id, created_at, categoria, status, nome_display, data_evento, passo_atual, enviado_em, " +
-  "lembrete_7_em, lembrete_30_em, lembrete_email_em, chamado_whatsapp_em, qualificado_em, pdf_url, whatsapp, email";
+  "lembrete_7_em, lembrete_30_em, lembrete_email_em, chamado_whatsapp_em, qualificado_em, pdf_url, whatsapp, email, " +
+  "local_cerimonia:respostas->>local_cerimonia, local_festa:respostas->>local_festa";
 
 export type LeadCartao = Pick<
   Lead,
@@ -50,6 +51,9 @@ export type LeadCartao = Pick<
   | "whatsapp"
   | "email"
 > & {
+  /** Só estes dois trechos do JSON são necessários no cartão, sem todas as respostas. */
+  local_cerimonia?: string | null;
+  local_festa?: string | null;
   /** Resumo da fila privada, enriquecido no servidor depois da leitura das raias. */
   disparos_whatsapp?: DisparoWhatsApp[];
   solicitacoes_whatsapp?: SolicitacaoWhatsApp[];

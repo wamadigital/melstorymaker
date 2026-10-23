@@ -1,12 +1,21 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { compararCartoesNaColuna, prioridadeEsfriou } from "./ordem";
+import { compararCartoesNaColuna, maisNovoPrimeiro, prioridadeEsfriou } from "./ordem";
 import type { DisparoWhatsApp, LeadCartao, SolicitacaoWhatsApp } from "./tipos";
 import { STATUS } from "@/lib/form/types";
 
 const DIA = 86_400_000;
 const AGORA = Date.parse("2026-10-15T18:00:00.000Z");
 const iso = (dias: number) => new Date(AGORA - dias * DIA).toISOString();
+
+test("a chegada acompanha a precisão do Postgres e desempata UUIDs para manter a navegação estável", () => {
+  const a = { id: "a", created_at: "2026-10-23T12:00:00.123001+00:00" };
+  const b = { id: "b", created_at: "2026-10-23T12:00:00.123002+00:00" };
+  assert.ok(maisNovoPrimeiro(a, b) > 0, "microssegundos descendentes antes do UUID");
+  assert.ok(maisNovoPrimeiro(a, { ...b, created_at: a.created_at }) < 0, "UUID ascendente quando o instante empata");
+  assert.equal(maisNovoPrimeiro(a, { ...a, created_at: "2026-10-23T09:00:00.123001-03:00" }), 0);
+  assert.equal(maisNovoPrimeiro({ created_at: iso(0) }, { created_at: iso(0) }), 0);
+});
 
 function lead(id: string, dias: number, extra: Partial<LeadCartao> = {}): LeadCartao {
   return {

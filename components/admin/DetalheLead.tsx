@@ -25,6 +25,7 @@ import { EntradaData } from "@/components/form/EntradaData";
 import { PreviaProposta } from "@/components/admin/PreviaProposta";
 import { SecaoContrato } from "@/components/admin/contrato/SecaoContrato";
 import { QualificacaoLead } from "@/components/admin/QualificacaoLead";
+import { NavegacaoLeads, type NavegacaoNoDetalhe } from "@/components/admin/NavegacaoLeads";
 import { CLASSE_STATUS, ROTULO_STATUS, rotuloCategoria } from "@/lib/admin/rotulos";
 import {
   estadoDoAtalho,
@@ -64,10 +65,12 @@ export function DetalheLead({
   iaDisponivel,
   assinaturaConfigurada,
   assinaturaDryRun,
-}: { lead: Lead } & PropsContratoDoLead) {
+  navegacao,
+}: { lead: Lead; navegacao?: NavegacaoNoDetalhe } & PropsContratoDoLead) {
   const router = useRouter();
 
   const [respostas, setRespostas] = useState<Respostas>(lead.respostas ?? {});
+  const [respostasSalvas, setRespostasSalvas] = useState<Respostas>(lead.respostas ?? {});
   const [status, setStatus] = useState<Status>(lead.status);
   const [pdfUrl, setPdfUrl] = useState(lead.pdf_url);
   const [pdfGeradoEm, setPdfGeradoEm] = useState(lead.pdf_gerado_em);
@@ -88,6 +91,7 @@ export function DetalheLead({
     registroContrato?.status ?? null,
   );
   const [contratoOcupado, setContratoOcupado] = useState(false);
+  const respostasAlteradas = JSON.stringify(respostas) !== JSON.stringify(respostasSalvas);
 
   const passos = passosVisiveis(lead.categoria, respostas);
   const email = respostas.contato_email ?? lead.email ?? "";
@@ -117,6 +121,7 @@ export function DetalheLead({
       if (!r.ok) throw new Error(json.erro ?? "Falha ao salvar.");
 
       setRespostas(json.respostas);
+      setRespostasSalvas(json.respostas);
       setAviso({ tom: "ok", texto: "Respostas salvas." });
       router.refresh();
     } catch (e) {
@@ -272,6 +277,10 @@ export function DetalheLead({
 
   return (
     <div className="space-y-8">
+      {navegacao && <NavegacaoLeads navegacao={navegacao} bloqueio={
+        acao !== null || contratoOcupado ? "Aguarde a ação em andamento para navegar entre leads."
+          : respostasAlteradas ? "Salve as respostas para navegar entre leads." : undefined
+      } />}
       <header className="space-y-2">
         {/* gap-y menor que o gap-x: em 360px o botao quebra para a linha de
             baixo, e com gap-3 nos dois eixos ele ficava solto no meio do

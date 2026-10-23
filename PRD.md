@@ -328,6 +328,8 @@ No quadro e no detalhe, o cabeçalho mobile oferece o ícone “Atualizar aplica
 | Contato de abandono | Em Novo e com WhatsApp válido, a conversa abre vazia; a caixa “já chamei” silencia o botão. Com e-mail, o lembrete explícito da Mel permite continuar o formulário e trava por sete dias |
 | Cobrança da proposta | Somente em Enviado e Esfriou, aos sete e 30 dias do envio. Cobrança marcada silencia o cartão; reenviar por e-mail reinicia a contagem sem apagar os carimbos anteriores, que deixam de silenciar o novo envio |
 | Falha de leitura | Cada raia apresenta seu próprio erro e ação de tentar novamente; a falha de uma não derruba as outras |
+| Locais de casamento | Cartões de Casamentos mostram os locais da cerimônia e da festa em fonte pequena, abaixo da categoria/data; campos vazios não ocupam linha |
+| Qualificação no cartão | Menu de três pontos permite marcar/desmarcar Lead qualificado, com as mesmas regras do detalhe: WhatsApp válido para marcar, confirmação da versão da marca e proteção contra clique duplicado. Atualiza o selo sem mover a raia |
 
 O quadro executa a passagem de leads parados para Esfriou antes das consultas. A mesma regra roda no cron diário: abrir o painel também atualiza esses status no banco.
 
@@ -335,6 +337,7 @@ Detalhe (`/admin/leads/[id]`):
 
 | Elemento | Comportamento |
 |---|---|
+| Navegação | Setas percorrem a sequência do quadro, mantendo busca, categoria e período. Ao terminar uma coluna, a direita abre o primeiro lead da próxima coluna não vazia; a esquerda faz o caminho inverso. Mantém a prioridade de Esfriou, inclui cartões além do limite visual de 50 e desabilita nos extremos. Falha de leitura não pula leads. Trocar de lead reinicia o estado do editor; respostas não salvas ou ação em andamento bloqueiam as setas, e o contrato preserva sua confirmação de saída |
 | Respostas | Campos editáveis derivados da árvore do formulário e botão Salvar respostas; editar não substitui sozinho o PDF existente |
 | Contato | E-mail e WhatsApp do lead; Chamar no WhatsApp somente em Novo, com número válido e sem proposta gerada |
 | Proposta | Gerar/Regerar, preview, enviar por e-mail, enviar via WhatsApp e baixar PDF. E-mail exige PDF e endereço cadastrado; WhatsApp da proposta exige PDF |

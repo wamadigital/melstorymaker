@@ -23,6 +23,7 @@ import { ColunaKanban } from "@/components/admin/ColunaKanban";
 import { FaixaDestinos } from "@/components/admin/FaixaDestinos";
 import { useQuadroAoVivo } from "@/components/admin/useQuadroAoVivo";
 import { compararCartoesNaColuna } from "@/lib/admin/ordem";
+import { urlDetalheLead, type FiltrosNavegacao } from "@/lib/admin/navegacao";
 import { atrasoProximaMudancaLembrete } from "@/lib/admin/prazos-lembretes";
 import { ROTULO_STATUS } from "@/lib/admin/rotulos";
 import { MENSAGEM_RECUSA, recusarMovimento, mensagemConfirmacaoDeEnvio, pedeConfirmacaoDeEnvio } from "@/lib/admin/status";
@@ -43,12 +44,14 @@ export function QuadroLeads({
   termo,
   periodo,
   agoraMs,
+  filtros,
 }: {
   colunas: Record<Status, Coluna>;
   termo: string;
   periodo: Periodo;
   /** "Agora" do SERVIDOR, para a contagem de cobranca nao variar na hidratacao. */
   agoraMs: number;
+  filtros: FiltrosNavegacao;
 }) {
   const router = useRouter();
   const [, iniciar] = useTransition();
@@ -269,6 +272,7 @@ export function QuadroLeads({
               movendo={movendo}
               onMover={mover}
               agoraMs={agoraMs}
+              filtros={filtros}
             />
           ))}
         </div>
@@ -287,6 +291,7 @@ export function QuadroLeads({
             coluna={colunaArrastada}
             agoraMs={agoraMs}
             sobreposto
+            hrefDetalhe={urlDetalheLead(leadArrastado.id, filtros)}
           />
         )}
       </DragOverlay>
@@ -307,6 +312,7 @@ function Raia({
   movendo,
   onMover,
   agoraMs,
+  filtros,
 }: {
   status: Status;
   coluna: Coluna;
@@ -319,6 +325,7 @@ function Raia({
   movendo: string | null;
   onMover: (id: string, para: Status) => void;
   agoraMs: number;
+  filtros: FiltrosNavegacao;
 }) {
   const router = useRouter();
   const recusa = arrastandoDe ? recusarMovimento(arrastandoDe, status, { temProposta }) : null;
@@ -368,6 +375,7 @@ function Raia({
             movendo={movendo === lead.id}
             onMover={onMover}
             agoraMs={agoraMs}
+            hrefDetalhe={urlDetalheLead(lead.id, filtros)}
           />
         ))
       )}
@@ -381,12 +389,14 @@ function Arrastavel({
   movendo,
   onMover,
   agoraMs,
+  hrefDetalhe,
 }: {
   lead: LeadCartao;
   coluna: Status;
   movendo: boolean;
   onMover: (id: string, para: Status) => void;
   agoraMs: number;
+  hrefDetalhe: string;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: lead.id });
 
@@ -400,6 +410,7 @@ function Arrastavel({
         onMover={onMover}
         handle={{ ...attributes, ...listeners }}
         agoraMs={agoraMs}
+        hrefDetalhe={hrefDetalhe}
       />
     </div>
   );
