@@ -5,6 +5,7 @@ import { FiltrosLeads } from "@/components/admin/FiltrosLeads";
 import { QuadroLeads, type Coluna } from "@/components/admin/QuadroLeads";
 import { lerComRetentativa } from "@/lib/supabase/consulta";
 import { esfriarParados } from "@/lib/supabase/esfriar";
+import { encerrarEventosPassados } from "@/lib/supabase/encerrar-eventos";
 import { lerDisparosWhatsApp } from "@/lib/supabase/disparos-whatsapp";
 import { lerTestesWhatsApp } from "@/lib/supabase/testes-whatsapp";
 import { lerEsfriouPrioritario } from "@/lib/supabase/esfriou-prioritario";
@@ -27,6 +28,7 @@ export default async function PaginaLeads({ searchParams }: { searchParams: Prom
   // Antes de ler as colunas: quem ficou uma semana parado depois do prazo da
   // cobranca sai de "Enviado" e vai para "Esfriou" (lib/admin/esfriar.ts). Nunca
   // lanca -- se falhar, o quadro abre do mesmo jeito e o cron diario tenta de novo.
+  const encerramento = await encerrarEventosPassados();
   await esfriarParados(agoraMs);
 
   const desde = inicioDoPeriodo(periodo, agoraMs);
@@ -100,6 +102,11 @@ export default async function PaginaLeads({ searchParams }: { searchParams: Prom
 
   return (
     <div className="space-y-5">
+      {encerramento.erro && (
+        <p role="status" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+          Não consegui atualizar os eventos encerrados. Atualize a página para tentar novamente.
+        </p>
+      )}
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h1 className="text-2xl font-semibold">Leads</h1>
         {filtrando && (

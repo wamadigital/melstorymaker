@@ -5,6 +5,7 @@ import { getSessaoAdmin } from "@/lib/supabase/server";
 import { STATUS, type Status } from "@/lib/form/types";
 import { MENSAGEM_RECUSA, recusarMovimento } from "@/lib/admin/status";
 import { enviarEventoDeStatus } from "@/lib/meta/lead";
+import { eventoPassado } from "@/lib/admin/evento-passado";
 
 export const maxDuration = 60;
 
@@ -48,7 +49,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
 
   const { data: lead } = await supabaseAdmin()
     .from("leads")
-    .select("id, status, nome_display, pdf_url, enviado_em")
+    .select("id, status, nome_display, pdf_url, enviado_em, data_evento, contratos(status, assinatura_status, assinado_em)")
     .eq("id", id)
     .maybeSingle();
 
@@ -57,6 +58,14 @@ export async function PATCH(req: Request, { params }: Ctx) {
   }
 
   const atual = lead.status as Status;
+  const contratos = Array.isArray(lead.contratos) ? lead.contratos : [lead.contratos];
+  const contratoAssinado = contratos.some((contrato) => contrato && (
+    contrato.status === "assinado" || contrato.assinatura_status === "concluido" || !!contrato.assinado_em
+  ));
+  if (para !== "perdido" && para !== "virou_cliente" && !contratoAssinado &&
+    eventoPassado(lead.data_evento, Date.now())) {
+    return NextResponse.json({ erro: "A data deste evento já passou. Corrija a data para reativar o lead." }, { status: 422 });
+  }
 
   // Duplo clique / drop repetido: o estado desejado ja existe. Mesmo criterio do
   // submit publico, que responde ok em vez de erro.
@@ -107,6 +116,11 @@ export async function PATCH(req: Request, { params }: Ctx) {
       { erro: "Esse lead mudou de coluna em outra tela. Atualizei a página." },
       { status: 409 },
     );
+  }
+  if (salvo.status !== para) {
+    // O relógio pode virar durante o request. O trigger mantém o encerramento
+    // e não transformamos a tentativa em um evento Site de envio/fechamento.
+    return NextResponse.json({ erro: "Esse evento foi encerrado. Atualizei a página.", status: salvo.status }, { status: 409 });
   }
 
   // Unica trilha de auditoria que existe (logs da Vercel). Este e o primeiro

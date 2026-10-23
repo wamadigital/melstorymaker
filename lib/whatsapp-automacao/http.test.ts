@@ -18,6 +18,38 @@ const req = (body: unknown = {}, authorization = `Bearer ${TOKEN}`, protocolo: s
     ...(protocolo === null ? {} : { "X-Mel-Worker-Protocol": protocolo }) }, body: JSON.stringify(body),
 });
 
+test("manutenção autenticada encerra eventos mesmo com mensagens pausadas, antes de reivindicar", async () => {
+  const { deps } = dependencias("0");
+  const chamadas: string[] = [];
+  deps.encerrarEventos = async () => { chamadas.push("encerrar"); return { ids: [], erro: null }; };
+  deps.reivindicar = async () => { chamadas.push("reivindicar"); return null; };
+  assert.equal((await tratarReivindicacao(req({}, "Bearer incorreto"), deps)).status, 401);
+  assert.deepEqual(chamadas, []);
+  const pausado = await tratarReivindicacao(req(), deps);
+  assert.equal(pausado.status, 200);
+  assert.equal((await pausado.json()).active, false);
+  assert.deepEqual(chamadas, ["encerrar"]);
+  deps.ambiente.WHATSAPP_AUTOMACAO_ATIVA = "true";
+  await tratarReivindicacao(req(), deps);
+  assert.deepEqual(chamadas, ["encerrar", "encerrar", "reivindicar"]);
+});
+
+test("falha no encerramento impede claim, mas não bloqueia recibo de envio já iniciado", async () => {
+  const { deps } = dependencias();
+  let claims = 0;
+  let manutencoes = 0;
+  deps.encerrarEventos = async () => { manutencoes++; return { ids: [], erro: "Falha segura" }; };
+  deps.reivindicar = async () => { claims++; return null; };
+  const claim = await tratarReivindicacao(req(), deps);
+  assert.equal(claim.status, 503);
+  assert.equal(claim.headers.get("cache-control"), "no-store");
+  assert.equal(claims, 0);
+  const ack = await tratarResultado(req({ leaseToken: LEASE, outcome: "sent" }), ID, deps);
+  assert.equal(ack.status, 200);
+  assert.equal((await ack.json()).state, "enviado");
+  assert.equal(manutencoes, 1, "ACK não depende de nova manutenção nem se perde por falha dela");
+});
+
 test("proposta inicial aceita protocolos 4/5 e sua própria flag, sem reativar formulário ou lembretes", async () => {
   const sequencia = sequenciaPropostaInicial("Maria Eduarda", "https://crm.invalid/p/a3f9");
   const inicial = { ...job, tipo: "proposta_inicial_15m" as const, messagesSequence: sequencia,

@@ -13,6 +13,7 @@ import {
 import { configuracaoLembreteFormulario } from "./lembrete-formulario";
 import { lembretesPropostaAtivos } from "./lembretes-proposta";
 import { propostaInicialAtiva } from "./proposta-inicial";
+import { encerrarEventosPassados, type ResultadoEncerramento } from "@/lib/supabase/encerrar-eventos";
 
 export type DependenciasHttpWhatsApp = {
   ambiente: AmbienteWhatsApp;
@@ -20,6 +21,7 @@ export type DependenciasHttpWhatsApp = {
   resultado: (id: string, resultado: ResultadoWorker, protocolo?: ProtocoloWorker) => Promise<string | null>;
   agora?: () => number;
   cadencia?: () => Promise<10 | 60>;
+  encerrarEventos?: () => Promise<ResultadoEncerramento>;
 };
 const uuid = z.string().uuid();
 const cabecalhos = { "Cache-Control": "no-store" };
@@ -27,6 +29,7 @@ const resposta = (corpo: unknown, status = 200) => NextResponse.json(corpo, { st
 const reais = (): DependenciasHttpWhatsApp => ({
   ambiente: process.env, reivindicar: reivindicarWhatsApp, resultado: registrarResultadoWhatsApp,
   cadencia: cadenciaLoteLegadoWhatsApp,
+  encerrarEventos: () => encerrarEventosPassados(),
 });
 export function protocoloWorker(req: Request): ProtocoloWorker {
   const valor = req.headers.get(HEADER_PROTOCOLO_WORKER);
@@ -47,6 +50,16 @@ function autenticar(req: Request, ambiente: AmbienteWhatsApp): Response | null {
 export async function tratarReivindicacao(req: Request, deps = reais()): Promise<Response> {
   const recusa = autenticar(req, deps.ambiente);
   if (recusa) return recusa;
+  // Manutenção do CRM independe das flags de mensagens. Só roda depois da
+  // autenticação; nenhuma fila é reivindicada se o encerramento falhar.
+  try {
+    if ((await deps.encerrarEventos?.())?.erro) {
+      return resposta({ erro: "Não consegui atualizar os eventos encerrados." }, 503);
+    }
+  } catch {
+    console.error("[whatsapp] falha ao encerrar eventos passados");
+    return resposta({ erro: "Não consegui atualizar os eventos encerrados." }, 503);
+  }
   const protocolo = protocoloWorker(req);
   const config = protocolo >= 5
     ? configuracaoLembreteFormulario(deps.ambiente, (deps.agora ?? Date.now)()) : null;
