@@ -322,13 +322,13 @@ No quadro e no detalhe, o cabeçalho mobile oferece o ícone “Atualizar aplica
 | Raias | Novo, Aguardando revisão, Enviado, Virou cliente, Esfriou e Lead perdido, nessa ordem |
 | Cartão | Sujeito do evento, categoria, data do evento, data de chegada e sinais de PDF/e-mail; ícone de checklist de envios conforme RF-26, com as quatro marcações cumulativas no hover, sem data/origem. Em Novo, mostra onde o preenchimento parou |
 | Busca e filtros | Busca por nome, telefone, noivos e locais (RF-09), com categoria e período de chegada (Todo o período, Hoje, Esta semana, Este mês), mantidos na URL. A semana começa na segunda-feira e os cortes usam São Paulo |
-| Ordem e limite | Mais novos primeiro em todas as raias; até 50 cartões por raia, com contagem total e aviso quando existem outros resultados |
+| Ordem e carregamento | Primeiros 50 cartões em cada raia; ao alcançar o fim, carrega mais 50 nessa coluna, com contagem total. Mais novos primeiro, preservando a prioridade de ações de Esfriou. Filtros, arraste, menus e checklist valem também para os próximos lotes. Atualização automática conserva a quantidade já aberta; nova busca/categoria/período reinicia com 50 |
 | Movimentação | Arraste ou menu do cartão; não permite voltar para Novo. Enviado e Esfriou exigem PDF; Cliente e Perdido não exigem. Uma tela desatualizada recebe aviso e recarrega o estado real |
 | Desktop e celular | Kanban ocupa toda a largura da tela, sem limite máximo no painel. Cada coluna tem largura mínima de 248 px e se expande com o espaço disponível. São seis colunas no desktop, duas no tablet e seções recolhíveis empilhadas no celular; quando necessário, a rolagem horizontal fica dentro do quadro. Lead perdido começa recolhida no celular; Esfriou começa aberta |
 | Cores | Novo em slate, revisão em âmbar, Enviado em azul, Cliente em verde, Esfriou em cinza frio e Perdido em stone. Aos 30 dias do envio, cobrança pendente deixa o cartão vermelho |
 | Contato de abandono | Em Novo e com WhatsApp válido, a conversa abre vazia; a caixa “já chamei” silencia o botão. Com e-mail, o lembrete explícito da Mel permite continuar o formulário e trava por sete dias |
 | Cobrança da proposta | Somente em Enviado e Esfriou, aos sete e 30 dias do envio. Cobrança marcada silencia o cartão; reenviar por e-mail reinicia a contagem sem apagar os carimbos anteriores, que deixam de silenciar o novo envio |
-| Falha de leitura | Cada raia apresenta seu próprio erro e ação de tentar novamente; a falha de uma não derruba as outras |
+| Falha de leitura | Cada raia apresenta seu próprio erro e ação de tentar novamente; a falha de uma não derruba as outras. Falha ao carregar o próximo lote mantém os cards anteriores e permite repetir a carga, sem duplicar cartões |
 | Locais de casamento | Cartões de Casamentos mostram os locais da cerimônia e da festa em fonte pequena, abaixo da categoria/data; campos vazios não ocupam linha |
 | Qualificação no cartão | Menu de três pontos permite marcar/desmarcar Lead qualificado, com as mesmas regras do detalhe: WhatsApp válido para marcar, confirmação da versão da marca e proteção contra clique duplicado. Atualiza o selo sem mover a raia |
 
@@ -338,7 +338,7 @@ Detalhe (`/admin/leads/[id]`):
 
 | Elemento | Comportamento |
 |---|---|
-| Navegação | Setas percorrem a sequência do quadro, mantendo busca, categoria e período. Ao terminar uma coluna, a direita abre o primeiro lead da próxima coluna não vazia; a esquerda faz o caminho inverso. Mantém a prioridade de Esfriou, inclui cartões além do limite visual de 50 e desabilita nos extremos. Falha de leitura não pula leads. Trocar de lead reinicia o estado do editor; respostas não salvas ou ação em andamento bloqueiam as setas, e o contrato preserva sua confirmação de saída |
+| Navegação | Setas percorrem a sequência do quadro, mantendo busca, categoria e período. Ao terminar uma coluna, a direita abre o primeiro lead da próxima coluna não vazia; a esquerda faz o caminho inverso. Mantém a prioridade de Esfriou, inclui cartões além dos primeiros 50, mesmo sem carregá-los no quadro e desabilita nos extremos. Falha de leitura não pula leads. Trocar de lead reinicia o estado do editor; respostas não salvas ou ação em andamento bloqueiam as setas, e o contrato preserva sua confirmação de saída |
 | Respostas | Campos editáveis derivados da árvore do formulário e botão Salvar respostas; editar não substitui sozinho o PDF existente |
 | Contato | E-mail e WhatsApp do lead; Chamar no WhatsApp somente em Novo, com número válido e sem proposta gerada |
 | Proposta | Gerar/Regerar, preview, enviar por e-mail, enviar via WhatsApp e baixar PDF. E-mail exige PDF e endereço cadastrado; WhatsApp da proposta exige PDF |
