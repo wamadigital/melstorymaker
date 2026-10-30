@@ -13,6 +13,7 @@ import {
   responder,
   rotaDoContrato,
 } from "./_comum";
+import { negociarComContextoDoLead } from "./_negociacao";
 
 export const runtime = "nodejs";
 
@@ -45,13 +46,16 @@ const corpo = z.object({ dados: dadosContratoSchema });
  */
 export const PUT = rotaDoContrato("salvar", async (req, id) => {
   const { dados: recebidos } = await lerCorpo(req, corpo);
-  await carregarLead(id);
+  const lead = await carregarLead(id);
 
   const atual = await lerRegistro(id);
   recusarSeTravado(atual?.status);
+  // Só contratos de casamento podem trazer negociações por opção. A validação
+  // usa o lead lido do banco e acontece antes de qualquer escrita do rascunho.
+  const negociados = negociarComContextoDoLead(recebidos, lead);
   // A interpretacao do pagamento personalizado e do servidor (ver
   // `manterInterpretacao`); a copia que veio do navegador e descartada.
-  const dados = manterInterpretacao(recebidos, atual?.dados);
+  const dados = manterInterpretacao(negociados, atual?.dados);
 
   // Escrita guardada pelo status lido: se o envio para assinatura travou o
   // texto no meio do caminho, isto vira 409 em vez de mexer num contrato que

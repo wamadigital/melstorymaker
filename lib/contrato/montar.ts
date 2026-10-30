@@ -82,6 +82,11 @@ import {
   type UnidadeAdicional,
 } from "@/lib/contrato/clausulas";
 import { validarTextoIa } from "@/lib/contrato/validar";
+import {
+  condicoesNegociadasCasamento,
+  ErroNegociacaoCasamento,
+  resolverNegociacaoCasamento,
+} from "@/lib/contrato/negociacao-casamento";
 
 /**
  * O que a montagem precisa saber do LEAD, alem dos dados do contrato.
@@ -301,6 +306,7 @@ function avisosDoPagamento(dados: DadosContrato): Aviso[] {
 }
 
 export function baseDeRedacao(dados: DadosContrato, ctx: ContextoMontagem): BaseRedacao {
+  dados = resolverNegociacaoCasamento(dados, ctx);
   const { menor, menorDe16 } = menoridade(ctx);
   const servico = dados.servico;
   const total = totalContrato(servico);
@@ -389,6 +395,12 @@ function rotuloHomenageado(categoria: Categoria): string {
  * vazia = pode montar.
  */
 export function faltantes(dados: DadosContrato, ctx: ContextoMontagem): string[] {
+  try {
+    dados = resolverNegociacaoCasamento(dados, ctx);
+  } catch (erro) {
+    if (erro instanceof ErroNegociacaoCasamento) return [erro.message];
+    throw erro;
+  }
   const f: string[] = [];
   const push = (s: string | null) => {
     if (s) f.push(s);
@@ -809,7 +821,7 @@ export function montarContrato(
     pagamento.problemas = [...pagamento.problemas, ...problemasFrases.map((x) => `Vencimento das parcelas: ${x}`)];
   }
 
-  const especiais = clausulaCondicoesEspeciais(condicoesEspeciais);
+  let especiais = clausulaCondicoesEspeciais(condicoesEspeciais);
   if (especiais) {
     // Validada contra o contrato SEM ela: um numero que so a IA escreveu nao
     // pode "se provar" aparecendo na propria clausula.
@@ -818,6 +830,28 @@ export function montarContrato(
     // Limites do schema: acima deles a clausula ja esta com problema (no
     // maximo 8 paragrafos e 1.500 caracteres cada) e bloqueada.
     especiais.paragrafos = [...paragrafosIa.slice(0, 38).map((p) => p.slice(0, 6000)), especiais.paragrafos.at(-1)!];
+  }
+
+  // A negociacao e texto aprovado pela Mel: nunca passa pela redacao nem pela
+  // verificacao de numeros da IA. Preserva os paragrafos, inclusive espacos
+  // internos e pontuacao; somente linhas vazias/espacos das pontas sao retirados.
+  const negociadas = condicoesNegociadasCasamento(dados);
+  if (negociadas.length > 0) {
+    const modelo = especiais ?? clausulaCondicoesEspeciais(negociadas)!;
+    especiais = {
+      ...modelo,
+      origem: especiais ? "ia" : "padrao",
+      paragrafos: [...negociadas, ...(especiais ? especiais.paragrafos : [modelo.paragrafos.at(-1)!])],
+    };
+    // Nao truncar uma condicao negociada para caber no documento. O schema
+    // permite 40 paragrafos por clausula, contando IA e prevalencia juntos.
+    if (especiais.paragrafos.length > 40) {
+      throw new CamposFaltandoContratoError([
+        "As condições negociadas e as observações geraram mais de 40 parágrafos. Reduza a quantidade de parágrafos antes de gerar o contrato.",
+      ]);
+    }
+  }
+  if (especiais) {
     const antes = clausulas.findIndex((c) => c.id === "assinatura_eletronica");
     clausulas.splice(antes, 0, especiais);
   }

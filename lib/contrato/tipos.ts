@@ -230,6 +230,21 @@ export const servicoSchema = z.object({
 });
 export type Servico = z.infer<typeof servicoSchema>;
 
+/** Rascunho independente de uma opcao de casamento, exclusivo do contrato. */
+export const opcaoNegociacaoCasamentoSchema = z.object({
+  modo: z.enum(["original", "personalizado"]),
+  servico: servicoSchema,
+  /** Texto da Mel, incorporado por codigo sem redacao pela IA. */
+  condicoes: z.string().max(6000).default(""),
+});
+export type OpcaoNegociacaoCasamento = z.infer<typeof opcaoNegociacaoCasamentoSchema>;
+
+export const negociacaoCasamentoSchema = z.object({
+  opcao1: opcaoNegociacaoCasamentoSchema,
+  opcao2: opcaoNegociacaoCasamentoSchema,
+});
+export type NegociacaoCasamento = z.infer<typeof negociacaoCasamentoSchema>;
+
 // -------------------------------------------------------------- pagamento --
 
 export const vencimentoSchema = z.discriminatedUnion("tipo", [
@@ -323,6 +338,8 @@ export const dadosContratoSchema = z.object({
   anuente: anuenteSchema.prefault({}),
   evento: eventoSchema.prefault({}),
   servico: servicoSchema,
+  /** Ausente nos legados: nunca reconstruir nem reajustar um servico ja salvo. */
+  negociacaoCasamento: negociacaoCasamentoSchema.optional(),
   pagamento: pagamentoSchema.prefault({}),
   /**
    * Adendos em texto livre: pedido especial do cliente, local diferente. E

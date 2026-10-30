@@ -20,6 +20,7 @@ import {
   rotaDoContrato,
 } from "../_comum";
 import { gravarTextoRedigido } from "../_escrita";
+import { negociarComContextoDoLead } from "../_negociacao";
 
 export const runtime = "nodejs";
 // A redacao das condicoes especiais e a chamada mais longa do sistema
@@ -50,9 +51,12 @@ export const POST = rotaDoContrato("redigir", async (req, id) => {
 
   const atual = await lerRegistro(id);
   recusarSeTravado(atual?.status);
+  // Resolve a opção negociada com a categoria/arte reais antes de gravar.
+  // Dados inconsistentes não podem substituir nem o rascunho existente.
+  const negociados = negociarComContextoDoLead(recebidos, lead);
   // A interpretacao do pagamento personalizado so vale a do servidor, e so
   // para o mesmo texto (ver `manterInterpretacao`).
-  const dados = manterInterpretacao(recebidos, atual?.dados);
+  const dados = manterInterpretacao(negociados, atual?.dados);
 
   const salvo = atual
     ? await salvarRegistro(id, { dados }, { status: STATUS_EDITAVEIS })
