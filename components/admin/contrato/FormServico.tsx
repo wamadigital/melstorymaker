@@ -23,7 +23,7 @@ import {
   type AdicionalCatalogo,
 } from "@/lib/contrato/catalogo";
 import { duracaoCurta, formatarReais, valorComExtenso } from "@/lib/contrato/extenso";
-import { totalContrato, totalDeTabela } from "@/lib/contrato/montar";
+import { escopoEfetivo, totalContrato, totalDeTabela } from "@/lib/contrato/montar";
 import type { Adicional, Escopo, Servico } from "@/lib/contrato/tipos";
 import type { TemplateId } from "@/lib/form/types";
 import {
@@ -69,16 +69,27 @@ function rotuloPrecoCatalogo(item: AdicionalCatalogo, pacote: string, tabela: Ta
   return reais;
 }
 
+/** O campo do casamento é o total acordado, também quando é zero ou maior que a soma. */
+export function ajustarValorFinalCasamento(servico: Servico, final: number): Servico {
+  const bruto = servico.valorPacote + servico.adicionais.reduce((s, a) => s + a.quantidade * a.valorUnitario, 0);
+  return final <= bruto
+    ? { ...servico, desconto: bruto - final }
+    : { ...servico, valorPacote: servico.valorPacote + final - bruto, desconto: 0 };
+}
+
 export function FormServico({
   templateId,
   servico,
   onServico,
   dataEvento,
+  personalizacaoCasamento = false,
 }: {
   templateId: TemplateId | null;
   servico: Servico;
   onServico: (s: Servico) => void;
   dataEvento: string;
+  /** As duas opções de casamento já são escolhidas pelo painel próprio. */
+  personalizacaoCasamento?: boolean;
 }) {
   const set = (patch: Partial<Servico>) => onServico({ ...servico, ...patch });
   const setEscopo = (patch: Partial<Escopo>) => set({ escopo: { ...servico.escopo, ...patch } });
@@ -93,6 +104,9 @@ export function FormServico({
   const somaAdicionais = servico.adicionais.reduce((s, a) => s + a.quantidade * a.valorUnitario, 0);
   const bruto = servico.valorPacote + somaAdicionais;
   const total = totalContrato(servico);
+  const coberturaTotalCasamento = personalizacaoCasamento
+    ? escopoEfetivo(servico, "casamento").minutosCobertura
+    : null;
   const deTabela = templateId ? totalDeTabela(servico, templateId) : null;
 
   // Os bullets vem da TABELA escolhida: no aniversario adulto o texto cita o
@@ -193,44 +207,73 @@ export function FormServico({
         </Recado>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <CampoSelect
-          id={ID.svTabela}
-          rotulo="Tabela de preço"
-          valor={servico.tabela}
-          onValor={escolherTabela}
-          opcoes={TABELAS_PRECO.map((t) => ({ valor: t, rotulo: `Tabela ${t}` }))}
-          dica={dicaTabela}
-        />
-        <CampoSelect
-          id={ID.svPacote}
-          rotulo="Pacote"
-          valor={servico.pacote}
-          onValor={escolherPacote}
-          vazio={templateId ? "Escolha o pacote…" : "Informe a idade primeiro"}
-          opcoes={(catalogo?.pacotes ?? []).map((p) => ({
-            valor: p.nome,
-            rotulo: p.nome === PACOTE_PERSONALIZADO ? "Personalizado (sob medida)" : p.nome,
-          }))}
-        />
-        <CampoReais
-          id={ID.svValor}
-          rotulo="Valor do pacote"
-          centavos={servico.valorPacote}
-          onCentavos={(c) => set({ valorPacote: c })}
-          dica={
-            precoTabela !== null
-              ? precoTabela === servico.valorPacote
-                ? `Preço da tabela ${servico.tabela}.`
-                : `Na tabela ${servico.tabela}: ${formatarReais(precoTabela)}.`
-              : servico.pacote === PACOTE_PERSONALIZADO
-                ? "Pacote sob medida: digite o valor combinado."
-                : undefined
-          }
-        />
-      </div>
+      {personalizacaoCasamento ? (
+        <div className="space-y-3">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <CampoDuracao
+              id={ID.svCobertura}
+              rotulo="Horas de cobertura da opção"
+              minutos={servico.escopo.minutosCobertura}
+              onMinutos={(m) => setEscopo({ minutosCobertura: m })}
+              maxMinutos={24 * 60}
+              dica={
+                coberturaTotalCasamento !== servico.escopo.minutosCobertura
+                  ? "As horas adicionais incluídas abaixo somam-se à cobertura desta opção."
+                  : undefined
+              }
+            />
+            <CampoReais
+              id={ID.svFinal}
+              rotulo="Valor final negociado"
+              centavos={total}
+              onCentavos={(c) => onServico(ajustarValorFinalCasamento(servico, c))}
+              dica="Valor total do contrato, incluindo os adicionais. Informe o valor exato combinado com a cliente."
+            />
+          </div>
+          <p className="text-sm font-medium">
+            Cobertura total contratada: {duracaoCurta(coberturaTotalCasamento ?? 0)}
+          </p>
+        </div>
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2">
+          <CampoSelect
+            id={ID.svTabela}
+            rotulo="Tabela de preço"
+            valor={servico.tabela}
+            onValor={escolherTabela}
+            opcoes={TABELAS_PRECO.map((t) => ({ valor: t, rotulo: `Tabela ${t}` }))}
+            dica={dicaTabela}
+          />
+          <CampoSelect
+            id={ID.svPacote}
+            rotulo="Pacote"
+            valor={servico.pacote}
+            onValor={escolherPacote}
+            vazio={templateId ? "Escolha o pacote…" : "Informe a idade primeiro"}
+            opcoes={(catalogo?.pacotes ?? []).map((p) => ({
+              valor: p.nome,
+              rotulo: p.nome === PACOTE_PERSONALIZADO ? "Personalizado (sob medida)" : p.nome,
+            }))}
+          />
+          <CampoReais
+            id={ID.svValor}
+            rotulo="Valor do pacote"
+            centavos={servico.valorPacote}
+            onCentavos={(c) => set({ valorPacote: c })}
+            dica={
+              precoTabela !== null
+                ? precoTabela === servico.valorPacote
+                  ? `Preço da tabela ${servico.tabela}.`
+                  : `Na tabela ${servico.tabela}: ${formatarReais(precoTabela)}.`
+                : servico.pacote === PACOTE_PERSONALIZADO
+                  ? "Pacote sob medida: digite o valor combinado."
+                  : undefined
+            }
+          />
+        </div>
+      )}
 
-      {pacoteAtual && itensDaArte.length > 0 && (
+      {!personalizacaoCasamento && pacoteAtual && itensDaArte.length > 0 && (
         <div className="rounded-lg bg-muted p-3 text-xs">
           <p className="font-medium">Como o {pacoteAtual.nome} está na arte</p>
           <ul className="mt-1 list-disc space-y-0.5 pl-4 text-muted-foreground">
@@ -242,19 +285,28 @@ export function FormServico({
       )}
 
       {/* ------------------------------------------------- detalhes do pacote */}
-      <details id={ID.svDetalhes} className="group rounded-lg border">
+      <details
+        id={ID.svDetalhes}
+        className="group rounded-lg border"
+        open={personalizacaoCasamento || undefined}
+      >
         <summary className="flex items-start gap-2 px-3 py-2.5 text-sm font-medium">
           <ChevronDown className="mt-0.5 size-4 shrink-0 transition-transform group-open:rotate-180" />
           <span className="min-w-0 flex-1">
-            Detalhes do pacote
+            {personalizacaoCasamento ? "Serviços e itens inclusos" : "Detalhes do pacote"}
             <span className="block text-xs font-normal text-muted-foreground">
-              {duracaoCurta(servico.escopo.minutosCobertura)} de cobertura · {servico.escopo.reels.length}{" "}
+              {duracaoCurta(coberturaTotalCasamento ?? servico.escopo.minutosCobertura)} de cobertura
+              {personalizacaoCasamento ? " total" : ""} · {servico.escopo.reels.length}{" "}
               Reels
               {servico.escopo.tempoReal ? " · tempo real" : ""} · prazos e equipe
             </span>
           </span>
         </summary>
-        <DetalhesDoPacote escopo={servico.escopo} setEscopo={setEscopo} />
+        <DetalhesDoPacote
+          escopo={servico.escopo}
+          setEscopo={setEscopo}
+          coberturaVisivel={personalizacaoCasamento}
+        />
       </details>
 
       {/* --------------------------------------------------------- adicionais */}
@@ -340,20 +392,22 @@ export function FormServico({
           )}
         </dl>
 
-        <CampoReais
-          id={ID.svFinal}
-          rotulo="Valor final combinado (opcional)"
-          centavos={servico.desconto > 0 ? Math.max(0, bruto - servico.desconto) : 0}
-          onCentavos={(c) => set({ desconto: c > 0 && c < bruto ? bruto - c : 0 })}
-          dica="Para fechar por um valor abaixo da soma. O contrato mostra só o total; a diferença fica registrada como desconto. Para cobrar mais, ajuste o valor do pacote."
-          className="sm:max-w-xs"
-        />
+        {!personalizacaoCasamento && (
+          <CampoReais
+            id={ID.svFinal}
+            rotulo="Valor final combinado (opcional)"
+            centavos={servico.desconto > 0 ? Math.max(0, bruto - servico.desconto) : 0}
+            onCentavos={(c) => set({ desconto: c > 0 && c < bruto ? bruto - c : 0 })}
+            dica="Para fechar por um valor abaixo da soma. O contrato mostra só o total; a diferença fica registrada como desconto. Para cobrar mais, ajuste o valor do pacote."
+            className="sm:max-w-xs"
+          />
+        )}
 
         <div className="border-t pt-3">
           <p className="text-xs text-muted-foreground">Total do contrato</p>
           <p className="text-lg font-semibold tabular-nums">{formatarReais(total)}</p>
           {total > 0 && <p className="text-xs text-muted-foreground">{valorComExtenso(total)}</p>}
-          {deTabela !== null && (
+          {!personalizacaoCasamento && deTabela !== null && (
             <p className={cn("mt-1 text-xs", total > deTabela ? "text-amber-800" : "text-muted-foreground")}>
               Pela tabela {servico.tabela}: {formatarReais(deTabela)}.
               {total > deTabela
@@ -372,9 +426,11 @@ export function FormServico({
 function DetalhesDoPacote({
   escopo,
   setEscopo,
+  coberturaVisivel = false,
 }: {
   escopo: Escopo;
   setEscopo: (p: Partial<Escopo>) => void;
+  coberturaVisivel?: boolean;
 }) {
   return (
     <div className="space-y-4 border-t p-3">
@@ -384,13 +440,15 @@ function DetalhesDoPacote({
       </p>
 
       <div className="grid gap-4 sm:grid-cols-3">
-        <CampoDuracao
-          id={ID.svCobertura}
-          rotulo="Cobertura do evento"
-          minutos={escopo.minutosCobertura}
-          onMinutos={(m) => setEscopo({ minutosCobertura: m })}
-          maxMinutos={24 * 60}
-        />
+        {!coberturaVisivel && (
+          <CampoDuracao
+            id={ID.svCobertura}
+            rotulo="Cobertura do evento"
+            minutos={escopo.minutosCobertura}
+            onMinutos={(m) => setEscopo({ minutosCobertura: m })}
+            maxMinutos={24 * 60}
+          />
+        )}
         <CampoDuracao
           id="ct-sv-making-of"
           rotulo="Making of (do pacote)"

@@ -76,6 +76,8 @@ import {
 import { FormQuemAssina } from "@/components/admin/contrato/FormQuemAssina";
 import { FormEvento } from "@/components/admin/contrato/FormEvento";
 import { FormServico } from "@/components/admin/contrato/FormServico";
+import { FormServicoCasamento } from "@/components/admin/contrato/FormServicoCasamento";
+import { iniciarNegociacaoCasamento } from "@/lib/contrato/negociacao-casamento";
 import { FormPagamento } from "@/components/admin/contrato/FormPagamento";
 import { ListaAvisos } from "@/components/admin/contrato/ListaAvisos";
 import { EditorClausulas } from "@/components/admin/contrato/EditorClausulas";
@@ -263,9 +265,15 @@ function RecadoVisivel({ recado }: { recado: RecadoSecao }) {
 
 function dadosDoInicio(registro: RegistroContrato | null, lead: Lead, hojeISO: string): DadosContrato {
   const salvos = registro ? dadosDoRegistro(registro.dados) : null;
-  if (salvos) return salvos;
+  const prepararCasamento = (dados: DadosContrato) =>
+    lead.categoria === "casamento" &&
+    contextoDoLead(lead, hojeISO).templateId === "casamento" &&
+    (!registro || !textoTravado(registro.status))
+      ? iniciarNegociacaoCasamento(dados)
+      : dados;
+  if (salvos) return prepararCasamento(salvos);
   try {
-    return dadosIniciais(lead, hojeISO);
+    return prepararCasamento(dadosIniciais(lead, hojeISO));
   } catch (e) {
     // Resposta do lead fora do previsto nao pode derrubar o detalhe inteiro:
     // abre em branco e a Mel preenche.
@@ -892,12 +900,17 @@ function SecaoCarregada({
       </Bloco>
 
       <Bloco id={ID.blocoServico} titulo="Serviço">
-        <FormServico
-          templateId={ctxLead.templateId}
-          servico={dados.servico}
-          onServico={(s) => set("servico", s)}
-          dataEvento={dados.evento.data}
-        />
+        {lead.categoria === "casamento" && ctxLead.templateId === "casamento" &&
+        (!travado || dados.negociacaoCasamento) ? (
+          <FormServicoCasamento dados={dados} onDados={setDados} />
+        ) : (
+          <FormServico
+            templateId={ctxLead.templateId}
+            servico={dados.servico}
+            onServico={(s) => set("servico", s)}
+            dataEvento={dados.evento.data}
+          />
+        )}
       </Bloco>
 
       <Bloco id={ID.blocoPagamento} titulo="Pagamento">

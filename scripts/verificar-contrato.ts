@@ -42,6 +42,13 @@ import { textoCorrido, textoResolvido, validarDocumento } from "@/lib/contrato/v
 import { anonimizar, anonimizarTexto, dadosPessoaisNoTexto, resumoParaIa } from "@/lib/contrato/anonimizar";
 import { GEOMETRIA_CONTRATO, renderizarContrato } from "@/lib/contrato/pdf";
 import { dadosContratoSchema, type Adicional, type DadosContrato, type DocumentoContrato } from "@/lib/contrato/tipos";
+import {
+  editarCondicoesCasamento,
+  editarServicoCasamento,
+  iniciarNegociacaoCasamento,
+  mudarModoCasamento,
+  selecionarOpcaoCasamento,
+} from "@/lib/contrato/negociacao-casamento";
 
 // ---------------------------------------------------------------- fixtures --
 
@@ -223,6 +230,44 @@ function cenarios(): Cenario[] {
       lista.push(cenario(`${t} · ${nome}`, t, nome));
     }
   }
+
+  // A negociação pertence ao contrato, nunca à arte da proposta. Exercita
+  // horas, preço com centavos, itens e condições literais, sem IA nem banco.
+  lista.push(
+    cenario("casamento-opcao-1-negociada", "casamento", "Pacote Principal", (d) => {
+      let negociado = mudarModoCasamento(iniciarNegociacaoCasamento(d), "personalizado");
+      negociado = editarServicoCasamento(negociado, {
+        ...negociado.servico,
+        valorPacote: 1_299_99,
+        escopo: { ...negociado.servico.escopo, minutosCobertura: 240, extras: ["galeria privada dos melhores momentos"] },
+      });
+      Object.assign(d, editarCondicoesCasamento(negociado, "A cobertura começará na recepção, conforme combinado entre as partes."));
+    }, {
+      deveConter: ["4 (quatro) horas", "R$ 1.299,99", "galeria privada dos melhores momentos", "A cobertura começará na recepção, conforme combinado entre as partes."],
+      naoDeveConter: ["5 (cinco) horas", "Pacote Real Time"],
+    }),
+    cenario("casamento-opcao-2-negociada", "casamento", "Pacote Principal", (d) => {
+      let negociado = mudarModoCasamento(selecionarOpcaoCasamento(iniciarNegociacaoCasamento(d), "opcao2"), "personalizado");
+      negociado = editarServicoCasamento(negociado, {
+        ...negociado.servico,
+        valorPacote: 2_490_00,
+        escopo: { ...negociado.servico.escopo, minutosCobertura: 420, reels: ["resumo do evento", "depoimento dos noivos"] },
+      });
+      Object.assign(d, editarCondicoesCasamento(negociado, "A equipe acompanhará a cerimônia e a recepção durante o período contratado."));
+    }, {
+      deveConter: ["7 (sete) horas", "R$ 2.490,00", "Pacote Real Time", "depoimento dos noivos", "A equipe acompanhará a cerimônia e a recepção durante o período contratado."],
+      naoDeveConter: ["5 (cinco) horas", "galeria privada dos melhores momentos", "Pacote Principal"],
+    }),
+    cenario("casamento-opcao-original-com-rascunho-salvo", "casamento", "Pacote Principal", (d) => {
+      let negociado = mudarModoCasamento(iniciarNegociacaoCasamento(d), "personalizado");
+      negociado = editarServicoCasamento(negociado, { ...negociado.servico, valorPacote: 999_00, escopo: { ...negociado.servico.escopo, minutosCobertura: 240 } });
+      negociado = editarCondicoesCasamento(negociado, "CONDIÇÃO DO RASCUNHO INATIVO");
+      Object.assign(d, mudarModoCasamento(negociado, "original"));
+    }, {
+      deveConter: ["5 (cinco) horas", "R$ 1.490,00", "Pacote Principal"],
+      naoDeveConter: ["4 (quatro) horas", "R$ 999,00", "CONDIÇÃO DO RASCUNHO INATIVO"],
+    }),
+  );
 
   lista.push(
     cenario(

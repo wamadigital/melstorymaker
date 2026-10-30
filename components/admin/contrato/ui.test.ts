@@ -56,7 +56,8 @@ async function registrarTestes() {
   const { PainelAssinatura } = await import("./PainelAssinatura");
   const { FormPagamento } = await import("./FormPagamento");
   const { FormEvento } = await import("./FormEvento");
-  const { FormServico } = await import("./FormServico");
+  const { FormServico, ajustarValorFinalCasamento } = await import("./FormServico");
+  const { FormServicoCasamento } = await import("./FormServicoCasamento");
   const { FormQuemAssina } = await import("./FormQuemAssina");
   const { SecaoContrato } = await import("./SecaoContrato");
   const { PreviaProposta, VisualizadorPaginado } = await import("../PreviaProposta");
@@ -67,6 +68,14 @@ async function registrarTestes() {
   const { TEMPLATES } = await import("@/lib/form/types");
   const { pagamentoDoPreset } = await import("@/lib/contrato/pagamento");
   const { montarContrato } = await import("@/lib/contrato/montar");
+  const { totalContrato } = await import("@/lib/contrato/montar");
+  const {
+    iniciarNegociacaoCasamento,
+    selecionarOpcaoCasamento,
+    mudarModoCasamento,
+    editarServicoCasamento,
+    editarCondicoesCasamento,
+  } = await import("@/lib/contrato/negociacao-casamento");
   type Tipos = typeof import("@/lib/contrato/tipos");
   type RegistroContrato = import("@/lib/contrato/tipos").RegistroContrato;
   type DadosContrato = ReturnType<Tipos["dadosContratoSchema"]["parse"]>;
@@ -483,6 +492,127 @@ async function registrarTestes() {
     assert.match(campoManual, /value="600,00"/);
     assert.match(comValor, /Adicionais<\/dt><dd[^>]*>R\$ 600,00<\/dd>/);
     assert.match(comValor, /Total do contrato<\/p><p[^>]*>R\$ 2\.090,00<\/p>/);
+  });
+
+  test("casamento original: duas opções, resumo de leitura e sem seletor genérico de pacote", () => {
+    const dados = mudarModoCasamento(iniciarNegociacaoCasamento(dadosCasamento()), "original");
+    const markup = html(h(FormServicoCasamento, { dados, onDados: nada }));
+    assert.match(markup, /Opção 1/);
+    assert.match(markup, /Opção 2/);
+    assert.match(markup, /Usar condições originais/);
+    assert.match(markup, /Personalizar esta opção/);
+    assert.match(markup, /Tabela de preço 2027/);
+    assert.match(markup, /Condições originais · Pacote Principal/);
+    assert.doesNotMatch(markup, /<select|<input|<textarea/);
+    assert.doesNotMatch(markup, /Personalizado \(sob medida\)/);
+  });
+
+  test("casamento personalizado: cobertura e total no topo, itens editáveis e condições exatas da opção", () => {
+    let dados = mudarModoCasamento(iniciarNegociacaoCasamento(dadosCasamento()), "personalizado");
+    dados = editarServicoCasamento(dados, ajustarValorFinalCasamento({
+      ...dados.servico,
+      escopo: { ...dados.servico.escopo, minutosCobertura: 240 },
+    }, 120000));
+    dados = editarCondicoesCasamento(dados, "A cobertura termina após a primeira dança.\nEntrega de um vídeo adicional.");
+    const markup = html(h(FormServicoCasamento, { dados, onDados: nada }));
+    assert.match(markup, /Horas de cobertura da opção/);
+    assert.match(markup, /Cobertura total contratada: 4h/);
+    assert.match(markup, /Valor final negociado/);
+    assert.match(markup, /value="1\.200,00"/);
+    assert.match(markup, /Serviços e itens inclusos/);
+    assert.match(markup, /<textarea[^>]*id="ct-casamento-condicoes"/);
+    assert.match(markup, /A cobertura termina após a primeira dança\.\nEntrega de um vídeo adicional\./);
+    assert.ok(markup.indexOf("Horas de cobertura da opção") < markup.indexOf("Serviços e itens inclusos"));
+    assert.doesNotMatch(markup, new RegExp(`id="${ID.svPacote}"|id="${ID.svTabela}"|id="${ID.svValor}"`));
+    assert.equal(markup.split(`id="${ID.svCobertura}"`).length - 1, 1);
+    assert.equal(markup.split(`id="${ID.svFinal}"`).length - 1, 1);
+  });
+
+  test("casamento mostra cobertura total de cinco horas ao somar uma hora adicional à opção de quatro horas", () => {
+    const hora = adicionalDoCatalogo("casamento", "casamento.hora_adicional");
+    assert.ok(hora);
+    let dados = mudarModoCasamento(iniciarNegociacaoCasamento(dadosCasamento()), "personalizado");
+    dados = editarServicoCasamento(dados, {
+      ...dados.servico,
+      escopo: { ...dados.servico.escopo, minutosCobertura: 240 },
+      adicionais: [
+        ...dados.servico.adicionais,
+        { ...novoAdicional(hora, dados.servico.pacote, dados.servico.tabela), quantidade: 1, minutos: 60 },
+      ],
+    });
+    const markup = html(h(FormServicoCasamento, { dados, onDados: nada }));
+    assert.match(markup, /Horas de cobertura da opção/);
+    assert.match(markup, new RegExp(`<input[^>]*id="${ID.svCobertura}"[^>]*value="4"`));
+    assert.match(markup, /Cobertura total contratada: 5h/);
+    assert.match(markup, /As horas adicionais incluídas abaixo somam-se à cobertura desta opção/);
+    assert.doesNotMatch(markup, /Quantidade de horas contratadas/);
+  });
+
+  test("cada opção mostra só suas condições e restaura o rascunho após voltar ao original", () => {
+    let dados = iniciarNegociacaoCasamento(dadosCasamento());
+    dados = editarCondicoesCasamento(dados, "Condição exclusiva da primeira opção.");
+    dados = selecionarOpcaoCasamento(dados, "opcao2");
+    dados = editarCondicoesCasamento(dados, "Condição exclusiva da segunda opção.");
+    const segunda = html(h(FormServicoCasamento, { dados, onDados: nada }));
+    assert.match(segunda, /Condição exclusiva da segunda opção/);
+    assert.doesNotMatch(segunda, /Condição exclusiva da primeira opção/);
+    dados = selecionarOpcaoCasamento(dados, "opcao1");
+    dados = mudarModoCasamento(dados, "original");
+    const original = html(h(FormServicoCasamento, { dados, onDados: nada }));
+    assert.doesNotMatch(original, /Condição exclusiva da primeira opção/);
+    dados = mudarModoCasamento(dados, "personalizado");
+    const primeira = html(h(FormServicoCasamento, { dados, onDados: nada }));
+    assert.match(primeira, /Condição exclusiva da primeira opção/);
+    assert.doesNotMatch(primeira, /Condição exclusiva da segunda opção/);
+  });
+
+  test("valor final de casamento inclui os adicionais e aceita zero, desconto e acréscimo", () => {
+    const servico = dadosCasamento().servico;
+    const bruto = servico.valorPacote + servico.adicionais.reduce((s, a) => s + a.quantidade * a.valorUnitario, 0);
+    const antes = JSON.stringify(servico);
+    for (const valor of [0, 1, bruto - 50000, bruto, bruto + 50000]) {
+      const alterado = ajustarValorFinalCasamento(servico, valor);
+      assert.equal(totalContrato(alterado), valor);
+      assert.deepEqual(alterado.adicionais, servico.adicionais);
+      assert.equal(JSON.stringify(servico), antes);
+    }
+  });
+
+  test("painel de negociação é exclusivo de casamento e não altera o registro ao renderizar", () => {
+    const reg = registro("rascunho");
+    const antes = JSON.stringify(reg);
+    const casamento = comRoteador(h(SecaoContrato, { lead: LEAD_CASAMENTO, registro: reg, ...FLAGS }));
+    assert.match(casamento, /Opção escolhida para o contrato/);
+    assert.doesNotMatch(casamento, /Alterações não salvas/);
+    assert.equal(JSON.stringify(reg), antes);
+    for (const categoria of ["debutante", "aniversario", "corporativo"] as const) {
+      const outro = lead(categoria, { idade: "20", data: "2027-08-14" });
+      const markup = comRoteador(h(SecaoContrato, { lead: outro, registro: reg, ...FLAGS }));
+      assert.doesNotMatch(markup, /Opção escolhida para o contrato|Personalizar esta opção/);
+    }
+  });
+
+  test("pacote personalizado legado permanece editável sem atribuir uma opção nem mudar o registro", () => {
+    const reg = registro("rascunho");
+    reg.dados.servico.pacote = "Personalizado";
+    reg.dados.servico.escopo.minutosCobertura = 240;
+    const antes = JSON.stringify(reg);
+    const markup = comRoteador(h(SecaoContrato, { lead: LEAD_CASAMENTO, registro: reg, ...FLAGS }));
+    assert.match(markup, /Este contrato já tinha condições próprias salvas/);
+    assert.match(markup, /Horas de cobertura da opção/);
+    assert.doesNotMatch(markup, /Condições originais ·|Alterações não salvas/);
+    assert.equal(JSON.stringify(reg), antes);
+  });
+
+  test("contratos de casamento enviados ou assinados preservam o editor anterior bloqueado", () => {
+    for (const status of ["enviado", "assinado"] as const) {
+      const reg = registro(status);
+      const antes = JSON.stringify(reg);
+      const markup = comRoteador(h(SecaoContrato, { lead: LEAD_CASAMENTO, registro: reg, ...FLAGS }));
+      assert.doesNotMatch(markup, /Opção escolhida para o contrato|Personalizar esta opção/);
+      assert.match(markup, /<fieldset[^>]*disabled=""/);
+      assert.equal(JSON.stringify(reg), antes);
+    }
   });
 
   // ------------------------------------------------------ UI-08 e ensaio --
