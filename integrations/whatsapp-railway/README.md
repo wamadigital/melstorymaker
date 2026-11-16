@@ -173,7 +173,7 @@ Esta autorização não comprova publicação: conferir SQL, versões e flags an
 de declarar o fluxo ativo.
 
 Não altera a primeira proposta de 15 minutos, a confirmação antiga removida,
-os gates de 5/15 dias e o clique obrigatório para lembretes de 7/30 dias.
+os gates de 5/15 dias nem os botões de lembrete de 7/30 dias.
 E-mail permanece manual. O não perturbe de RF-25 não é uma regra global.
 Conservar Hobby, uma réplica, 256 MB, 0,05 vCPU e o volume de 512 MB; nenhum
 upgrade ou serviço adicional é necessário para este contrato.
@@ -190,13 +190,28 @@ de processamento não são tratados como silêncio comprovado. O limite de 30 mi
 A primeira instalação não transforma os hashes anteriores em prova retroativa.
 As janelas de cinco/quinze dias continuam obrigatórias; quando faltam dias, o
 Kanban informa a previsão em Brasília. Sincronização pendente, identidade
-incompleta e indisponibilidade têm mensagens distintas. A data não agenda envio:
-os lembretes de proposta continuam exigindo clique da Mel.
+incompleta e indisponibilidade têm mensagens distintas. A previsão do histórico
+é diagnóstica e não dispara uma nova tentativa.
 
 Aplicar o SQL manual `supabase/whatsapp-historico-feedback.sql` antes da versão
 web e do worker. Sessão, ledger, flags, textos e pausas permanecem os atuais.
 Não criar serviço, volume, domínio ou upgrade; a tabela pequena utiliza o mesmo
 volume persistente de 512 MB e os limites atuais do Hobby.
+
+## Lembretes automáticos de proposta em Esfriou — 16/11/2026
+
+Aplicar `supabase/whatsapp-lembretes-proposta-automaticos.sql` no Supabase
+antes de publicar o backend. O worker protocolo 6 já consulta o endpoint de
+reivindicação; não precisa de novo serviço, domínio ou credenciais. As flags
+`WHATSAPP_AUTOMACAO_ATIVA` e `WHATSAPP_LEMBRETE_PROPOSTA_ATIVO` continuam
+obrigatórias. A nova engrenagem do Kanban controla apenas o agendador.
+
+O prazo é persistido sem depender do navegador. Após os 15 minutos do marco
+elegível, o worker só inicia a sequência se a proposta, a coluna e a verificação
+de histórico continuarem válidas. Atrasos de consulta, fila ou desconexão
+adiam o processamento; nenhum desses casos antecipa o envio. O desligamento
+preserva os botões manuais e o histórico. Não testar a ativação sobre contatos
+reais; usar os testes da fila em ambiente isolado.
 
 
 ## Rodada única legada — protocolo 6 / RPCs V7

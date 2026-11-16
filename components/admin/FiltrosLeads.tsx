@@ -3,6 +3,7 @@
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { CalendarDays, Search } from "lucide-react";
+import { ConfiguracaoLembretesProposta } from "@/components/admin/ConfiguracaoLembretesProposta";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PERIODOS, ROTULO_PERIODO, ehPeriodo, type Periodo } from "@/lib/admin/periodo";
@@ -109,22 +110,25 @@ export function FiltrosLeads({
 
       <p className="text-xs text-muted-foreground">Busque por nome, telefone, noivos, local da cerimônia ou da festa.</p>
 
-      <div className="flex flex-wrap gap-2">
-        {ABAS.map((aba) => (
-          <button
-            key={aba.valor}
-            type="button"
-            onClick={() => trocarCategoria(aba.valor)}
-            className={cn(
-              "rounded-md border px-3 py-1.5 text-sm transition-colors",
-              categoriaAtual === aba.valor
-                ? "border-transparent bg-primary text-primary-foreground"
-                : "border-border bg-card hover:bg-accent",
-            )}
-          >
-            {aba.rotulo}
-          </button>
-        ))}
+      <div className="flex items-start gap-2">
+        <div className="-m-1 flex min-w-0 flex-1 gap-2 overflow-x-auto p-1">
+          {ABAS.map((aba) => (
+            <button
+              key={aba.valor}
+              type="button"
+              onClick={() => trocarCategoria(aba.valor)}
+              className={cn(
+                "h-11 shrink-0 rounded-md border px-3 text-sm whitespace-nowrap transition-colors sm:h-9",
+                categoriaAtual === aba.valor
+                  ? "border-transparent bg-primary text-primary-foreground"
+                  : "border-border bg-card hover:bg-accent",
+              )}
+            >
+              {aba.rotulo}
+            </button>
+          ))}
+        </div>
+        <ConfiguracaoLembretesProposta />
       </div>
     </div>
   );

@@ -66,6 +66,16 @@ export function criarRepositorioWhatsApp(db: SupabaseClient, contexto: ContextoR
           falhaLembretes();
         }
       }
+      if (protocolo >= 6 && propostas) {
+        try {
+          const { error } = await db.rpc("enfileirar_lembretes_proposta_automaticos_whatsapp")
+            .abortSignal(AbortSignal.timeout(5_000));
+          if (error) throw new Error("agendamento_proposta_indisponivel");
+        } catch {
+          // A automação auxiliar não bloqueia a fila manual ou outros envios.
+          console.error("[whatsapp] não consegui agendar lembretes automáticos da proposta");
+        }
+      }
       const { data, error } = await db.rpc(protocolo >= 6 ? "reivindicar_whatsapp_v7" : protocolo === 5 ? "reivindicar_whatsapp_v6" : protocolo === 4 ? "reivindicar_whatsapp_v5" : protocolo === 3 ? "reivindicar_whatsapp_v4" : "reivindicar_whatsapp_v3",
         protocolo >= 3 ? {
           p_formulario_ativo: !!config, p_inicio_em: config?.inicioEm ?? null, p_propostas_ativo: propostas,
