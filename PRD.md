@@ -30,7 +30,7 @@ Estas decisões já foram tomadas e não devem ser reabertas durante o desenvolv
 
 1. **Figma é fonte de arte, não runtime.** A arte de cada categoria é exportada do Figma como PDF base. O texto dinâmico é aplicado por cima via `pdf-lib` usando coordenadas fixas. Fidelidade 1:1 com o design original, zero dependência de API do Figma.
 2. **Primeira proposta por WhatsApp automática, autorizada em 15/10/2026 (RF-28).** A revisão manual deixa de ser pré-requisito somente para esse primeiro envio, após 15 minutos contínuos em Aguardando revisão. A Mel continua podendo editar os dados ou mover o card durante a espera. E-mail, contrato e assinatura mantêm suas aprovações atuais.
-3. **E-mail manual; WhatsApp pelo MCP da Railway.** O botão `wa.me` continua como alternativa manual. O tipo `proposta_inicial_15m` não reativa a antiga confirmação de recebimento: sua copy própria é a de RF-28. Só a primeira proposta é automática; `enviado_em` preenchido ou tentativa inicial já iniciada impede novo disparo quando o card volta à revisão. As cobranças de 7/30 dias continuam exigindo clique e as condições de RF-20. Em 16/10/2026, o owner autorizou ativar o lembrete do formulário pela nova regra de seis horas e não perturbe de RF-25. A confirmação antiga continua removida.
+3. **E-mail manual; WhatsApp pelo MCP da Railway.** O botão `wa.me` continua como alternativa manual. O tipo `proposta_inicial_15m` não reativa a antiga confirmação de recebimento: sua copy própria é a de RF-28. `enviado_em` preenchido ou tentativa inicial já iniciada impede novo disparo da primeira proposta quando o card volta à revisão. Os lembretes em Esfriou usam a automação e as condições de RF-20; o clique manual continua disponível. Em 16/10/2026, o owner autorizou ativar o lembrete do formulário pela nova regra de seis horas e não perturbe de RF-25. A confirmação antiga continua removida.
 4. **E-mail pelo Gmail da Mel, via SMTP.** Nodemailer + App Password, atrás da interface `MailAdapter`. Sem serviço transacional: a conta Google Workspace entrega 2.000 destinatários/dia, muito acima do volume da Mel, e não custa nada. O Google reescreve o remetente para a conta autenticada, então a proposta chega do endereço configurado em `GMAIL_USER`.
 5. **Form engine próprio com árvore declarativa em JSON.** Uma pergunta por tela, estilo Typeform, mobile-first. Sem Typeform/mensalidade.
 6. **Contato em duas etapas obrigatórias.** WhatsApp com DDD é a primeira pergunta de todo fluxo, para permitir contato mesmo em caso de abandono. O e-mail validado é a última pergunta, necessário para enviar a proposta por e-mail.
@@ -213,7 +213,7 @@ Regras do engine:
 | RF-13 | Envio via WhatsApp | Botão abre `wa.me` com mensagem pré-preenchida + link público do PDF; com número do lead vai direto pro contato, sem número abre o seletor de conversa |
 | RF-14 | Regerar PDF após edição | Novo PDF sobrescreve o anterior (mesma URL, cache-bust no preview) |
 | RF-15 | Formatação pt-BR no PDF e datas do evento | Data do evento em **DD.MM.AAAA** ("14.03.2026") no formulário, respostas editáveis, Kanban e novas propostas das quatro categorias/cinco artes. Digitação com máscara e calendário nativo; armazenamento continua ISO para preservar filtros, validação e ano da tabela de preços. Horário no padrão "19h30". Valores monetários com ponto de milhar em todas as propostas e contratos: `R$ 1.490`, `R$ 2.090`; contratos preservam os centavos (`R$ 1.490,00`). A formatação não altera preços. PDFs já gerados só mudam ao regerar |
-| RF-20 | Lembretes da proposta por clique da Mel, enviados pelo MCP | Em Enviado/Esfriou, após 7 dias da proposta, o botão solicita quatro mensagens com pausas 2/3/2s; exige 5 dias sem mensagens recebidas ou enviadas ao contato. Após 30 dias, cinco mensagens com pausas 4/4/3/5s; exige 15 dias sem interação e primeiro lembrete completamente enviado pelo MCP para a mesma proposta. O CTA da última tentativa permanece oculto até completar também 15 dias desde esse primeiro ACK, sem frase substituta ou alerta vermelho durante a espera; o quadro agenda a atualização no mais tardio dos dois prazos. Sem primeiro envio confirmado, continua oferecendo Relembrar cliente. Link da proposta obrigatório, condições revalidadas antes de cada parte e histórico insuficiente bloqueia. Clique só enfileira e oculta o botão imediatamente; permanece oculto na fila, no envio, após ACK completo ou resultado indeterminado. Não exibe botão desabilitado nem frase substituta. Cancelamento antes do início liberado pela regra do servidor ou nova proposta/marco elegível permite reaparecer. Tentativas expiradas ou encerradas definitivamente permanecem ocultas. O quadro atualiza sozinho ao atingir o próximo prazo, além do Realtime. A unicidade no banco impede repetir o mesmo lembrete da mesma proposta, inclusive após recarregar ou em outra aba. Nenhum cron enfileira essas cobranças; flag própria desligada por padrão |
+| RF-20 | Lembretes da proposta automáticos em Esfriou, com opção manual | Em Enviado/Esfriou, após 7 dias da proposta, o botão solicita quatro mensagens com pausas 2/3/2s; exige 5 dias sem mensagens recebidas ou enviadas ao contato. Após 30 dias, cinco mensagens com pausas 4/4/3/5s; exige 15 dias sem interação e primeiro lembrete completamente enviado pelo MCP para a mesma proposta. O CTA da última tentativa permanece oculto até completar também 15 dias desde esse primeiro ACK, sem frase substituta ou alerta vermelho durante a espera; o quadro agenda a atualização no mais tardio dos dois prazos. Sem primeiro envio confirmado, continua oferecendo Relembrar cliente. Link da proposta obrigatório, condições revalidadas antes de cada parte e histórico insuficiente bloqueia. Clique só enfileira e oculta o botão imediatamente; permanece oculto na fila, no envio, após ACK completo ou resultado indeterminado. Não exibe botão desabilitado nem frase substituta. Cancelamento antes do início liberado pela regra do servidor ou nova proposta/marco elegível permite reaparecer. Tentativas expiradas ou encerradas definitivamente permanecem ocultas. O quadro atualiza sozinho ao atingir o próximo prazo, além do Realtime. A unicidade no banco impede repetir o mesmo lembrete da mesma proposta, inclusive após recarregar ou em outra aba. Em Esfriou, o worker da Railway enfileira os mesmos lembretes com espera de 15 minutos após cada marco elegível, mesmo com o quadro fechado. A engrenagem à direita das categorias pausa ou retoma apenas os disparos automáticos; os botões seguem disponíveis sob as regras manuais |
 | RF-21 | Coluna "Lead perdido" como 6ª raia do quadro | A Mel move o cartão pelo arraste ou pelo menu; eventos passados também são encerrados automaticamente pela RF-29. No celular a raia nasce recolhida |
 | RF-22 | Botão "Chamar no WhatsApp" no lead de "Novo" que deixou telefone | Aparece no cartão do quadro e no detalhe do lead; abre a conversa do lead com a caixa vazia — a Mel escreve manualmente. Some sem telefone, fora de "Novo", e no detalhe quando já há proposta gerada. No cartão do quadro, ao lado do botão, uma caixa "já chamei": a Mel marca depois de chamar, o botão apaga e fica sem link até ela desmarcar |
 | RF-23 | Botão "Lembrar por e-mail" no lead de "Novo" que deixou e-mail | Fica no cartão do quadro, embaixo do "Chamar no WhatsApp". O clique da Mel envia na hora um e-mail com o link para continuar o formulário de onde o lead parou (e o WhatsApp da Mel), e o botão trava por 7 dias com "Lembrete enviado · Libera de novo em N dias" — a trava também é conferida no servidor. Nunca sai sem o clique. Some sem e-mail e fora de "Novo" |
@@ -252,7 +252,7 @@ Na migração de 15/10, as condições de RF-20 e RF-25, textos e pausas foram p
 
 ### Continuidade verificável dos lembretes — correção de 16/10/2026
 
-RF-20 mantém cinco/quinze dias sem interação, clique da Mel e confirmação prévia
+RF-20 mantém cinco/quinze dias sem interação, opção de clique da Mel e confirmação prévia
 do primeiro lembrete. A cobertura comprovada é persistida com HMAC e identidade
 da sessão; reinício limpo ou reconexão de até 30 minutos só preserva o início
 anterior depois da sincronização completa dos eventos offline e validação de
@@ -266,6 +266,24 @@ incompleta com timestamps válidos mostra a previsão em Brasília para completa
 cinco/quinze dias. Outro clique só reabre a mesma tentativa cancelada antes de
 iniciar; confirmação parcial/desconhecida nunca repete. Esta previsão é diagnóstico,
 sem enviar automaticamente quando chegar a data.
+
+### Lembretes automáticos em Esfriou — 16/11/2026
+
+Relembrar cliente tem como prazo o marco de sete dias do fluxo para Esfriou
+mais 15 minutos. Entrada manual não antecipa os sete dias e também exige 15
+minutos na coluna. Para Última tentativa, a espera de 15 minutos começa no
+mais tardio entre 30 dias da proposta, 15 dias do ACK do primeiro lembrete e
+a entrada em Esfriou. O worker busca envios vencidos no ciclo de consulta da
+fila, sem depender de uma aba aberta.
+
+A engrenagem no fim da linha de categorias guarda uma configuração global
+do painel. Desligar bloqueia novas autorizações automáticas; o botão manual
+continua usando as condições originais. Não há envio retroativo de marcos
+vencidos antes da ativação ou durante a pausa. Se a fila ficar indisponível,
+o lembrete automático expira 24 horas depois do prazo. A trava de conversa recente
+e a comprovação de histórico de 5/15 dias seguem obrigatórias antes de cada
+parte. Uma tentativa automática bloqueada não vira um novo lote nem dispensa
+o clique permitido pelas regras manuais.
 
 ### Rodada única de lembretes legados — exceção autorizada em 16/10/2026
 
@@ -332,7 +350,7 @@ No quadro e no detalhe, o cabeçalho mobile oferece o ícone “Atualizar aplica
 | Locais de casamento | Cartões de Casamentos mostram os locais da cerimônia e da festa em fonte pequena, abaixo da categoria/data; campos vazios não ocupam linha |
 | Qualificação no cartão | Menu de três pontos permite marcar/desmarcar Lead qualificado, com as mesmas regras do detalhe: WhatsApp válido para marcar, confirmação da versão da marca e proteção contra clique duplicado. Atualiza o selo sem mover a raia |
 
-O quadro encerra primeiro os eventos passados (RF-29) e depois passa leads parados para Esfriou antes das consultas. Ambas as rotinas executam também no cron diário; o polling autenticado da Railway acelera o encerramento mesmo com mensagens pausadas. A recuperação diária funciona com WhatsApp desconectado e sem navegador aberto.
+O quadro encerra primeiro os eventos passados (RF-29) e depois passa leads parados para Esfriou antes das consultas. Ambas as rotinas executam também no cron diário; o polling autenticado da Railway acelera o encerramento mesmo com mensagens pausadas e, quando habilitados os lembretes de proposta, também atualiza Esfriou e agenda os lembretes. A recuperação diária funciona com WhatsApp desconectado e sem navegador aberto.
 
 Detalhe (`/admin/leads/[id]`):
 

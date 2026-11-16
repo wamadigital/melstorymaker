@@ -61,7 +61,7 @@ insert into public.contratos(lead_id,status,assinatura_status,assinado_em) value
   ('ea000000-0000-4000-8000-000000000007','enviado','concluido',null),
   ('ea000000-0000-4000-8000-000000000008','enviado','enviado','2026-10-01 12:00-03');
 alter table public.leads enable trigger leads_preservar_encerramento_evento;
-create temp table antes as select id,to_jsonb(l)-'status'-'updated_at' dados from public.leads l;
+create temp table antes as select id,to_jsonb(l)-'status'-'updated_at'-'esfriou_em' dados from public.leads l;
 -- Outbox ficticia valida: uma nunca iniciada e outra parcialmente iniciada.
 create temp table config as select jsonb_build_array(
   jsonb_build_object('message','Olá! Aqui é a Mel Storymaker 👋','delayBeforeSeconds',0),
@@ -86,7 +86,9 @@ select pg_temp.verificar((select bool_and(status<>'perdido') from public.leads w
   ('ea000000-0000-4000-8000-000000000006','ea000000-0000-4000-8000-000000000007','ea000000-0000-4000-8000-000000000008')),'tres provas independentes de assinatura preservadas');
 select pg_temp.verificar((select bool_and(status<>'perdido') from public.leads where id in
   ('ea000000-0000-4000-8000-000000000010','ea000000-0000-4000-8000-000000000011','ea000000-0000-4000-8000-000000000012')),'hoje futuro e sem data preservados');
-select pg_temp.verificar(not exists(select 1 from public.leads l join antes a using(id) where to_jsonb(l)-'status'-'updated_at' is distinct from a.dados),'nenhuma resposta, envio real ou metadado apagado');
+select pg_temp.verificar((select to_jsonb(l)->>'esfriou_em' is null from public.leads l
+  where id='ea000000-0000-4000-8000-000000000004'),'encerramento limpa o marco de Esfriou');
+select pg_temp.verificar(not exists(select 1 from public.leads l join antes a using(id) where to_jsonb(l)-'status'-'updated_at'-'esfriou_em' is distinct from a.dados),'nenhuma resposta, envio real ou metadado de contato apagado');
 select pg_temp.verificar((select estado='cancelado' and lease_token is null and lease_ate is null and iniciado_em is null
   from public.whatsapp_outbox where lead_id='ea000000-0000-4000-8000-000000000001'),'reserva nao iniciada cancelada');
 select pg_temp.verificar((select estado='cancelada' from public.whatsapp_propostas_automaticas where lead_id='ea000000-0000-4000-8000-000000000002'),'preparo ainda nao enviado cancelado');

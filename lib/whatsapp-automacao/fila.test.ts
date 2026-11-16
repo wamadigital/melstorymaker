@@ -88,3 +88,27 @@ test("claim vazio e erro de banco não viram autorização de envio", async () =
     : Response.json({ message: "privado", code: "XX000" }, { status: 500 })), { ambiente, agora: () => AGORA, protocolo: 5 });
   await assert.rejects(erro.reivindicar(), /claim_whatsapp/);
 });
+
+test("só o worker atual agenda lembretes de proposta e uma falha do agendador não pausa a fila manual", async () => {
+  const ambientePropostas = {
+    WHATSAPP_AUTOMACAO_ATIVA: "true",
+    WHATSAPP_LEMBRETE_PROPOSTA_ATIVO: "true",
+  };
+  const chamadas: string[] = [];
+  const db = sdkFicticio((nome, corpo) => {
+    chamadas.push(nome);
+    if (nome === "enfileirar_lembretes_proposta_automaticos_whatsapp") {
+      return Response.json({ message: "agendador indisponível", code: "XX000" }, { status: 500 });
+    }
+    assert.equal(corpo.p_propostas_ativo, true);
+    return Response.json([]);
+  });
+  const repo = criarRepositorioWhatsApp(db, { ambiente: ambientePropostas });
+  assert.equal(await repo.reivindicar(5), null);
+  assert.equal(await repo.reivindicar(6), null);
+  assert.deepEqual(chamadas, [
+    "reivindicar_whatsapp_v6",
+    "enfileirar_lembretes_proposta_automaticos_whatsapp",
+    "reivindicar_whatsapp_v7",
+  ]);
+});

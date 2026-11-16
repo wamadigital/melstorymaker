@@ -107,6 +107,7 @@ test("repositório6 usa V7 e preserva prova incompleta verdadeira no resultado",
       const nome = url.pathname.split("/").at(-1)!;
       const body = JSON.parse(String(init?.body));
       calls.push({ nome, body });
+      if (nome === "enfileirar_lembretes_proposta_automaticos_whatsapp") return Response.json(0);
       return Response.json(nome === "reivindicar_whatsapp_v7" ? [linha()] : "enviando");
     },
   } });
@@ -118,9 +119,10 @@ test("repositório6 usa V7 e preserva prova incompleta verdadeira no resultado",
   validarAutorizacaoLegada(j!, NOW, KEY);
   const proof = { checkedAt: new Date(NOW).toISOString(), coverageStartedAt: new Date(NOW - 3_600_000).toISOString(), lastInteractionAt: null, complete: false };
   assert.equal(await repo.resultado(ID, { leaseToken: linha().lease_token, outcome: "started", code: "legacy_history_exception", activity: proof }), "enviando");
-  assert.equal(calls[0].nome, "reivindicar_whatsapp_v7");
-  assert.equal(calls[1].nome, "resultado_whatsapp_v7");
-  assert.equal(calls[1].body.p_historico_completo, false);
-  assert.equal(calls[1].body.p_historico_cobertura_inicio_em, proof.coverageStartedAt);
-  assert.equal(calls[1].body.p_propostas_ativo, true);
+  assert.deepEqual(calls.map(({ nome }) => nome), [
+    "enfileirar_lembretes_proposta_automaticos_whatsapp", "reivindicar_whatsapp_v7", "resultado_whatsapp_v7",
+  ]);
+  assert.equal(calls[2].body.p_historico_completo, false);
+  assert.equal(calls[2].body.p_historico_cobertura_inicio_em, proof.coverageStartedAt);
+  assert.equal(calls[2].body.p_propostas_ativo, true);
 });

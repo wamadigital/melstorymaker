@@ -50,10 +50,9 @@ test("cron executa keepalive, encerramento e depois esfriar; segunda rodada não
       encerrado = true;
       return Response.json(rows);
     }
-    assert.equal(init?.method, "PATCH");
-    assert.ok(url.pathname.endsWith("/leads"));
-    assert.equal(url.searchParams.get("status"), "eq.enviado");
-    assert.deepEqual(JSON.parse(String(init.body)), { status: "esfriou" });
+    assert.equal(init?.method, "POST");
+    assert.ok(url.pathname.endsWith("/rpc/esfriar_leads_parados_whatsapp"));
+    assert.ok(Number.isFinite(Date.parse(JSON.parse(String(init.body)).p_agora)));
     chamadas.push("esfriar");
     return Response.json([]);
   });
