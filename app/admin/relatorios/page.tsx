@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { CalendarDays, LockKeyhole, Users } from "lucide-react";
+import { CalendarDays, Users } from "lucide-react";
 import { LogoMel } from "@/components/marca/LogoMel";
 import { getSessaoAdmin } from "@/lib/supabase/server";
 import { ROTULO_STATUS } from "@/lib/admin/rotulos";
@@ -67,10 +67,6 @@ export default async function RelatoriosPage() {
       <header className="border-b border-[#e8ddd3] bg-[#fffcf8]">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-5 sm:px-8">
           <LogoMel className="h-5 w-auto max-w-[48%] sm:h-7" />
-          <span className="flex items-center gap-1.5 text-xs font-bold text-[#654e41]">
-            <LockKeyhole aria-hidden="true" size={14} />
-            Apresentação privada
-          </span>
         </div>
       </header>
       <main className="mx-auto max-w-7xl px-4 pt-7 pb-8 sm:px-8 sm:pt-9">
