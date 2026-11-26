@@ -14,7 +14,6 @@ export const metadata: Metadata = {
 
 const tituloSecao = "text-[1.35rem] font-bold leading-tight tracking-tight";
 const painel = "rounded-[1.25rem] border border-[#e8ddd3] bg-[#fffcf8] p-5 sm:p-7";
-const origem = "text-xs font-bold tracking-wide";
 
 const meses = [
   ["Jan", "Janeiro"], ["Fev", "Fevereiro"], ["Mar", "Março"],
@@ -119,7 +118,6 @@ export default async function RelatoriosPage() {
         <section aria-labelledby="outubro" className="mt-7">
           <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1">
             <h2 id="outubro" className={tituloSecao}>Movimentação de outubro</h2>
-            <span className={origem + " rounded-full bg-[#eae0d5] px-2.5 py-1 text-[#654e41]"}>Dados do Kanban</span>
           </div>
           <div className="grid gap-3 lg:grid-cols-[2.25fr_1fr]">
             <section aria-labelledby="entradas" className={painel}>
