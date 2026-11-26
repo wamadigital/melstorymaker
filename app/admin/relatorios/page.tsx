@@ -151,7 +151,7 @@ export default async function RelatoriosPage() {
             role="region"
             aria-labelledby="atendimentos"
             tabIndex={0}
-            className="mt-4 overflow-x-auto rounded-lg border border-[#e8ddd3] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#823b25]"
+            className="relative mt-4 overflow-x-auto rounded-lg border border-[#e8ddd3] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#823b25]"
           >
             <table aria-describedby="atendimentos-periodo" className="w-full min-w-[50rem] text-sm tabular-nums">
               <thead className="bg-[#efe5db] text-[#654e41]">
