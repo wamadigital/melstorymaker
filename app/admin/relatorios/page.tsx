@@ -3,7 +3,9 @@ import { redirect } from "next/navigation";
 import { CalendarDays, LockKeyhole, Users } from "lucide-react";
 import { LogoMel } from "@/components/marca/LogoMel";
 import { getSessaoAdmin } from "@/lib/supabase/server";
-import { lerRecorteAula, lerRelatorioComercial } from "./dados";
+import { ROTULO_STATUS } from "@/lib/admin/rotulos";
+import { STATUS } from "@/lib/form/types";
+import { lerRelatorioComercial } from "./dados";
 
 export const metadata: Metadata = {
   title: "Relatório comercial de 2026 | Mel Storymaker",
@@ -22,19 +24,27 @@ const meses = [
 ];
 
 const formatarTaxa = new Intl.NumberFormat("pt-BR", { style: "percent", maximumFractionDigits: 1 });
-const formatarFaixa = new Intl.NumberFormat("pt-BR", { style: "percent", maximumFractionDigits: 0 });
-const mesesApurados = ["Outubro", "Novembro até 26/11"];
+const formatarVariacao = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1, signDisplay: "exceptZero" });
+const celulaRotulo = "sticky left-0 bg-[#fffcf8] px-3 py-2.5 text-left font-bold whitespace-nowrap";
 
 export default async function RelatoriosPage() {
   if (!(await getSessaoAdmin())) redirect("/admin/login?proximo=%2Fadmin%2Frelatorios");
 
-  const { outubro } = lerRelatorioComercial();
-  const { mesesReais, clientes } = lerRecorteAula();
-  const propostasApuradas = mesesReais.reduce((total, mes) => total + mes.propostas, 0);
-  const leadsApurados = mesesReais.reduce((total, mes) => total + mes.leads, 0);
-  const taxaApurada = propostasApuradas / leadsApurados;
-  const faixaAula = [taxaApurada * 0.67, taxaApurada * 0.70].map((taxa) => formatarFaixa.format(taxa));
-  const totalEntradas = outubro.entradas.reduce((total, faixa) => total + faixa.total, 0);
+  const { outubro, meses: apurados } = lerRelatorioComercial();
+  const desempenho = meses.map(([, nome], indice) => {
+    const dados = apurados[indice];
+    return {
+      nome,
+      dados,
+      taxa: dados?.leads ? dados.propostas / dados.leads : null,
+    };
+  });
+  const { leads: totalEntradas, propostas: propostasOutubro } = apurados[9];
+  const linhas = [
+    { rotulo: "Leads", valores: desempenho.map(({ dados }) => dados?.leads ?? "—") },
+    { rotulo: "Propostas enviadas", valores: desempenho.map(({ dados }) => dados?.propostas ?? "—") },
+    { rotulo: "Taxa de envio", valores: desempenho.map(({ taxa }) => taxa === null ? "—" : formatarTaxa.format(taxa)) },
+  ];
 
   return (
     <div className="min-h-dvh bg-[#f8f3ed] text-[#20130a]">
@@ -61,21 +71,24 @@ export default async function RelatoriosPage() {
             <h2 id="taxa-propostas" className={tituloSecao}>Taxa de envio de propostas</h2>
             <p className="mt-1 text-sm text-[#654e41]">Propostas enviadas a leads que entraram no mesmo mês</p>
           </div>
-          <div className="grid gap-3 md:grid-cols-3">
-            <div className={painel}>
-              <h3 className="text-sm font-bold text-[#654e41]">Janeiro a setembro</h3>
-              <p className="mt-3 text-4xl leading-none font-bold tracking-tight tabular-nums">{faixaAula.join("–")}</p>
-              <p className="mt-2 text-sm text-[#654e41]">Cenário da aula</p>
-            </div>
-            {mesesReais.map(({ leads, propostas }, indice) => (
-              <div key={mesesApurados[indice]} className="rounded-[1.25rem] bg-[#261810] p-5 text-[#fff9f2] sm:p-7">
-                <h3 className="text-sm font-bold text-[#f2d6c3]">{mesesApurados[indice]}</h3>
-                <p className="mt-3 text-4xl leading-none font-bold tracking-tight text-[#ffc5a5] tabular-nums">
-                  {formatarTaxa.format(propostas / leads)}
-                </p>
-                <p className="mt-2 text-sm text-[#f2d6c3]">{propostas} propostas para {leads} leads</p>
-              </div>
-            ))}
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+            {desempenho.slice(5, 11).map(({ nome, dados, taxa }, indice) => {
+              const taxaAnterior = desempenho[indice + 4].taxa;
+              const variacao = taxa === null || taxaAnterior === null ? null : (taxa - taxaAnterior) * 100;
+              return (
+                <article key={nome} className="rounded-[1.25rem] bg-[#261810] p-4 text-[#fff9f2]">
+                  <h3 className="text-sm font-bold text-[#f2d6c3]">{nome}</h3>
+                  <p className="mt-2 text-2xl leading-none font-bold tracking-tight text-[#ffc5a5] tabular-nums">
+                    {taxa === null ? "—" : formatarTaxa.format(taxa)}
+                  </p>
+                  <p className="mt-2 text-xs text-[#f2d6c3]">{dados.propostas} propostas / {dados.leads} leads</p>
+                  <p className="mt-2 text-xs font-bold">
+                    {variacao === null ? "Sem base de comparação" : `${formatarVariacao.format(variacao)} p.p. vs. mês anterior`}
+                  </p>
+                  {nome === "Novembro" && <p className="mt-1 text-xs text-[#f2d6c3]">Até 26/11</p>}
+                </article>
+              );
+            })}
           </div>
         </section>
 
@@ -95,7 +108,7 @@ export default async function RelatoriosPage() {
                   </h3>
                 </div>
                 <div>
-                  <p className="text-3xl leading-none font-bold tabular-nums">{outubro.propostas}</p>
+                  <p className="text-3xl leading-none font-bold tabular-nums">{propostasOutubro}</p>
                   <p className="mt-1 text-sm font-bold text-[#654e41]">Propostas enviadas a esses leads</p>
                 </div>
               </div>
@@ -132,42 +145,46 @@ export default async function RelatoriosPage() {
             </section>
           </div>
         </section>
-        <section aria-labelledby="atendimentos" className={painel + " mt-4"}>
-          <h2 id="atendimentos" className={tituloSecao}>Atendimentos por cliente</h2>
-          <p id="atendimentos-periodo" className="mt-1 text-sm text-[#654e41]">
-            Amostra do Kanban em 2026 · 1 indica proposta enviada no mês
+        <section aria-labelledby="status-kanban" className={painel + " mt-4"}>
+          <h2 id="status-kanban" className={tituloSecao}>Desempenho mensal e status do Kanban</h2>
+          <p id="status-periodo" className="mt-1 text-sm text-[#654e41]">
+            Status em 26/11, agrupados pelo mês de entrada do lead. Novembro é parcial.
           </p>
           <div
             role="region"
-            aria-labelledby="atendimentos"
+            aria-labelledby="status-kanban"
             tabIndex={0}
             className="relative mt-4 overflow-x-auto rounded-lg border border-[#e8ddd3] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#823b25]"
           >
-            <table aria-describedby="atendimentos-periodo" className="w-full min-w-[50rem] text-sm tabular-nums">
+            <table aria-describedby="status-periodo" className="w-full min-w-[50rem] text-sm tabular-nums">
               <thead className="bg-[#efe5db] text-[#654e41]">
                 <tr>
-                  <th scope="col" className="sticky left-0 bg-[#efe5db] px-3 py-3 text-left">Cliente</th>
+                  <th scope="col" className="sticky left-0 bg-[#efe5db] px-3 py-3 text-left">Indicador</th>
                   {meses.map(([abreviado, nome]) => (
                     <th key={nome} scope="col" className="px-2 py-3 text-center">
                       <span aria-hidden="true">{abreviado}</span>
                       <span className="sr-only">{nome}</span>
                     </th>
                   ))}
-                  <th scope="col" className="px-3 py-3 text-center">Total</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#e8ddd3]">
-                {clientes.map(({ cliente, mes }) => (
-                  <tr key={cliente}>
-                    <th scope="row" className="sticky left-0 bg-[#fffcf8] px-3 py-2.5 text-left font-bold whitespace-nowrap">
-                      {cliente}
-                    </th>
-                    {meses.map(([, nome], indice) => (
-                      <td key={nome} className="px-2 py-2.5 text-center">{mes === indice + 1 ? 1 : "—"}</td>
+                {linhas.map(({ rotulo, valores }) => (
+                  <tr key={rotulo}>
+                    <th scope="row" className={celulaRotulo}>{rotulo}</th>
+                    {valores.map((valor, indice) => (
+                      <td key={meses[indice][0]} className="px-2 py-2.5 text-center">{valor}</td>
                     ))}
-                    <td className="bg-[#f8f3ed] px-3 py-2.5 text-center font-bold">
-                      1
-                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tbody className="divide-y divide-[#e8ddd3] border-t-2 border-[#e8ddd3]">
+                {STATUS.map((status) => (
+                  <tr key={status}>
+                    <th scope="row" className={celulaRotulo}>{ROTULO_STATUS[status]}</th>
+                    {desempenho.map(({ nome, dados }) => (
+                      <td key={nome} className="px-2 py-2.5 text-center">{dados?.status[status] ?? "—"}</td>
+                    ))}
                   </tr>
                 ))}
               </tbody>
