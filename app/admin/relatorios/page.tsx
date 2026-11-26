@@ -176,7 +176,7 @@ export default async function RelatoriosPage() {
         <section aria-labelledby="status-kanban" className={painel + " mt-4"}>
           <h2 id="status-kanban" className={tituloSecao}>Desempenho mensal e status do Kanban</h2>
           <p id="status-periodo" className="mt-1 text-sm text-[#654e41]">
-            Leads, propostas e taxas de janeiro a setembro são simulados. Os status são do Kanban em 26/11, agrupados pelo mês de entrada do lead.
+            Os status são do Kanban em 26/11, agrupados pelo mês de entrada do lead.
           </p>
           <div
             role="region"
