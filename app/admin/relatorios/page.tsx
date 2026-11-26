@@ -169,16 +169,13 @@ export default async function RelatoriosPage() {
         </section>
         <section aria-labelledby="status-kanban" className={painel + " mt-4"}>
           <h2 id="status-kanban" className={tituloSecao}>Desempenho mensal e status do Kanban</h2>
-          <p id="status-periodo" className="mt-1 text-sm text-[#654e41]">
-            Os status são do Kanban em 26/11, agrupados pelo mês de entrada do lead.
-          </p>
           <div
             role="region"
             aria-labelledby="status-kanban"
             tabIndex={0}
             className="relative mt-4 overflow-x-auto rounded-lg border border-[#e8ddd3] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#823b25]"
           >
-            <table aria-describedby="status-periodo" className="w-full min-w-[50rem] text-sm tabular-nums">
+            <table className="w-full min-w-[50rem] text-sm tabular-nums">
               <thead className="bg-[#efe5db] text-[#654e41]">
                 <tr>
                   <th scope="col" className="sticky left-0 bg-[#efe5db] px-3 py-3 text-left">Indicador</th>
