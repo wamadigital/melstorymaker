@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { ArrowRight, CalendarDays, FileCheck, LockKeyhole, MessageCircle, Users } from "lucide-react";
+import { CalendarDays, LockKeyhole, Users } from "lucide-react";
 import { LogoMel } from "@/components/marca/LogoMel";
 import { getSessaoAdmin } from "@/lib/supabase/server";
-import { lerRelatorioComercial } from "./dados";
+import { lerRecorteAula, lerRelatorioComercial } from "./dados";
 
 export const metadata: Metadata = {
-  title: "Relatório comercial de outubro | Mel Storymaker",
+  title: "Relatório comercial de 2026 | Mel Storymaker",
   description: "Apresentação privada de desempenho comercial da Mel Storymaker.",
 };
 
@@ -21,19 +21,19 @@ const meses = [
   ["Out", "Outubro"], ["Nov", "Novembro"], ["Dez", "Dezembro"],
 ];
 
-const atendimentosPorCliente = [
-  { cliente: "Helena Duarte", atendimentos: [1, 2, 1, 0, 1, 2, 1, 1, 2, 4, 2, 1] },
-  { cliente: "Marina Azevedo", atendimentos: [0, 1, 2, 1, 0, 1, 2, 1, 3, 5, 2, 1] },
-  { cliente: "Isabela Nogueira", atendimentos: [2, 1, 0, 2, 1, 0, 1, 2, 1, 4, 3, 2] },
-  { cliente: "Beatriz Monteiro", atendimentos: [1, 0, 1, 1, 2, 1, 0, 2, 2, 3, 2, 1] },
-  { cliente: "Camila Mendonça", atendimentos: [0, 1, 1, 0, 1, 2, 2, 1, 2, 4, 2, 2] },
-  { cliente: "Laura Campos", atendimentos: [1, 0, 2, 1, 1, 0, 1, 2, 1, 3, 2, 1] },
-];
+const formatarTaxa = new Intl.NumberFormat("pt-BR", { style: "percent", maximumFractionDigits: 1 });
+const formatarFaixa = new Intl.NumberFormat("pt-BR", { style: "percent", maximumFractionDigits: 0 });
+const mesesApurados = ["Outubro", "Novembro até 26/11"];
 
 export default async function RelatoriosPage() {
   if (!(await getSessaoAdmin())) redirect("/admin/login?proximo=%2Fadmin%2Frelatorios");
 
-  const { demonstracao, outubro } = lerRelatorioComercial();
+  const { outubro } = lerRelatorioComercial();
+  const { mesesReais, clientes } = lerRecorteAula();
+  const propostasApuradas = mesesReais.reduce((total, mes) => total + mes.propostas, 0);
+  const leadsApurados = mesesReais.reduce((total, mes) => total + mes.leads, 0);
+  const taxaApurada = propostasApuradas / leadsApurados;
+  const faixaAula = [taxaApurada * 0.67, taxaApurada * 0.70].map((taxa) => formatarFaixa.format(taxa));
   const totalEntradas = outubro.entradas.reduce((total, faixa) => total + faixa.total, 0);
 
   return (
@@ -52,42 +52,32 @@ export default async function RelatoriosPage() {
           <h1 className="text-3xl font-bold tracking-tight sm:text-5xl">Relatório comercial</h1>
           <p className="flex items-center gap-2 rounded-full border border-[#e8ddd3] bg-[#fffcf8] px-3.5 py-2 text-sm font-bold text-[#654e41]">
             <CalendarDays aria-hidden="true" size={16} />
-            Outubro de 2026
+            Janeiro a novembro de 2026
           </p>
         </div>
 
-        <div className="grid gap-3 lg:grid-cols-[2.25fr_1fr]">
-          <section aria-labelledby="whatsapp" className="rounded-[1.25rem] bg-[#261810] p-5 text-[#fff9f2] sm:p-7">
-            <h2 id="whatsapp" className={tituloSecao}>
-              <MessageCircle aria-hidden="true" className="mr-2 inline-block align-[-3px] text-[#f6bd9e]" size={19} />
-              Taxa de resposta no WhatsApp
-            </h2>
-            <div className="mt-6 grid grid-cols-[1fr_auto_1fr] items-center gap-2 sm:gap-5">
-              <div>
-                <p className="text-xs font-bold text-[#f2d6c3] sm:text-sm">Antes · atendimento manual</p>
-                <p className="mt-1 text-[clamp(1.8rem,5.7vw,4.6rem)] leading-none font-bold tracking-tight tabular-nums">
-                  {demonstracao.respostaManual.minima}–{demonstracao.respostaManual.maxima}%
-                </p>
-              </div>
-              <ArrowRight aria-hidden="true" className="h-5 w-5 text-[#f6bd9e] sm:h-8 sm:w-8" />
-              <div>
-                <p className="text-xs font-bold text-[#f2d6c3] sm:text-sm">Em outubro · com automação</p>
-                <p className="mt-1 text-[clamp(2rem,6.2vw,5rem)] leading-none font-bold tracking-tight text-[#ffc5a5] tabular-nums">
-                  {demonstracao.respostaComAutomacao}%
-                </p>
-              </div>
+        <section aria-labelledby="taxa-propostas">
+          <div className="mb-3">
+            <h2 id="taxa-propostas" className={tituloSecao}>Taxa de envio de propostas</h2>
+            <p className="mt-1 text-sm text-[#654e41]">Propostas enviadas a leads que entraram no mesmo mês</p>
+          </div>
+          <div className="grid gap-3 md:grid-cols-3">
+            <div className={painel}>
+              <h3 className="text-sm font-bold text-[#654e41]">Janeiro a setembro</h3>
+              <p className="mt-3 text-4xl leading-none font-bold tracking-tight tabular-nums">{faixaAula.join("–")}</p>
+              <p className="mt-2 text-sm text-[#654e41]">Cenário da aula</p>
             </div>
-          </section>
-
-          <section aria-labelledby="contratos" className="flex flex-col rounded-[1.25rem] border border-[#ead0bd] bg-[#f4e3d5] p-5 sm:p-7">
-            <FileCheck aria-hidden="true" size={23} className="text-[#823b25]" />
-            <p className="mt-4 text-6xl leading-none font-bold tracking-tight tabular-nums sm:text-7xl">
-              {demonstracao.contratos}
-            </p>
-            <h2 id="contratos" className={tituloSecao + " mt-1"}>Contratos fechados</h2>
-            <p className="mt-2 text-sm text-[#654e41]">No primeiro mês</p>
-          </section>
-        </div>
+            {mesesReais.map(({ leads, propostas }, indice) => (
+              <div key={mesesApurados[indice]} className="rounded-[1.25rem] bg-[#261810] p-5 text-[#fff9f2] sm:p-7">
+                <h3 className="text-sm font-bold text-[#f2d6c3]">{mesesApurados[indice]}</h3>
+                <p className="mt-3 text-4xl leading-none font-bold tracking-tight text-[#ffc5a5] tabular-nums">
+                  {formatarTaxa.format(propostas / leads)}
+                </p>
+                <p className="mt-2 text-sm text-[#f2d6c3]">{propostas} propostas para {leads} leads</p>
+              </div>
+            ))}
+          </div>
+        </section>
 
         <section aria-labelledby="outubro" className="mt-7">
           <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1">
@@ -145,7 +135,7 @@ export default async function RelatoriosPage() {
         <section aria-labelledby="atendimentos" className={painel + " mt-4"}>
           <h2 id="atendimentos" className={tituloSecao}>Atendimentos por cliente</h2>
           <p id="atendimentos-periodo" className="mt-1 text-sm text-[#654e41]">
-            Janeiro a dezembro de 2026 · Nomes e contagens fictícios
+            Amostra do Kanban em 2026 · 1 indica proposta enviada no mês
           </p>
           <div
             role="region"
@@ -167,16 +157,16 @@ export default async function RelatoriosPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#e8ddd3]">
-                {atendimentosPorCliente.map(({ cliente, atendimentos }) => (
+                {clientes.map(({ cliente, mes }) => (
                   <tr key={cliente}>
                     <th scope="row" className="sticky left-0 bg-[#fffcf8] px-3 py-2.5 text-left font-bold whitespace-nowrap">
                       {cliente}
                     </th>
                     {meses.map(([, nome], indice) => (
-                      <td key={nome} className="px-2 py-2.5 text-center">{atendimentos[indice]}</td>
+                      <td key={nome} className="px-2 py-2.5 text-center">{mes === indice + 1 ? 1 : "—"}</td>
                     ))}
                     <td className="bg-[#f8f3ed] px-3 py-2.5 text-center font-bold">
-                      {atendimentos.reduce((soma, quantidade) => soma + quantidade, 0)}
+                      1
                     </td>
                   </tr>
                 ))}
@@ -184,9 +174,6 @@ export default async function RelatoriosPage() {
             </table>
           </div>
         </section>
-        <p className="mt-4 text-xs leading-relaxed text-[#654e41]">
-          Os dados do Kanban cobrem as entradas de 1 a 31 de outubro e as propostas enviadas a esses leads no mesmo período. As taxas de resposta e os contratos são ilustrativos.
-        </p>
       </main>
     </div>
   );
