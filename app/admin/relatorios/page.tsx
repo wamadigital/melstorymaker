@@ -23,8 +23,24 @@ const meses = [
   ["Out", "Outubro"], ["Nov", "Novembro"], ["Dez", "Dezembro"],
 ];
 
+const historicoSimulado = [
+  { leads: 5, propostas: 3 },
+  { leads: 10, propostas: 6 },
+  { leads: 12, propostas: 7 },
+  { leads: 10, propostas: 6 },
+  { leads: 12, propostas: 7 },
+  { leads: 15, propostas: 9 },
+  { leads: 10, propostas: 6 },
+  { leads: 5, propostas: 3 },
+  { leads: 22, propostas: 13 },
+];
+
 const formatarTaxa = new Intl.NumberFormat("pt-BR", { style: "percent", maximumFractionDigits: 1 });
-const formatarVariacao = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1, signDisplay: "exceptZero" });
+const formatarVariacao = new Intl.NumberFormat("pt-BR", {
+  style: "percent",
+  maximumFractionDigits: 1,
+  signDisplay: "exceptZero",
+});
 const celulaRotulo = "sticky left-0 bg-[#fffcf8] px-3 py-2.5 text-left font-bold whitespace-nowrap";
 
 export default async function RelatoriosPage() {
@@ -32,7 +48,7 @@ export default async function RelatoriosPage() {
 
   const { outubro, meses: apurados } = lerRelatorioComercial();
   const desempenho = meses.map(([, nome], indice) => {
-    const dados = apurados[indice];
+    const dados = historicoSimulado[indice] ?? apurados[indice];
     return {
       nome,
       dados,
@@ -66,26 +82,38 @@ export default async function RelatoriosPage() {
           </p>
         </div>
 
-        <section aria-labelledby="taxa-propostas">
+        <section aria-labelledby="volume-propostas">
           <div className="mb-3">
-            <h2 id="taxa-propostas" className={tituloSecao}>Taxa de envio de propostas</h2>
+            <h2 id="volume-propostas" className={tituloSecao}>Propostas enviadas</h2>
             <p className="mt-1 text-sm text-[#654e41]">Propostas enviadas a leads que entraram no mesmo mês</p>
           </div>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-            {desempenho.slice(5, 11).map(({ nome, dados, taxa }, indice) => {
-              const taxaAnterior = desempenho[indice + 4].taxa;
-              const variacao = taxa === null || taxaAnterior === null ? null : (taxa - taxaAnterior) * 100;
+            {desempenho.slice(5, 11).map(({ nome, dados }, indice) => {
+              const propostasAnteriores = desempenho[indice + 4].dados.propostas;
+              const variacao = propostasAnteriores ? (dados.propostas - propostasAnteriores) / propostasAnteriores : null;
+              const mesAtual = nome === "Novembro";
               return (
-                <article key={nome} className="rounded-[1.25rem] bg-[#261810] p-4 text-[#fff9f2]">
-                  <h3 className="text-sm font-bold text-[#f2d6c3]">{nome}</h3>
-                  <p className="mt-2 text-2xl leading-none font-bold tracking-tight text-[#ffc5a5] tabular-nums">
-                    {taxa === null ? "—" : formatarTaxa.format(taxa)}
+                <article
+                  key={nome}
+                  className={`rounded-[1.25rem] border border-[#e8ddd3] p-4 ${mesAtual ? "bg-[#efe5db]" : "bg-[#fffcf8]"}`}
+                >
+                  <h3 className="text-sm font-bold text-[#654e41]">{nome}</h3>
+                  <p className="mt-2 leading-none font-bold">
+                    <span className="text-2xl tracking-tight tabular-nums">{dados.propostas}</span>
+                    <span className="ml-1 text-xs">propostas</span>
                   </p>
-                  <p className="mt-2 text-xs text-[#f2d6c3]">{dados.propostas} propostas / {dados.leads} leads</p>
-                  <p className="mt-2 text-xs font-bold">
-                    {variacao === null ? "Sem base de comparação" : `${formatarVariacao.format(variacao)} p.p. vs. mês anterior`}
-                  </p>
-                  {nome === "Novembro" && <p className="mt-1 text-xs text-[#f2d6c3]">Até 26/11</p>}
+                  <p className="mt-2 text-xs text-[#654e41]">{dados.leads} leads</p>
+                  {variacao === null ? (
+                    <p className="mt-3 text-xs text-[#654e41]">Sem base de comparação</p>
+                  ) : (
+                    <p className="mt-3 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-[#654e41]">
+                      <span className={`rounded-full px-2 py-0.5 font-bold tabular-nums ${variacao > 0 ? "bg-[#deefdf] text-[#21552e]" : "bg-[#e9ded4] text-[#553f32]"}`}>
+                        {formatarVariacao.format(variacao)}
+                      </span>
+                      <span>vs. mês anterior</span>
+                    </p>
+                  )}
+                  {mesAtual && <p className="mt-2 text-xs text-[#654e41]">Até 26/11</p>}
                 </article>
               );
             })}
@@ -148,7 +176,7 @@ export default async function RelatoriosPage() {
         <section aria-labelledby="status-kanban" className={painel + " mt-4"}>
           <h2 id="status-kanban" className={tituloSecao}>Desempenho mensal e status do Kanban</h2>
           <p id="status-periodo" className="mt-1 text-sm text-[#654e41]">
-            Status em 26/11, agrupados pelo mês de entrada do lead. Novembro é parcial.
+            Leads, propostas e taxas de janeiro a setembro são simulados. Os status são do Kanban em 26/11, agrupados pelo mês de entrada do lead.
           </p>
           <div
             role="region"
@@ -182,8 +210,8 @@ export default async function RelatoriosPage() {
                 {STATUS.map((status) => (
                   <tr key={status}>
                     <th scope="row" className={celulaRotulo}>{ROTULO_STATUS[status]}</th>
-                    {desempenho.map(({ nome, dados }) => (
-                      <td key={nome} className="px-2 py-2.5 text-center">{dados?.status[status] ?? "—"}</td>
+                    {desempenho.map(({ nome }, indice) => (
+                      <td key={nome} className="px-2 py-2.5 text-center">{apurados[indice]?.status[status] ?? "—"}</td>
                     ))}
                   </tr>
                 ))}
