@@ -773,8 +773,8 @@ export function resumoParaIa(dados: DadosContrato, ctx: ContextoMontagem): strin
       : "Anuente: não",
   );
 
-  linhas.push(`Data do evento: ${dataPorExtenso(ev.data) || ev.data || "(não informada)"}`);
-  linhas.push(`Início da cobertura: ${horaBr(ev.horarioInicio) || "(não informado)"}`);
+  linhas.push(`Data do evento: ${dataPorExtenso(ev.data) || ev.data || "A DEFINIR"}`);
+  linhas.push(`Início da cobertura: ${horaBr(ev.horarioInicio) || "A DEFINIR"}`);
   const locais = ev.locais.filter((l) => l.rotulo.trim() || l.endereco.trim());
   if (locais.length === 0) linhas.push("Locais: (nenhum informado)");
   for (const l of locais) linhas.push(`${l.rotulo.trim() || "Local"}: ${l.endereco.trim()}`);

@@ -308,7 +308,7 @@ test("modo quitado: data obrigatoria, nao futura, e sinal declarado", () => {
   assert.deepEqual(validarPagamento(semAno, 129000, EVENTO, HOJE), ["A data da quitação precisa ter dia, mês e ano."]);
 });
 
-test("sem data do evento valida, as checagens que dependem dela sao puladas (a montagem acusa a data)", () => {
+test("quando a data do evento ainda está em aberto, o pagamento não exige vencimento no calendário", () => {
   assert.deepEqual(validarPagamento(pagamentoDoPreset("30/70"), 129000, "", HOJE), []);
   const quinze = pagamentoDoPreset("15/15/70");
   quinze.parcelas[1].vencimento = { tipo: "data", data: "2027-12-10" };

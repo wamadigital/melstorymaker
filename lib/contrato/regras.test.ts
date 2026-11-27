@@ -149,10 +149,9 @@ test("casamento: locais diferentes viram duas linhas, e 'mesmo local' vira uma",
   }
 });
 
-test("'A definir' do formulario chega VAZIO: horario e local seguem faltando no contrato", () => {
-  // A caixa "decidir depois" grava "A definir". Passado adiante, viraria um
-  // endereco valido ("Local da cerimônia: A definir") e, no horario, "horário
-  // inválido". Vazio, a montagem acusa a falta e a Mel confirma com o cliente.
+test("'A definir' do formulário deixa o horário em aberto e mantém a exigência de endereço", () => {
+  // O vazio permite gerar o horário como A DEFINIR. Nos locais principais,
+  // o contrato ainda precisa de endereço.
   const l = lead("casamento", {
     noivos: "Bia & Caio",
     data: "2027-05-08",
@@ -174,7 +173,7 @@ test("'A definir' do formulario chega VAZIO: horario e local seguem faltando no 
   assert.equal(dados.evento.makingOfLocal, "");
 
   const falta = faltantes(dados, { ...contextoDoLead(l, HOJE), templateId: "casamento" });
-  assert.ok(falta.includes("Início da cobertura do evento"), falta.join(" | "));
+  assert.ok(!falta.some((f) => f.startsWith("Início da cobertura do evento")), falta.join(" | "));
   assert.ok(falta.includes("Endereço: Local da cerimônia"), falta.join(" | "));
   assert.ok(falta.includes("Endereço: Local da recepção"), falta.join(" | "));
   assert.ok(!falta.some((f) => /inválido/.test(f)), falta.join(" | "));

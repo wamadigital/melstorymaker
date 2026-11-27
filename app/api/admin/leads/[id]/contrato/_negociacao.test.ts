@@ -139,6 +139,7 @@ function montarRota(etapa: "salvar" | "redigir", {
   const rota = carregar(fontes[etapa]);
   return {
     escritas, montados, chamadasIa: () => chamadasIa, textoGravado: () => textoGravado,
+    ler: () => rota.GET(new Request("https://mel.example.invalid/contrato")),
     executar: (dados: unknown) => rota[etapa === "salvar" ? "PUT" : "POST"](new Request("https://mel.example.invalid/contrato", {
       method: etapa === "salvar" ? "PUT" : "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ dados }),
     })),
@@ -255,6 +256,25 @@ test("salvar: contrato legado de aniversário sem idade conserva o salvamento de
   assert.equal(rota.escritas.length, 1);
   assert.equal(rota.escritas[0].patch.status, "rascunho");
   assert.deepEqual(rota.escritas[0].patch.dados, dados);
+});
+
+test("salvar e reabrir: rascunho incompleto conserva a data e o horário a definir e os demais campos", async () => {
+  const dados = dadosPersonalizados();
+  dados.contratante.pf.cpf = "";
+  dados.evento.data = "";
+  dados.evento.horarioInicio = "";
+  dados.observacoes = "Retomar o preenchimento mais tarde.";
+  const rota = montarRota("salvar");
+
+  const salvo = await rota.executar(dados);
+  assert.equal(salvo.status, 200);
+  const reaberto = await rota.ler();
+  assert.equal(reaberto.status, 200);
+  const { registro: lido } = await reaberto.json();
+  assert.equal(lido.status, "rascunho");
+  assert.deepEqual(lido.dados, dados);
+  assert.equal(lido.documento, null);
+  assert.equal(rota.montados.length, 0);
 });
 
 test("redigir: dados incompletos legados são salvos antes do 422, sem perder o texto manual", async () => {

@@ -202,7 +202,8 @@ test("condições têm limites de tamanho e parágrafos sem contar linhas vazias
   const permitidas = Array.from({ length: 38 }, (_, i) => `Condição ${i + 1}.`).join("\n\n");
   assert.equal(condicoesNegociadasCasamento(editarCondicoesCasamento(dados, permitidas)).length, 38);
   const excedidas = editarCondicoesCasamento(dados, `${permitidas}\nOutra.`);
-  assert.throws(() => resolverNegociacaoCasamento(excedidas, CTX), /38 parágrafos/);
+  assert.deepEqual(resolverNegociacaoCasamento(excedidas, CTX), excedidas, "o rascunho aceita o texto completo");
+  assert.match(faltantes(excedidas, CTX).join(" "), /38 parágrafos/);
   assert.throws(() => editarCondicoesCasamento(dados, "a".repeat(6001)));
 });
 

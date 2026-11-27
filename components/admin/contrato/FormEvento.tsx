@@ -7,12 +7,13 @@
 
 import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import type { Evento, Local } from "@/lib/contrato/tipos";
 import { ROTULOS_LOCAL } from "@/lib/contrato/regras";
 import type { Categoria } from "@/lib/form/types";
 import { dataCurta } from "@/lib/pdf/formatadores";
-import { Campo, CampoTexto, CLASSE_SELECT, Marcador } from "@/components/admin/contrato/campos-ui";
+import { Campo, CampoTexto, CLASSE_SELECT, descricaoDe, Marcador } from "@/components/admin/contrato/campos-ui";
 import { ID } from "@/components/admin/contrato/campos";
 
 /** O schema aceita ate 6 locais: mais que isso e outro contrato. */
@@ -30,6 +31,47 @@ const ROTULO_HOMENAGEADO: Record<Categoria, { rotulo: string; dica: string }> = 
   },
   corporativo: { rotulo: "Empresa do evento", dica: "Como vai no contrato: “do evento … de Empresa X”." },
 };
+
+function CampoDataHora({
+  id,
+  rotulo,
+  tipo,
+  valor,
+  onValor,
+  dica,
+}: {
+  id: string;
+  rotulo: string;
+  tipo: "date" | "time";
+  valor: string;
+  onValor: (valor: string) => void;
+  dica?: string;
+}) {
+  return (
+    <Campo id={id} rotulo={rotulo} dica={dica}>
+      <div className="flex min-w-0 items-stretch overflow-hidden rounded-lg border border-input">
+        <Input
+          id={id}
+          type={tipo}
+          value={valor}
+          onChange={(e) => onValor(e.target.value)}
+          aria-describedby={descricaoDe(id, dica)}
+          className="h-11 flex-1 appearance-none rounded-none border-0 focus-visible:ring-inset [&::-webkit-date-and-time-value]:text-left"
+        />
+        <Button
+          type="button"
+          variant={valor ? "ghost" : "secondary"}
+          aria-label={`A definir (${rotulo.toLowerCase()})`}
+          aria-pressed={valor === ""}
+          onClick={() => onValor("")}
+          className="h-11 rounded-none border-0 border-l border-input px-2.5 text-xs focus-visible:ring-inset"
+        >
+          A definir
+        </Button>
+      </div>
+    </Campo>
+  );
+}
 
 export function FormEvento({
   categoria,
@@ -70,7 +112,7 @@ export function FormEvento({
   return (
     <div className="space-y-4">
       <div className="grid gap-4 sm:grid-cols-2">
-        <CampoTexto
+        <CampoDataHora
           id={ID.evData}
           rotulo="Data do evento"
           tipo="date"
@@ -82,7 +124,7 @@ export function FormEvento({
               : undefined
           }
         />
-        <CampoTexto
+        <CampoDataHora
           id={ID.evHorario}
           rotulo="Início da cobertura"
           tipo="time"
@@ -217,7 +259,7 @@ export function FormEvento({
                 className="min-h-16"
               />
             </Campo>
-            <CampoTexto
+            <CampoDataHora
               id={ID.evMakingOfHorario}
               rotulo="Início do making of"
               tipo="time"
@@ -242,26 +284,24 @@ export function FormEvento({
             </p>
           )}
           <div className="grid gap-4 sm:grid-cols-2">
-            <CampoTexto
+            <CampoDataHora
               id={ID.evEnsaioData}
               rotulo="Data do ensaio"
               tipo="date"
               valor={evento.ensaioData}
               onValor={(v) => set({ ensaioData: v })}
-              placeholder="A definir"
               dica={
                 ensaioDepois
                   ? `Essa data (${dataCurta(evento.ensaioData)}) é depois do evento: o ensaio acontece antes.`
                   : undefined
               }
             />
-            <CampoTexto
+            <CampoDataHora
               id={ID.evEnsaioHorario}
               rotulo="Início do ensaio"
               tipo="time"
               valor={evento.ensaioHorario}
               onValor={(v) => set({ ensaioHorario: v })}
-              placeholder="A definir"
             />
             <Campo id={ID.evEnsaioLocal} rotulo="Local do ensaio" className="sm:col-span-2">
               <Textarea

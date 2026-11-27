@@ -42,7 +42,6 @@ import { somenteDigitos, validarCep, validarCnpj, validarCpf, validarEmail } fro
 import {
   calcularParcelas,
   calcularPersonalizado,
-  dataISOValida,
   diaDoCalendario,
   interpretacaoVigente,
   validarPagamento,
@@ -446,15 +445,15 @@ export function faltantes(dados: DadosContrato, ctx: ContextoMontagem): string[]
 
   // --- evento
   const ev = dados.evento;
-  if (vazio(ev.data)) f.push("Data do evento");
-  else if (!dataISOValida(ev.data)) f.push("Data do evento (a data não é válida)");
-  else {
+  if (!vazio(ev.data)) {
     const dia = diaDoCalendario(ev.data);
     const hoje = diaDoCalendario(ctx.hojeISO);
-    if (dia !== null && hoje !== null && dia < hoje) f.push("Data do evento (a data já passou)");
+    if (dia === null) f.push("Data do evento (a data não é válida)");
+    else if (hoje !== null && dia < hoje) f.push("Data do evento (a data já passou)");
   }
-  if (vazio(ev.horarioInicio)) f.push("Início da cobertura do evento");
-  else if (!RE_HORA.test(ev.horarioInicio.trim())) f.push("Início da cobertura do evento (horário inválido)");
+  if (!vazio(ev.horarioInicio) && !RE_HORA.test(ev.horarioInicio.trim())) {
+    f.push("Início da cobertura do evento (horário inválido)");
+  }
   if (vazio(ev.homenageado)) f.push(rotuloHomenageado(ctx.categoria));
 
   const locais = ev.locais.filter((l) => !vazio(l.rotulo) || !vazio(l.endereco));
@@ -513,6 +512,10 @@ export function faltantes(dados: DadosContrato, ctx: ContextoMontagem): string[]
     if (ad.valorUnitario <= 0) f.push(`Valor do adicional ${nome}`);
     if (ad.tipo === "making_of" && ad.minutos <= 0) f.push(`Duração do adicional ${nome}`);
   });
+
+  if (condicoesNegociadasCasamento(dados).length > 38) {
+    f.push("Use no máximo 38 parágrafos nas condições negociadas da opção selecionada.");
+  }
 
   // --- pagamento
   f.push(...validarPagamento(dados.pagamento, total, ev.data, ctx.hojeISO));

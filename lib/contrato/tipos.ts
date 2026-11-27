@@ -112,9 +112,9 @@ export const localSchema = z.object({
 export type Local = z.infer<typeof localSchema>;
 
 export const eventoSchema = z.object({
-  /** ISO "2027-01-23". Lido por regex, nunca com `new Date` (fuso). */
+  /** ISO "2027-01-23" ou "" para A DEFINIR. Lido por regex, sem aplicar fuso. */
   data: texto,
-  /** "HH:MM". Inicio da COBERTURA, confirmado pela Mel (o formulario pergunta o horario do convite). */
+  /** Inicio da cobertura: "HH:MM" ou "" para A DEFINIR. */
   horarioInicio: texto,
   /** Nome de quem o evento homenageia, como vai no objeto: "Maria Eduarda", "Ana e João", "Buffet X". */
   homenageado: texto,
