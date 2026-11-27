@@ -16,7 +16,7 @@ const filtrosSchema = z.object({
 });
 export const consultaPublicoSchema = z.object({
   filtros: filtrosSchema,
-  modo: modoSchema,
+  modo: z.literal("real"),
   pagina: z.number().int().min(0).max(100_000),
 });
 export const iniciarCampanhaSchema = consultaPublicoSchema.omit({ pagina: true }).extend({
@@ -25,13 +25,7 @@ export const iniciarCampanhaSchema = consultaPublicoSchema.omit({ pagina: true }
   revisao: z.string().regex(/^[0-9a-f]{32}$/),
   mensagens: z.array(z.string().trim().min(1).max(1024)).min(1),
   intervalo: z.number().int().min(1).max(30).nullable(),
-});
-export const testeCampanhaSchema = z.object({
-  id: z.uuid(),
-  nome: z.string().trim().max(120),
-  telefone: z.string().trim().min(1).max(24).regex(/^[+0-9 ()-]+$/),
-  numero: z.number().int().min(1).max(2_147_483_647),
-  mensagem: z.string().trim().min(1).max(1024),
+  autorizacaoConfirmada: z.literal(true, { error: "Confirme a autorização dos contatos na revisão." }),
 });
 export const consentimentoCampanhaSchema = z.object({
   telefone: z.string().regex(/^55\d{10,11}$/),
@@ -52,16 +46,15 @@ export type ItemPublico = {
   telefone_original: string | null;
   data_evento: string;
   status: (typeof STATUS)[number];
-  resultado: "apto" | "invalido" | "sem_consentimento" | "duplicado" | "fora_do_teste";
+  resultado: "apto" | "invalido" | "descadastrado" | "duplicado";
 };
 
 export type PublicoCampanha = {
   cards: number;
   aptos: number;
   invalidos: number;
-  semConsentimento: number;
+  descadastrados: number;
   duplicados: number;
-  foraDoTeste: number;
   revisao: string;
   itens: ItemPublico[];
 };
