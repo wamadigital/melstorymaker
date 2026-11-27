@@ -16,18 +16,12 @@ import {
 } from "@/lib/campanhas/contrato";
 import { API_CAMPANHAS, consultarCampanhas, enviarJson, erroCampanha } from "./consulta";
 import { Campo, Paginacao, Selecao } from "./PartesCampanhas";
-import { TesteCampanha } from "./TesteCampanha";
 
 export const CHAVE_INICIO_CAMPANHA = "mel.campanha.inicio";
 
 const INICIAIS: FiltrosCampanha = { categoria: null, inicio: null, fim: null, status: null, excluirStatus: [], qualificado: null };
-const MODO = {
-  simulacao: "Simulação sem envio · Henrique",
-  real: "Envio real · contatos autorizados",
-};
 const PUBLICO: Record<ItemPublico["resultado"], string> = {
-  apto: "Apto", invalido: "Telefone inválido", sem_consentimento: "Sem consentimento",
-  duplicado: "Telefone duplicado", fora_do_teste: "Fora do público de teste",
+  apto: "Apto", invalido: "Telefone inválido", descadastrado: "Descadastrado", duplicado: "Telefone duplicado",
 };
 
 function duracao(segundos: number) {
@@ -39,7 +33,6 @@ export function NovaCampanha({ opcoes, sair, iniciada }: {
   opcoes: OpcoesCampanha; sair: () => void; iniciada: (id: string) => void;
 }) {
   const [nome, nomear] = useState("");
-  const [modo, definirModo] = useState<keyof typeof MODO>("simulacao");
   const [filtros, definirFiltros] = useState(INICIAIS);
   const [mensagens, definirMensagens] = useState([{ id: 0, texto: "" }]);
   const ultimaVariacao = useRef(0);
@@ -48,22 +41,21 @@ export function NovaCampanha({ opcoes, sair, iniciada }: {
   const [publico, mostrarPublico] = useState<{ chave: string; dados: PublicoCampanha }>();
   const [falhaPublico, mostrarFalhaPublico] = useState<{ chave: string; erro: string }>();
   const [revisando, revisar] = useState(false);
+  const [revisaoAutorizada, confirmarAutorizacao] = useState<string | null>(null);
   const [ocupado, ocupar] = useState(false);
   const [erro, mostrarErro] = useState("");
   const [recarregar, recarga] = useState(0);
   const idTentativa = useRef<string | null>(null);
   const iniciando = useRef(false);
 
-  const consulta = JSON.stringify({ filtros, modo, pagina });
+  const consulta = JSON.stringify({ filtros, modo: "real", pagina });
   const chave = `${recarregar}:${consulta}`;
   const publicoAtual = publico?.chave === chave ? publico.dados : null;
   const erroPublico = falhaPublico?.chave === chave ? falhaPublico.erro : "";
-  const preenchidas = mensagens.map(({ id, texto }, i) => ({ id, texto: texto.trim(), numero: i + 1 }))
-    .filter(({ texto }) => texto);
-  const textos = preenchidas.map(({ texto }) => texto);
+  const textos = mensagens.map(({ texto }) => texto.trim()).filter(Boolean);
   const intervaloMin = intervalo === "" ? null : Number(intervalo);
   const intervaloValido = intervaloMin === null || Number.isInteger(intervaloMin) && intervaloMin >= 1 && intervaloMin <= 30;
-  const podeIniciar = modo === "simulacao" ? opcoes.workerAtivo : opcoes.enviosAtivos;
+  const autorizacaoConfirmada = revisaoAutorizada !== null && revisaoAutorizada === publicoAtual?.revisao;
   const aptos = publicoAtual?.aptos ?? 0;
 
   useEffect(() => {
@@ -96,7 +88,7 @@ export function NovaCampanha({ opcoes, sair, iniciada }: {
   }
 
   async function iniciar() {
-    if (iniciando.current || !podeIniciar || !publicoAtual?.aptos) return;
+    if (iniciando.current || !opcoes.enviosAtivos || !publicoAtual?.aptos || !autorizacaoConfirmada) return;
     iniciando.current = true;
     ocupar(true);
     mostrarErro("");
@@ -105,7 +97,7 @@ export function NovaCampanha({ opcoes, sair, iniciada }: {
       idTentativa.current ??= crypto.randomUUID();
       try { sessionStorage.setItem(CHAVE_INICIO_CAMPANHA, idTentativa.current); } catch {}
       const { id } = await consultarCampanhas<{ id: string }>(API_CAMPANHAS, enviarJson("POST", {
-        acao: "iniciar", id: idTentativa.current, nome, modo, filtros, intervalo: intervaloMin,
+        acao: "iniciar", id: idTentativa.current, nome, modo: "real", filtros, intervalo: intervaloMin, autorizacaoConfirmada,
         mensagens: textos, revisao: publicoAtual.revisao,
       }));
       try { sessionStorage.removeItem(CHAVE_INICIO_CAMPANHA); } catch {}
@@ -120,34 +112,24 @@ export function NovaCampanha({ opcoes, sair, iniciada }: {
 
   return (
     <div className="space-y-5">
-      <header className="flex flex-col items-start justify-between gap-3 lg:flex-row">
-        <div className="space-y-3">
-          <Button variant="ghost" onClick={sair} disabled={ocupado}><ArrowLeft /> Campanhas</Button>
-          <h1 className="text-2xl font-semibold">{revisando ? "Revisar campanha" : "Nova campanha"}</h1>
-        </div>
-        <TesteCampanha nome={nome} mensagens={preenchidas} ativo={opcoes.enviosAtivos} />
+      <header className="space-y-3">
+        <Button variant="ghost" onClick={sair} disabled={ocupado}><ArrowLeft /> Campanhas</Button>
+        <h1 className="text-2xl font-semibold">{revisando ? "Revisar campanha" : "Nova campanha"}</h1>
       </header>
       <div className="grid min-w-0 items-start gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.85fr)]">
         <div className="space-y-5">
           <section className="space-y-4 rounded-md border bg-card p-4 sm:p-5">
             {revisando ? <>
               <h2 className="wrap-break-word text-lg font-semibold">{nome.trim()}</h2>
-              <p className="text-sm text-muted-foreground">{MODO[modo]}</p>
               <dl className="grid gap-3 text-sm sm:grid-cols-2">
                 <div><dt className="text-muted-foreground">Intervalo definido</dt><dd>{intervaloMin ? `${intervaloMin} min` : "Sem intervalo adicional"}</dd></div>
                 <div><dt className="text-muted-foreground">Do primeiro ao último envio</dt><dd>
-                  Cerca de {duracao(Math.max(0, aptos - 1) * Math.max((intervaloMin ?? 0) * 60, modo === "simulacao" ? 10 : opcoes.cadencia))}
+                  Cerca de {duracao(Math.max(0, aptos - 1) * Math.max((intervaloMin ?? 0) * 60, opcoes.cadencia))}
                 </dd></div>
               </dl>
               <p className="text-xs text-muted-foreground">Estimativa sem atrasos do worker.</p>
             </> : <>
               <Campo titulo="Nome da campanha"><Input value={nome} onChange={(e) => nomear(e.target.value)} maxLength={120} required /></Campo>
-              <Campo titulo="Modo de envio">
-                <Selecao value={modo} onChange={(e) => { definirModo(e.target.value as keyof typeof MODO); paginar(0); }}>
-                  <option value="simulacao">{MODO.simulacao}</option>
-                  <option value="real">{MODO.real}</option>
-                </Selecao>
-              </Campo>
               <h2 className="pt-1 font-semibold">Filtros do Kanban</h2>
               <div className="grid gap-3 sm:grid-cols-2">
                 <Campo titulo="Tipo de festa">
@@ -238,8 +220,7 @@ export function NovaCampanha({ opcoes, sair, iniciada }: {
             <div className="flex flex-wrap gap-1.5">
               {publicoAtual.invalidos > 0 && <Badge variant="outline">{publicoAtual.invalidos} telefone(s) inválido(s)</Badge>}
               {publicoAtual.duplicados > 0 && <Badge variant="outline">{publicoAtual.duplicados} duplicado(s)</Badge>}
-              {publicoAtual.semConsentimento > 0 && <Badge variant="outline">{publicoAtual.semConsentimento} sem consentimento</Badge>}
-              {publicoAtual.foraDoTeste > 0 && <Badge variant="outline">{publicoAtual.foraDoTeste} fora do teste</Badge>}
+              {publicoAtual.descadastrados > 0 && <Badge variant="outline">{publicoAtual.descadastrados} descadastrado(s)</Badge>}
             </div>
             {publicoAtual.itens.length ? <ul className="divide-y border-y">
               {publicoAtual.itens.map((item) => (
@@ -261,12 +242,20 @@ export function NovaCampanha({ opcoes, sair, iniciada }: {
         </section>
       </div>
 
-      {!podeIniciar && <p className="text-sm text-muted-foreground">Os envios estão pausados. A prévia está disponível.</p>}
+      {!opcoes.enviosAtivos && <p className="text-sm text-muted-foreground">Os envios estão pausados. A prévia está disponível.</p>}
       {erro && <p role="alert" className="text-sm text-destructive">{erro}</p>}
+      {revisando && aptos > 0 && (
+        <label className="flex items-start gap-3 rounded-md border bg-card p-4 text-sm">
+          <input type="checkbox" className="mt-0.5 size-4 shrink-0 accent-primary" checked={autorizacaoConfirmada}
+            disabled={ocupado} onChange={(e) => confirmarAutorizacao(e.target.checked ? publicoAtual?.revisao ?? null : null)} />
+          <span>Confirmo que os contatos selecionados autorizaram receber esta campanha pelo WhatsApp.</span>
+        </label>
+      )}
+      {publicoAtual && !aptos && <p className="text-sm text-muted-foreground">Nenhum contato apto com os filtros atuais.</p>}
       <div className="flex flex-wrap gap-2">
         {revisando ? <>
-          <Button variant="outline" disabled={ocupado} onClick={() => { revisar(false); recarga((n) => n + 1); mostrarErro(""); }}>Editar campanha</Button>
-          <Button disabled={ocupado || !podeIniciar || !aptos} onClick={iniciar}><Megaphone />{ocupado ? "Iniciando…" : "Iniciar campanha"}</Button>
+          <Button variant="outline" disabled={ocupado} onClick={() => { revisar(false); confirmarAutorizacao(null); recarga((n) => n + 1); mostrarErro(""); }}>Editar campanha</Button>
+          <Button disabled={ocupado || !opcoes.enviosAtivos || !aptos || !autorizacaoConfirmada} onClick={iniciar}><Megaphone />{ocupado ? "Iniciando…" : "Iniciar campanha"}</Button>
         </> : <Button disabled={!nome.trim() || !textos.length || !aptos || !intervaloValido}
           onClick={() => { revisar(true); mostrarErro(""); window.scrollTo(0, 0); }}>
           <ClipboardCheck /> Revisar campanha

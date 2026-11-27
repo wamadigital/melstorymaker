@@ -16,8 +16,8 @@ values
  ('casamento','enviado','2028-03-01','19900000009',now(),'{}');
 
 insert into public.campanha_whatsapp_consentimentos (telefone, autorizado, evidencia, registrado_por)
-select telefone, true, 'fixture local', 'b1000000-0000-4000-8000-000000000001'
-from unnest(array['5519988763916', '5519900000001', '5519900000002']) telefone;
+select telefone, telefone <> '5519900000003', 'fixture local', 'b1000000-0000-4000-8000-000000000001'
+from unnest(array['5519988763916', '5519900000001', '5519900000002', '5519900000003']) telefone;
 
 set local role service_role;
 do $$
@@ -40,7 +40,7 @@ begin
   assert not has_table_privilege('authenticated', 'public.campanha_whatsapp_destinatarios', 'select');
   r := public.campanha_whatsapp_publico(filtros, 'real', 0);
   assert r->>'cards' = '6' and r->>'aptos' = '3' and r->>'invalidos' = '1'
-    and r->>'duplicados' = '1' and r->>'semConsentimento' = '1', r::text;
+    and r->>'duplicados' = '1' and r->>'descadastrados' = '1', r::text;
   assert public.campanha_whatsapp_publico(filtros || '{"status":"perdido"}', 'real', 0)->>'cards' = '0';
   assert public.campanha_whatsapp_publico(filtros || '{"status":null,"excluirStatus":["perdido","enviado"]}', 'real', 0)->>'cards' = '0';
   assert public.campanha_whatsapp_publico(filtros || '{"status":null,"excluirStatus":["perdido","esfriou"]}', 'real', 0)->>'cards' = '6';
@@ -48,9 +48,12 @@ begin
   assert public.campanha_whatsapp_publico(filtros, 'teste', 0)->>'aptos' = '1';
 
   assert public.campanha_whatsapp_iniciar(campanha, autor, 'Teste isolado', 'real', filtros,
+    r->>'revisao', array['A'], '[]', null, 5) = 'confirmacao_necessaria';
+  assert public.campanha_whatsapp_iniciar(campanha, autor, 'Teste isolado', 'real', filtros || '{"autorizacaoConfirmada":true}',
     repeat('0',32), array['A','B'], '[{"nome":"a"},{"nome":"b"}]', null, 5) = 'publico_alterado';
-  assert public.campanha_whatsapp_iniciar(campanha, autor, 'Teste isolado', 'real', filtros,
+  assert public.campanha_whatsapp_iniciar(campanha, autor, 'Teste isolado', 'real', filtros || '{"autorizacaoConfirmada":true}',
     r->>'revisao', array['A','B'], '[{"nome":"a"},{"nome":"b"}]', null, 5) = 'criada';
+  assert (select autorizacao_confirmada_em is not null from public.campanhas_whatsapp where id=campanha);
   assert public.campanha_whatsapp_iniciar(campanha, autor, 'Repetição da solicitação', 'real', filtros,
     r->>'revisao', array['C'], '[]', null, null) = 'existente';
 
@@ -130,6 +133,7 @@ begin
   assert public.campanha_whatsapp_resultado_worker(primeiro_id,1,'enviado');
   assert (select tentativas = 1 from public.campanha_whatsapp_destinatarios where id=primeiro_id);
   assert public.campanha_whatsapp_progresso(teste,0)->0#>>'{filtros,mensagem_teste}' = '2';
+  assert jsonb_array_length(public.campanha_whatsapp_progresso(null,0)) = 1, 'a lista exibe só campanhas reais';
 end;
 $$;
 
@@ -148,11 +152,9 @@ begin
   insert into public.leads(categoria, status, data_evento, whatsapp)
     select 'corporativo', 'enviado', '2029-03-01', '1191234'||lpad(n::text,4,'0')
       from generate_series(1,25) n;
-  insert into public.campanha_whatsapp_consentimentos(telefone,autorizado,evidencia,registrado_por)
-    select '551191234'||lpad(n::text,4,'0'), true, 'fixture de cadência', autor from generate_series(1,25) n;
   publico := public.campanha_whatsapp_publico(filtros,'real',0);
   assert publico->>'aptos' = '25';
-  assert public.campanha_whatsapp_iniciar(campanha,autor,'Mais de 20','real',filtros,publico->>'revisao',
+  assert public.campanha_whatsapp_iniciar(campanha,autor,'Mais de 20','real',filtros || '{"autorizacaoConfirmada":true}',publico->>'revisao',
     array['Conteúdo fictício'],'[]',null,2) = 'criada';
 
   update public.campanha_whatsapp_tentativas set finalizada_em=now()-interval '3 minutes', retomar_em=null;
@@ -173,6 +175,7 @@ begin
       update public.campanhas_whatsapp set proximo_em=now()-interval '1 second' where id=campanha;
     end if;
   end loop;
+  assert not exists (select from public.campanha_whatsapp_consentimentos where telefone like '551191234%');
   resumo := public.campanha_whatsapp_progresso(campanha,0,1,60)->0;
   assert resumo->>'status'='concluida' and resumo#>>'{contadores,enviados}'='25', resumo::text;
 end;
