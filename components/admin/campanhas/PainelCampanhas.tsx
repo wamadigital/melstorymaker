@@ -21,19 +21,15 @@ const STATUS_ENVIO: Record<DestinatarioCampanha["status"], string> = {
 };
 const MOTIVOS: Record<string, string> = {
   cancelado: "Campanha cancelada",
+  formato_anterior: "A campanha anterior tinha um anexo",
+  reserva_expirada: "O prazo da reserva venceu antes do envio",
   consentimento_revogado: "Consentimento retirado",
-  consentimento_indisponivel: "Não foi possível conferir o consentimento",
-  imagem_indisponivel: "Não foi possível carregar a imagem",
-  modelo_alterado: "O modelo aprovado mudou ou foi desativado",
-  catalogo_indisponivel: "Não foi possível conferir o modelo na Meta",
-  configuracao_provedor: "Provedor sem configuração válida",
-  modelo_imagem_incompativel: "O modelo e a imagem são incompatíveis",
   resultado_indeterminado: "Aceite não confirmado. Reenvio automático bloqueado.",
   limite_provedor: "Limite do provedor",
 };
 
 function rotuloMotivo(motivo: string) {
-  return MOTIVOS[motivo] ?? `Recusa da Meta (${motivo.replace("meta_", "").replace("_", " / ")})`;
+  return MOTIVOS[motivo] ?? motivo;
 }
 
 type Lista = { campanhas: Campanha[]; mais: boolean; opcoes: OpcoesCampanha };
@@ -188,7 +184,7 @@ export function PainelCampanhas({ idInicial }: { idInicial: string | null }) {
             <section className="space-y-4 rounded-md border bg-card p-4 sm:p-5" aria-label="Progresso">
               <div className="flex flex-wrap items-center gap-2">
                 <Badge variant="secondary">{STATUS_CAMPANHA[campanha.status]}</Badge>
-                {campanha.modo !== "real" && <Badge variant="outline">{campanha.modo === "simulacao" ? "Simulação" : "Teste com Henrique"}</Badge>}
+                {campanha.modo !== "real" && <Badge variant="outline">{campanha.modo === "simulacao" ? "Simulação" : "Envio de teste"}</Badge>}
               </div>
               <Progresso campanha={campanha} />
               <dl className="grid grid-cols-2 gap-2 sm:grid-cols-5">
@@ -203,7 +199,7 @@ export function PainelCampanhas({ idInicial }: { idInicial: string | null }) {
               </dl>
               {campanha.status === "ativa" && contadores.pendentes > 0 && <p className="text-sm">
                 {!opcoes?.workerAtivo ? "Fila indisponível · worker desativado"
-                  : !campanha.proximo_em ? "Envios aguardando configuração do provedor"
+                  : !campanha.proximo_em ? "Envios de campanha pausados"
                   : contadores.pendentes === contadores.processando ? "Último envio em processamento"
                   : `Próximo envio previsto · ${dataHoraLocal(campanha.proximo_em)}${contadores.processando > 0 ? " · 1 em processamento" : ""}`}
               </p>}
@@ -238,7 +234,7 @@ export function PainelCampanhas({ idInicial }: { idInicial: string | null }) {
                       <TableCell className="max-w-48 whitespace-normal wrap-break-word">
                         {destino.nome ?? "Contato sem nome"}<br /><span className="text-xs text-muted-foreground">+{destino.telefone}</span>
                       </TableCell>
-                      <TableCell>Mensagem {destino.variante}</TableCell>
+                      <TableCell>Mensagem {campanha.filtros.mensagem_teste ?? destino.variante}</TableCell>
                       <TableCell>{destino.atualizado_em ? dataHoraLocal(destino.atualizado_em) : "—"}</TableCell>
                       <TableCell>{STATUS_ENVIO[destino.status]}{destino.tentativas > 1 && <span className="text-xs text-muted-foreground"> · {destino.tentativas} tentativas</span>}</TableCell>
                       <TableCell className="max-w-56 whitespace-normal">
@@ -265,14 +261,10 @@ export function PainelCampanhas({ idInicial }: { idInicial: string | null }) {
               <summary className="font-semibold">Mensagens da campanha</summary>
               {campanha.mensagens.map((mensagem, i) => (
                 <div key={i} className="rounded-md border bg-background p-3">
-                  <h3 className="mb-1 text-sm font-medium">Mensagem {i + 1}</h3>
+                  <h3 className="mb-1 text-sm font-medium">Mensagem {campanha.filtros.mensagem_teste ?? i + 1}</h3>
                   <p className="whitespace-pre-wrap wrap-break-word text-sm">{mensagem}</p>
                 </div>
               ))}
-              {campanha.tem_imagem && (
-                // eslint-disable-next-line @next/next/no-img-element -- Imagem autenticada da campanha.
-                <img src={`${API_CAMPANHAS}/${id}/imagem`} loading="lazy" alt="Imagem da campanha" className="max-h-60 w-auto max-w-full rounded-md border object-contain" />
-              )}
             </details>
           </>}
         </div>

@@ -1,4 +1,4 @@
--- Rodar após schema.sql e a migração de Campanhas, somente em banco descartável.
+-- Rodar após schema.sql e as duas migrações de Campanhas, somente em banco descartável.
 begin;
 
 insert into public.leads(categoria, status, data_evento, whatsapp, qualificado_em, respostas)
@@ -26,6 +26,7 @@ declare
   autor uuid := 'b1000000-0000-4000-8000-000000000001';
   campanha uuid := 'b1000000-0000-4000-8000-000000000002';
   simulacao uuid := 'b1000000-0000-4000-8000-000000000003';
+  teste uuid := 'b1000000-0000-4000-8000-000000000005';
   r jsonb;
   job jsonb;
   novo jsonb;
@@ -41,6 +42,8 @@ begin
   assert r->>'cards' = '6' and r->>'aptos' = '3' and r->>'invalidos' = '1'
     and r->>'duplicados' = '1' and r->>'semConsentimento' = '1', r::text;
   assert public.campanha_whatsapp_publico(filtros || '{"status":"perdido"}', 'real', 0)->>'cards' = '0';
+  assert public.campanha_whatsapp_publico(filtros || '{"status":null,"excluirStatus":["perdido","enviado"]}', 'real', 0)->>'cards' = '0';
+  assert public.campanha_whatsapp_publico(filtros || '{"status":null,"excluirStatus":["perdido","esfriou"]}', 'real', 0)->>'cards' = '6';
   assert public.campanha_whatsapp_publico(filtros || '{"qualificado":false}', 'real', 0)->>'cards' = '1';
   assert public.campanha_whatsapp_publico(filtros, 'teste', 0)->>'aptos' = '1';
 
@@ -63,7 +66,7 @@ begin
   -- Retirar consentimento após a revisão exclui o número dos próximos envios.
   update public.campanha_whatsapp_consentimentos set autorizado=false where telefone='5519900000002';
   job := public.campanha_whatsapp_reivindicar(100, 10);
-  assert job is not null and job->>'telefone' <> '5519900000002';
+  assert job is not null and job->>'recipient' <> '5519900000002';
   assert public.campanha_whatsapp_reivindicar(100, 10) is null;
   primeiro_id := (job->>'id')::uuid;
   select variante into variante_original from public.campanha_whatsapp_destinatarios where id=primeiro_id;
@@ -80,7 +83,7 @@ begin
   update public.campanha_whatsapp_tentativas set iniciada_em=now()-interval '1 minute', finalizada_em=now()-interval '1 minute', retomar_em=null;
   assert public.campanha_whatsapp_reivindicar(1,10) is null, 'limite móvel de 24h';
   novo := public.campanha_whatsapp_reivindicar(100,10);
-  assert novo->>'id' = job->>'id' and novo->>'tentativa' = '2' and novo->'modelo' = job->'modelo';
+  assert novo->>'id' = job->>'id' and novo->>'tentativa' = '2' and novo->>'message' = job->>'message';
   select variante into variante_repetida from public.campanha_whatsapp_destinatarios where id=primeiro_id;
   assert variante_original = variante_repetida;
   assert not public.campanha_whatsapp_finalizar(primeiro_id,1,'enviado',null,'wamid.obsoleto',0);
@@ -108,11 +111,26 @@ begin
   assert public.campanha_whatsapp_iniciar(simulacao, autor, 'Só Henrique', 'simulacao', filtros,
     r->>'revisao', array['Única'], '[]', null, null) = 'criada';
   novo := public.campanha_whatsapp_reivindicar(0,10);
-  assert novo->>'modo' = 'simulacao' and novo->>'telefone' = '5519988763916';
+  assert novo->>'modo' = 'simulacao' and novo->>'recipient' = '5519988763916';
   assert public.campanha_whatsapp_finalizar((novo->>'id')::uuid,1,'simulado',null,null,0);
   c := public.campanha_whatsapp_progresso(simulacao,0)->0;
   assert c->>'status' = 'concluida' and c#>>'{contadores,simulados}' = '1'
     and c#>>'{contadores,enviados}' = '0' and c#>>'{historico,0,variante}' = '1', c::text;
+
+  -- Teste direto é independente de cards e usa exatamente a variação do cabeçalho.
+  assert public.campanha_whatsapp_iniciar_teste(teste, autor, 'Rascunho', '5519900000077', 'Mensagem escolhida', 2) = 'sem_consentimento';
+  assert public.campanha_whatsapp_iniciar_teste(teste, autor, 'Rascunho', '5519988763916', 'Mensagem escolhida', 2) = 'criada';
+  assert public.campanha_whatsapp_iniciar_teste(teste, autor, 'Rascunho', '5519988763916', 'Mensagem diferente', 1) = 'existente';
+  update public.campanha_whatsapp_tentativas set iniciada_em=now()-interval '1 minute', finalizada_em=now()-interval '1 minute';
+  assert public.campanha_whatsapp_reivindicar(0,10) is null;
+  job := public.campanha_whatsapp_reivindicar(100,10);
+  assert job->>'modo' = 'teste' and job->>'recipient' = '5519988763916' and job->>'message' = 'Mensagem escolhida';
+  primeiro_id := (job->>'id')::uuid;
+  assert (select lead_id is null from public.campanha_whatsapp_destinatarios where id=primeiro_id);
+  assert public.campanha_whatsapp_resultado_worker(primeiro_id,1,'enviado');
+  assert public.campanha_whatsapp_resultado_worker(primeiro_id,1,'enviado');
+  assert (select tentativas = 1 from public.campanha_whatsapp_destinatarios where id=primeiro_id);
+  assert public.campanha_whatsapp_progresso(teste,0)->0#>>'{filtros,mensagem_teste}' = '2';
 end;
 $$;
 

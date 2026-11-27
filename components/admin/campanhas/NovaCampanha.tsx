@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, ClipboardCheck, Megaphone, Plus, X } from "lucide-react";
+import { ArrowLeft, ChevronDown, ClipboardCheck, Megaphone, Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -11,19 +11,18 @@ import { CATEGORIAS, STATUS, type Categoria, type Status } from "@/lib/form/type
 import { ROTULO_STATUS, rotuloCategoria } from "@/lib/admin/rotulos";
 import { dataCurta } from "@/lib/pdf/formatadores";
 import {
-  chaveModeloCampanha, LIMITE_PAGINA_CAMPANHAS, MAX_IMAGEM_CAMPANHA,
-  type FiltrosCampanha, type ItemPublico, type ModeloCampanha, type ModoCampanha,
+  LIMITE_PAGINA_CAMPANHAS, type FiltrosCampanha, type ItemPublico,
   type OpcoesCampanha, type PublicoCampanha,
 } from "@/lib/campanhas/contrato";
 import { API_CAMPANHAS, consultarCampanhas, enviarJson, erroCampanha } from "./consulta";
 import { Campo, Paginacao, Selecao } from "./PartesCampanhas";
+import { TesteCampanha } from "./TesteCampanha";
 
 export const CHAVE_INICIO_CAMPANHA = "mel.campanha.inicio";
 
-const INICIAIS: FiltrosCampanha = { categoria: null, inicio: null, fim: null, status: null, excluirStatus: null, qualificado: null };
-const MODO: Record<ModoCampanha, string> = {
+const INICIAIS: FiltrosCampanha = { categoria: null, inicio: null, fim: null, status: null, excluirStatus: [], qualificado: null };
+const MODO = {
   simulacao: "Simulação sem envio · Henrique",
-  teste: "Envio de teste · Henrique",
   real: "Envio real · contatos autorizados",
 };
 const PUBLICO: Record<ItemPublico["resultado"], string> = {
@@ -40,49 +39,32 @@ export function NovaCampanha({ opcoes, sair, iniciada }: {
   opcoes: OpcoesCampanha; sair: () => void; iniciada: (id: string) => void;
 }) {
   const [nome, nomear] = useState("");
-  const [modo, definirModo] = useState<ModoCampanha>("simulacao");
+  const [modo, definirModo] = useState<keyof typeof MODO>("simulacao");
   const [filtros, definirFiltros] = useState(INICIAIS);
-  const [mensagens, definirMensagens] = useState([{ id: 0, texto: "", modelo: null as string | null }]);
+  const [mensagens, definirMensagens] = useState([{ id: 0, texto: "" }]);
   const ultimaVariacao = useRef(0);
-  const [imagem, definirImagem] = useState<File | null>(null);
-  const [previaImagem, mostrarImagem] = useState("");
   const [intervalo, definirIntervalo] = useState("");
   const [pagina, paginar] = useState(0);
   const [publico, mostrarPublico] = useState<{ chave: string; dados: PublicoCampanha }>();
   const [falhaPublico, mostrarFalhaPublico] = useState<{ chave: string; erro: string }>();
-  const [catalogo, mostrarCatalogo] = useState<ModeloCampanha[] | null>(null);
-  const [falhaCatalogo, mostrarFalhaCatalogo] = useState("");
   const [revisando, revisar] = useState(false);
   const [ocupado, ocupar] = useState(false);
   const [erro, mostrarErro] = useState("");
   const [recarregar, recarga] = useState(0);
   const idTentativa = useRef<string | null>(null);
   const iniciando = useRef(false);
-  const campoImagem = useRef<HTMLInputElement>(null);
 
   const consulta = JSON.stringify({ filtros, modo, pagina });
   const chave = `${recarregar}:${consulta}`;
   const publicoAtual = publico?.chave === chave ? publico.dados : null;
   const erroPublico = falhaPublico?.chave === chave ? falhaPublico.erro : "";
-  const preenchidas = mensagens.filter(({ texto }) => texto.trim());
-  const textos = preenchidas.map(({ texto }) => texto.trim());
+  const preenchidas = mensagens.map(({ id, texto }, i) => ({ id, texto: texto.trim(), numero: i + 1 }))
+    .filter(({ texto }) => texto);
+  const textos = preenchidas.map(({ texto }) => texto);
   const intervaloMin = intervalo === "" ? null : Number(intervalo);
   const intervaloValido = intervaloMin === null || Number.isInteger(intervaloMin) && intervaloMin >= 1 && intervaloMin <= 30;
-  const modelos = catalogo?.filter((modelo) => modelo.imagem === !!imagem) ?? [];
-  const usaProvedor = modo !== "simulacao" && opcoes.provedorConfigurado;
-  const podeIniciar = opcoes.workerAtivo && (modo === "simulacao" || opcoes.provedorConfigurado);
-  const mensagensValidas = !usaProvedor || preenchidas.every(({ texto, modelo }) => {
-    const candidatos = modelos.filter((m) => m.texto === texto.trim());
-    return modelo ? candidatos.some((m) => chaveModeloCampanha(m) === modelo) : candidatos.length === 1;
-  });
+  const podeIniciar = modo === "simulacao" ? opcoes.workerAtivo : opcoes.enviosAtivos;
   const aptos = publicoAtual?.aptos ?? 0;
-
-  useEffect(() => {
-    if (!imagem) return;
-    const url = URL.createObjectURL(imagem);
-    mostrarImagem(url);
-    return () => URL.revokeObjectURL(url);
-  }, [imagem]);
 
   useEffect(() => {
     const controle = new AbortController();
@@ -97,37 +79,20 @@ export function NovaCampanha({ opcoes, sair, iniciada }: {
     return () => { clearTimeout(atraso); controle.abort(); };
   }, [chave, consulta]);
 
-  useEffect(() => {
-    if (modo === "simulacao" || !opcoes.provedorConfigurado) return;
-    const controle = new AbortController();
-    consultarCampanhas<{ modelos: ModeloCampanha[] }>(`${API_CAMPANHAS}?modelos`, { signal: controle.signal })
-      .then(({ modelos }) => {
-        if (!controle.signal.aborted) { mostrarCatalogo(modelos); mostrarFalhaCatalogo(""); }
-      })
-      .catch((e) => {
-        if (!controle.signal.aborted) { mostrarCatalogo(null); mostrarFalhaCatalogo(erroCampanha(e)); }
-      });
-    return () => controle.abort();
-  }, [modo, opcoes.provedorConfigurado]);
-
   function mudarFiltro<K extends keyof FiltrosCampanha>(campo: K, valor: FiltrosCampanha[K]) {
     definirFiltros((atual) => ({ ...atual, [campo]: valor }));
     paginar(0);
   }
 
-  function mudarMensagem(id: number, texto: string, modelo: string | null = null) {
-    definirMensagens((atual) => atual.map((mensagem) => mensagem.id === id ? { ...mensagem, texto, modelo } : mensagem));
+  function mudarMensagem(id: number, texto: string) {
+    definirMensagens((atual) => atual.map((mensagem) => mensagem.id === id ? { ...mensagem, texto } : mensagem));
   }
 
-  function anexar(arquivo: File | undefined) {
-    if (!arquivo) return;
-    if (arquivo.size > MAX_IMAGEM_CAMPANHA || !["image/jpeg", "image/png"].includes(arquivo.type)) {
-      mostrarErro("Use uma imagem PNG ou JPEG de até 3 MB.");
-      if (campoImagem.current) campoImagem.current.value = "";
-      return;
-    }
-    mostrarErro("");
-    definirImagem(arquivo);
+  function excluirStatus(status: Status, excluir: boolean) {
+    definirFiltros((atual) => ({ ...atual, excluirStatus: excluir
+      ? [...atual.excluirStatus, status]
+      : atual.excluirStatus.filter((item) => item !== status) }));
+    paginar(0);
   }
 
   async function iniciar() {
@@ -139,13 +104,10 @@ export function NovaCampanha({ opcoes, sair, iniciada }: {
       try { idTentativa.current ??= sessionStorage.getItem(CHAVE_INICIO_CAMPANHA); } catch {}
       idTentativa.current ??= crypto.randomUUID();
       try { sessionStorage.setItem(CHAVE_INICIO_CAMPANHA, idTentativa.current); } catch {}
-      const body = new FormData();
-      body.set("campanha", JSON.stringify({
-        id: idTentativa.current, nome, modo, filtros, intervalo: intervaloMin, mensagens: textos,
-        modelosEscolhidos: preenchidas.map(({ modelo }) => modelo), revisao: publicoAtual.revisao,
+      const { id } = await consultarCampanhas<{ id: string }>(API_CAMPANHAS, enviarJson("POST", {
+        acao: "iniciar", id: idTentativa.current, nome, modo, filtros, intervalo: intervaloMin,
+        mensagens: textos, revisao: publicoAtual.revisao,
       }));
-      if (imagem) body.set("imagem", imagem);
-      const { id } = await consultarCampanhas<{ id: string }>(API_CAMPANHAS, { method: "POST", body });
       try { sessionStorage.removeItem(CHAVE_INICIO_CAMPANHA); } catch {}
       iniciada(id);
     } catch (e) {
@@ -158,8 +120,13 @@ export function NovaCampanha({ opcoes, sair, iniciada }: {
 
   return (
     <div className="space-y-5">
-      <Button variant="ghost" onClick={sair} disabled={ocupado}><ArrowLeft /> Campanhas</Button>
-      <h1 className="text-2xl font-semibold">{revisando ? "Revisar campanha" : "Nova campanha"}</h1>
+      <header className="flex flex-col items-start justify-between gap-3 lg:flex-row">
+        <div className="space-y-3">
+          <Button variant="ghost" onClick={sair} disabled={ocupado}><ArrowLeft /> Campanhas</Button>
+          <h1 className="text-2xl font-semibold">{revisando ? "Revisar campanha" : "Nova campanha"}</h1>
+        </div>
+        <TesteCampanha nome={nome} mensagens={preenchidas} ativo={opcoes.enviosAtivos} />
+      </header>
       <div className="grid min-w-0 items-start gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.85fr)]">
         <div className="space-y-5">
           <section className="space-y-4 rounded-md border bg-card p-4 sm:p-5">
@@ -172,17 +139,15 @@ export function NovaCampanha({ opcoes, sair, iniciada }: {
                   Cerca de {duracao(Math.max(0, aptos - 1) * Math.max((intervaloMin ?? 0) * 60, modo === "simulacao" ? 10 : opcoes.cadencia))}
                 </dd></div>
               </dl>
-              <p className="text-xs text-muted-foreground">Estimativa sem atrasos do worker nem limites adicionais do provedor.</p>
+              <p className="text-xs text-muted-foreground">Estimativa sem atrasos do worker nem o limite diário de envios.</p>
             </> : <>
               <Campo titulo="Nome da campanha"><Input value={nome} onChange={(e) => nomear(e.target.value)} maxLength={120} required /></Campo>
               <Campo titulo="Modo de envio">
-                <Selecao value={modo} onChange={(e) => { definirModo(e.target.value as ModoCampanha); paginar(0); }}>
+                <Selecao value={modo} onChange={(e) => { definirModo(e.target.value as keyof typeof MODO); paginar(0); }}>
                   <option value="simulacao">{MODO.simulacao}</option>
-                  <option value="teste">{MODO.teste}</option>
                   <option value="real">{MODO.real}</option>
                 </Selecao>
               </Campo>
-              {!opcoes.provedorConfigurado && <p className="text-xs text-muted-foreground">A prévia está disponível. Os envios de teste e reais exigem a configuração da API oficial do WhatsApp.</p>}
               <h2 className="pt-1 font-semibold">Filtros do Kanban</h2>
               <div className="grid gap-3 sm:grid-cols-2">
                 <Campo titulo="Tipo de festa">
@@ -204,70 +169,53 @@ export function NovaCampanha({ opcoes, sair, iniciada }: {
                     {STATUS.map((status) => <option key={status} value={status}>{ROTULO_STATUS[status]}</option>)}
                   </Selecao>
                 </Campo>
-                <Campo titulo="Status a excluir">
-                  <Selecao value={filtros.excluirStatus ?? ""} onChange={(e) => mudarFiltro("excluirStatus", (e.target.value || null) as Status | null)}>
-                    <option value="">Nenhum</option>
-                    {STATUS.map((status) => <option key={status} value={status}>{ROTULO_STATUS[status]}</option>)}
-                  </Selecao>
-                </Campo>
+                <fieldset className="grid min-w-0 gap-1.5 text-sm font-medium">
+                  <legend className="mb-1.5">Status a excluir</legend>
+                  <details className="relative min-w-0">
+                    <summary className="flex h-9 cursor-pointer list-none items-center justify-between gap-2 rounded-md border bg-background px-2">
+                      {!filtros.excluirStatus.length ? "Nenhum" : filtros.excluirStatus.length === 1
+                        ? ROTULO_STATUS[filtros.excluirStatus[0]] : `${filtros.excluirStatus.length} status excluídos`}
+                      <ChevronDown aria-hidden="true" className="size-4 shrink-0" />
+                    </summary>
+                    <div className="absolute z-10 mt-1 grid w-full gap-1 rounded-md border bg-popover p-1 shadow-md">
+                      {STATUS.map((status) => <label key={status} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 hover:bg-muted">
+                        <input type="checkbox" className="accent-primary" checked={filtros.excluirStatus.includes(status)}
+                          onChange={(e) => excluirStatus(status, e.target.checked)} />
+                        {ROTULO_STATUS[status]}
+                      </label>)}
+                    </div>
+                  </details>
+                </fieldset>
               </div>
               <p className="text-xs text-muted-foreground">O período usa a data do evento preenchida no formulário, incluindo as duas datas. Cards sem data ficam de fora.</p>
             </>}
           </section>
 
           <section className="space-y-4 rounded-md border bg-card p-4 sm:p-5">
-            <h2 className="font-semibold">Mensagens e imagem</h2>
+            <h2 className="font-semibold">Mensagens</h2>
             {revisando ? textos.map((texto, i) => (
               <div key={i} className="rounded-md border bg-background p-3">
                 <h3 className="mb-1 text-sm font-medium">Mensagem {i + 1}</h3>
                 <p className="whitespace-pre-wrap wrap-break-word text-sm">{texto}</p>
               </div>
             )) : <>
-              {usaProvedor && <p className="text-sm text-muted-foreground">
-                {falhaCatalogo || (!catalogo ? "Carregando modelos da Meta…" : modelos.length
-                  ? "Selecione um modelo aprovado ou use o texto exato dele."
-                  : "Nenhum modelo aprovado disponível para este formato. Confira a opção de imagem.")}
-              </p>}
-              {mensagens.map(({ id, texto, modelo: escolha }, i) => (
+              {mensagens.map(({ id, texto }, i) => (
                 <div key={id} className="grid gap-2">
                   <div className="flex items-center justify-between">
                     <label className="text-sm font-medium" htmlFor={`campanha-texto-${id}`}>Mensagem {i + 1}</label>
                     {mensagens.length > 1 && <Button variant="ghost" size="icon-sm" aria-label={`Remover mensagem ${i + 1}`}
                       onClick={() => definirMensagens((atual) => atual.filter((mensagem) => mensagem.id !== id))}><X /></Button>}
                   </div>
-                  {usaProvedor && modelos.length > 0 && <Selecao aria-label={`Modelo da mensagem ${i + 1}`}
-                    value={escolha ?? ""}
-                    onChange={(e) => {
-                      const modelo = modelos.find((m) => chaveModeloCampanha(m) === e.target.value);
-                      mudarMensagem(id, modelo?.texto ?? texto, modelo ? chaveModeloCampanha(modelo) : null);
-                    }}>
-                    <option value="">Escolher modelo aprovado</option>
-                    {modelos.map((modelo) => <option key={chaveModeloCampanha(modelo)} value={chaveModeloCampanha(modelo)}>{modelo.nome} ({modelo.idioma})</option>)}
-                  </Selecao>}
                   <Textarea id={`campanha-texto-${id}`} rows={3} value={texto} maxLength={1024}
                     onChange={(e) => mudarMensagem(id, e.target.value)} />
                 </div>
               ))}
               <Button variant="outline"
-                onClick={() => { const id = ++ultimaVariacao.current; definirMensagens((atual) => [...atual, { id, texto: "", modelo: null }]); }}>
+                onClick={() => { const id = ++ultimaVariacao.current; definirMensagens((atual) => [...atual, { id, texto: "" }]); }}>
                 <Plus /> Adicionar variação
               </Button>
               <p className="text-xs text-muted-foreground">Cada contato recebe uma das mensagens preenchidas, sorteada uma vez.</p>
-              {usaProvedor && textos.length > 0 && !mensagensValidas && !!catalogo &&
-                <p className="text-sm text-destructive">Confira o texto e o formato dos modelos aprovados.</p>}
             </>}
-            {imagem ? (
-              <div className="space-y-2">
-                {/* eslint-disable-next-line @next/next/no-img-element -- Prévia local de um arquivo escolhido no navegador. */}
-                {previaImagem && <img src={previaImagem} alt="Imagem anexada à campanha" className="max-h-60 w-auto max-w-full rounded-md border object-contain" />}
-                {!revisando && <Button variant="outline" onClick={() => { definirImagem(null); mostrarImagem(""); }}><X /> Remover imagem</Button>}
-              </div>
-            ) : revisando ? <p className="text-sm text-muted-foreground">Sem imagem anexada.</p> : (
-              <Campo titulo="Imagem opcional · PNG ou JPEG até 3 MB" htmlFor="campanha-imagem">
-                <Input id="campanha-imagem" type="file" accept="image/png,image/jpeg" ref={campoImagem}
-                  onChange={(e) => anexar(e.target.files?.[0])} />
-              </Campo>
-            )}
             {!revisando && <Campo titulo="Intervalo entre contatos em minutos (opcional)">
               <Input type="number" min={1} max={30} step={1} value={intervalo} placeholder="1 a 30" onChange={(e) => definirIntervalo(e.target.value)}
                 aria-invalid={!intervaloValido} />
@@ -313,15 +261,13 @@ export function NovaCampanha({ opcoes, sair, iniciada }: {
         </section>
       </div>
 
-      {revisando && modo !== "simulacao" && !opcoes.provedorConfigurado &&
-        <p className="text-sm text-muted-foreground">Configure a API oficial do WhatsApp para iniciar este envio.</p>}
-      {!opcoes.workerAtivo && <p className="text-sm text-muted-foreground">O worker está desativado. A prévia está disponível.</p>}
+      {!podeIniciar && <p className="text-sm text-muted-foreground">Os envios estão pausados. A prévia está disponível.</p>}
       {erro && <p role="alert" className="text-sm text-destructive">{erro}</p>}
       <div className="flex flex-wrap gap-2">
         {revisando ? <>
           <Button variant="outline" disabled={ocupado} onClick={() => { revisar(false); recarga((n) => n + 1); mostrarErro(""); }}>Editar campanha</Button>
           <Button disabled={ocupado || !podeIniciar || !aptos} onClick={iniciar}><Megaphone />{ocupado ? "Iniciando…" : "Iniciar campanha"}</Button>
-        </> : <Button disabled={!nome.trim() || !textos.length || !aptos || !intervaloValido || !mensagensValidas}
+        </> : <Button disabled={!nome.trim() || !textos.length || !aptos || !intervaloValido}
           onClick={() => { revisar(true); mostrarErro(""); window.scrollTo(0, 0); }}>
           <ClipboardCheck /> Revisar campanha
         </Button>}
