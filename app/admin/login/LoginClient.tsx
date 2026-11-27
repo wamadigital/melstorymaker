@@ -13,7 +13,7 @@ export function LoginClient() {
   // So caminho do proprio painel: `?proximo=https://...` levaria a Mel, ja
   // logada, para fora do site.
   const pedido = params.get("proximo");
-  const proximo = pedido?.startsWith("/admin") ? pedido : "/admin";
+  const proximo = (pedido?.startsWith("/admin") || pedido === "/campanhas") ? pedido : "/admin";
 
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
