@@ -229,6 +229,7 @@ class Ledger:
         self.db = sqlite3.connect(path)
         self.db.execute("CREATE TABLE IF NOT EXISTS jobs (id TEXT PRIMARY KEY, digest TEXT NOT NULL, state TEXT NOT NULL)")
         self.db.execute("CREATE TABLE IF NOT EXISTS pending_acks (id TEXT PRIMARY KEY, lease_token TEXT NOT NULL, outcome TEXT NOT NULL CHECK(outcome IN ('sent','indeterminate')))")
+        self.db.execute("CREATE TABLE IF NOT EXISTS campanha_acks (id TEXT NOT NULL, tentativa INTEGER NOT NULL, resultado TEXT NOT NULL, confirmado INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(id, tentativa))")
         self.db.commit()
 
     @staticmethod
@@ -272,6 +273,27 @@ class Ledger:
         with self.db:
             self.db.execute("DELETE FROM pending_acks WHERE id=? AND lease_token=? AND outcome=?", (ack["id"], ack["leaseToken"], ack["outcome"]))
 
+    def iniciar_campanha(self, job: dict, resultado: str) -> bool:
+        # Uma reserva repetida só reconcilia um recibo; nunca chama o conector.
+        with self.db:
+            cursor = self.db.execute("INSERT OR IGNORE INTO campanha_acks(id,tentativa,resultado) VALUES (?,?,?)",
+                                     (job["id"], job["tentativa"], resultado))
+            return cursor.rowcount == 1
+
+    def resultado_campanha(self, job: dict, resultado: str) -> None:
+        with self.db:
+            self.db.execute("UPDATE campanha_acks SET resultado=? WHERE id=? AND tentativa=?",
+                            (resultado, job["id"], job["tentativa"]))
+
+    def campanhas_pendentes(self) -> list[dict]:
+        return [{"id": id, "tentativa": tentativa, "resultado": resultado}
+                for id, tentativa, resultado in self.db.execute("SELECT id,tentativa,resultado FROM campanha_acks WHERE confirmado=0")]
+
+    def confirmar_campanha(self, ack: dict) -> None:
+        with self.db:
+            self.db.execute("UPDATE campanha_acks SET confirmado=1 WHERE id=? AND tentativa=? AND resultado=?",
+                            (ack["id"], ack["tentativa"], ack["resultado"]))
+
     def close(self) -> None:
         self.db.close()
 
@@ -294,9 +316,12 @@ class API:
             return response.json()
         return await asyncio.to_thread(request)
 
-    async def campanhas(self) -> bool:
-        result = await self.post("/api/integracoes/whatsapp/campanhas", {})
-        return result.get("ativo") is True
+    async def campanhas(self, conectado: bool) -> dict:
+        return await self.post("/api/integracoes/whatsapp/campanhas",
+                               {"acao": "reivindicar", "conectado": conectado})
+
+    async def confirmar_campanha(self, ack: dict) -> dict:
+        return await self.post("/api/integracoes/whatsapp/campanhas", {"acao": "resultado", **ack})
 
     async def claim(self) -> dict:
         self.poll_after_seconds = 60
@@ -636,14 +661,59 @@ async def iteration(api, mcp, ledger: Ledger) -> str:
     return "idle"
 
 
-async def executar_campanhas(token: str, once: bool) -> None:
+async def reconciliar_campanhas(api, ledger: Ledger) -> None:
+    for ack in ledger.campanhas_pendentes():
+        resposta = await api.confirmar_campanha(ack)
+        if type(resposta.get("confirmado")) is not bool:
+            raise ValueError("invalid_campaign_receipt")
+        ledger.confirmar_campanha(ack)
+
+
+async def rodada_campanhas(api, mcp, ledger: Ledger) -> bool:
+    await reconciliar_campanhas(api, ledger)
+    try:
+        ready = await mcp.ready()
+    except Exception:
+        ready = False
+    resposta = await api.campanhas(ready is True)
+    job = resposta.get("trabalho")
+    if job is None:
+        return resposta.get("ativo") is True
+    if not ready or not isinstance(job, dict) or job.get("modo") not in ("real", "teste"):
+        raise ValueError("invalid_campaign")
+    recipient, message = job.get("recipient"), job.get("message")
+    if (not valid_uuid(job.get("id")) or type(job.get("tentativa")) is not int or job["tentativa"] < 1
+            or not isinstance(recipient, str) or re.fullmatch(r"55[1-9][0-9]{9,10}", recipient) is None
+            or not isinstance(message, str) or not message.strip() or len(message) > 1024):
+        raise ValueError("invalid_campaign")
+    vigente = unexpired(job)
+    if ledger.iniciar_campanha(job, "indeterminado" if vigente else "expirado") and vigente:
+        # O mesmo MCP que envia os lembretes dá o aceite do WhatsApp.
+        # Qualquer incerteza após chamar o conector fica registrada sem reenvio.
+        if await mcp.send(job) is True:
+            ledger.resultado_campanha(job, "enviado")
+    await reconciliar_campanhas(api, ledger)
+    return resposta.get("ativo") is True
+
+
+def valid_uuid(value: object) -> bool:
+    if not isinstance(value, str):
+        return False
+    try:
+        return str(UUID(value)) == value
+    except ValueError:
+        return False
+
+
+async def executar_campanhas(token: str, once: bool, mcp, ledger: Ledger, envio_lock: asyncio.Lock) -> None:
     api = API(token)
     try:
         while True:
             intervalo = 60
             try:
-                if await api.campanhas():
-                    intervalo = 10
+                async with envio_lock:
+                    if await rodada_campanhas(api, mcp, ledger):
+                        intervalo = 10
             except Exception:
                 LOG.warning("Fila de campanhas indisponível")
             if once:
@@ -669,8 +739,7 @@ async def run(once: bool) -> None:
     api = API(token)
     ledger = Ledger(STATE / "worker-ledger.db")
     campanhas = None
-    if os.environ.get("MEL_WHATSAPP_CAMPANHAS") == "true":
-        campanhas = asyncio.create_task(executar_campanhas(token, once))
+    envio_lock = asyncio.Lock()
     params = StdioServerParameters(command="/bin/bash", args=[str(ROOT / "integrations/whatsapp-local/run-mcp.sh")], cwd=str(ROOT), env=os.environ.copy())
     try:
         # Mesmo um MCP indisponível no restart não bloqueia recibos já gravados.
@@ -682,9 +751,12 @@ async def run(once: bool) -> None:
                 if [tool.name for tool in tools.tools] != ["send_message"]:
                     raise RuntimeError("Ferramentas MCP divergem da instalação aprovada")
                 mcp = LocalMCP(session)
+                if os.environ.get("MEL_WHATSAPP_CAMPANHAS") == "true":
+                    campanhas = asyncio.create_task(executar_campanhas(token, once, mcp, ledger, envio_lock))
                 while True:
                     try:
-                        result = await iteration(api, mcp, ledger)
+                        async with envio_lock:
+                            result = await iteration(api, mcp, ledger)
                         if result == "inactive":
                             LOG.info("Automação desativada no sistema")
                         elif result != "idle":

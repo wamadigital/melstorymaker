@@ -1,7 +1,6 @@
 import { z } from "zod";
 import { CATEGORIAS, STATUS } from "@/lib/form/types";
 
-export const MAX_IMAGEM_CAMPANHA = 3_000_000;
 export const LIMITE_PAGINA_CAMPANHAS = 25;
 
 const modoSchema = z.enum(["simulacao", "teste", "real"]);
@@ -10,7 +9,7 @@ const filtrosSchema = z.object({
   fim: z.iso.date().nullable(),
   categoria: z.enum(CATEGORIAS).nullable(),
   status: z.enum(STATUS).nullable(),
-  excluirStatus: z.enum(STATUS).nullable(),
+  excluirStatus: z.array(z.enum(STATUS)).max(STATUS.length),
   qualificado: z.boolean().nullable(),
 }).refine((f) => !f.inicio || !f.fim || f.inicio <= f.fim, {
   message: "A data inicial deve ser anterior ou igual à final.",
@@ -25,10 +24,14 @@ export const iniciarCampanhaSchema = consultaPublicoSchema.omit({ pagina: true }
   nome: z.string().trim().min(1).max(120),
   revisao: z.string().regex(/^[0-9a-f]{32}$/),
   mensagens: z.array(z.string().trim().min(1).max(1024)).min(1),
-  modelosEscolhidos: z.array(z.string().max(200).nullable()),
   intervalo: z.number().int().min(1).max(30).nullable(),
-}).refine((c) => c.mensagens.length === c.modelosEscolhidos.length, {
-  message: "Confira os modelos de todas as variações.",
+});
+export const testeCampanhaSchema = z.object({
+  id: z.uuid(),
+  nome: z.string().trim().max(120),
+  telefone: z.string().trim().min(1).max(24).regex(/^[+0-9 ()-]+$/),
+  numero: z.number().int().min(1).max(2_147_483_647),
+  mensagem: z.string().trim().min(1).max(1024),
 });
 export const consentimentoCampanhaSchema = z.object({
   telefone: z.string().regex(/^55\d{10,11}$/),
@@ -84,7 +87,7 @@ export type Campanha = {
   proximo_em: string | null;
   intervalo_min: number | null;
   mensagens: string[];
-  tem_imagem: boolean;
+  filtros: { mensagem_teste?: number };
   contadores: {
     total: number;
     pendentes: number;
@@ -97,9 +100,4 @@ export type Campanha = {
   historico: DestinatarioCampanha[];
 };
 
-export type OpcoesCampanha = { workerAtivo: boolean; provedorConfigurado: boolean; cadencia: number };
-export type ModeloCampanha = { nome: string; idioma: string; texto: string; imagem: boolean };
-
-export function chaveModeloCampanha(modelo: ModeloCampanha) {
-  return `${modelo.nome}:${modelo.idioma}`;
-}
+export type OpcoesCampanha = { workerAtivo: boolean; enviosAtivos: boolean; cadencia: number };

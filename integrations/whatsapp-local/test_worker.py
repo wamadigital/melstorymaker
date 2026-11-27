@@ -1414,21 +1414,67 @@ class InitialProposalTests(unittest.TestCase):
 
 
 class CampanhaWorkerTest(unittest.IsolatedAsyncioTestCase):
-    async def test_rodada_de_campanhas_usa_rota_privada_propria(self):
-        api = worker.API("token-ficticio-so-para-testar-a-fila")
-        self.addCleanup(api.session.close)
-        api.post = AsyncMock(return_value={"ativo": True, "processado": False})
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.ledger = Ledger(Path(tmp.name) / "ledger.db")
+        self.addCleanup(self.ledger.close)
+        self.job = {
+            "id": "10000000-0000-4000-8000-000000000001", "tentativa": 1,
+            "modo": "teste", "recipient": "5519988763916", "message": "Texto de teste",
+            "expiresAt": (datetime.now(timezone.utc) + timedelta(minutes=1)).isoformat(),
+        }
+        self.api = SimpleNamespace(
+            campanhas=AsyncMock(return_value={"ativo": True, "trabalho": self.job}),
+            confirmar_campanha=AsyncMock(return_value={"confirmado": True}),
+            session=Mock(),
+        )
+        self.mcp = SimpleNamespace(ready=AsyncMock(return_value=True), send=AsyncMock(return_value=True))
 
-        self.assertTrue(await api.campanhas())
-        api.post.assert_awaited_once_with("/api/integracoes/whatsapp/campanhas", {})
-        self.assertEqual(api.poll_after_seconds, 60)
+    async def test_envia_pelo_mcp_existente_e_ignora_reserva_repetida(self):
+        self.assertTrue(await worker.rodada_campanhas(self.api, self.mcp, self.ledger))
+        self.assertTrue(await worker.rodada_campanhas(self.api, self.mcp, self.ledger))
+        self.mcp.send.assert_awaited_once_with(self.job)
+        self.api.confirmar_campanha.assert_awaited_once_with({
+            "id": self.job["id"], "tentativa": 1, "resultado": "enviado",
+        })
+
+    async def test_falha_no_ack_reenvia_apenas_o_recibo(self):
+        self.api.confirmar_campanha.side_effect = [ConnectionError(), {"confirmado": True}]
+        with self.assertRaises(ConnectionError):
+            await worker.rodada_campanhas(self.api, self.mcp, self.ledger)
+        self.assertTrue(await worker.rodada_campanhas(self.api, self.mcp, self.ledger))
+        self.mcp.send.assert_awaited_once_with(self.job)
+        self.assertEqual(self.api.confirmar_campanha.await_count, 2)
+
+    async def test_recusa_simples_do_conector_fica_indeterminada(self):
+        self.mcp.send.return_value = False
+        await worker.rodada_campanhas(self.api, self.mcp, self.ledger)
+        self.api.confirmar_campanha.assert_awaited_once_with({
+            "id": self.job["id"], "tentativa": 1, "resultado": "indeterminado",
+        })
+
+    async def test_rodada_offline_avisa_o_backend_sem_enviar(self):
+        self.mcp.ready.return_value = False
+        self.api.campanhas.return_value = {"ativo": True, "trabalho": None}
+        await worker.rodada_campanhas(self.api, self.mcp, self.ledger)
+        self.api.campanhas.assert_awaited_once_with(False)
+        self.mcp.send.assert_not_awaited()
+
+    async def test_reserva_expirada_permite_nova_tentativa_sem_enviar(self):
+        self.job["expiresAt"] = "2000-01-01T00:00:00Z"
+        await worker.rodada_campanhas(self.api, self.mcp, self.ledger)
+        self.mcp.send.assert_not_awaited()
+        self.api.confirmar_campanha.assert_awaited_once_with({
+            "id": self.job["id"], "tentativa": 1, "resultado": "expirado",
+        })
 
     async def test_modo_once_fecha_sessao_mesmo_se_a_fila_falhar(self):
-        api = SimpleNamespace(campanhas=AsyncMock(side_effect=ConnectionError), session=Mock())
-        with patch.object(worker, "API", return_value=api), self.assertLogs(worker.LOG, "WARNING"):
-            await worker.executar_campanhas("token-ficticio", once=True)
-        api.campanhas.assert_awaited_once()
-        api.session.close.assert_called_once()
+        self.api.campanhas.side_effect = ConnectionError()
+        with patch.object(worker, "API", return_value=self.api), self.assertLogs(worker.LOG, "WARNING"):
+            await worker.executar_campanhas("token-ficticio", True, self.mcp, self.ledger, asyncio.Lock())
+        self.api.campanhas.assert_awaited_once()
+        self.api.session.close.assert_called_once()
 
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSessaoAdmin } from "@/lib/supabase/server";
-import { configuracaoCampanhas } from "@/lib/campanhas/provedor";
+import { configuracaoCampanhas } from "@/lib/campanhas/config";
 import { rpcCampanhas } from "@/lib/campanhas/banco";
 import { acaoCampanhaSchema, paginaCampanhaSchema, type Campanha } from "@/lib/campanhas/contrato";
 
@@ -17,9 +17,9 @@ export async function GET(req: Request, { params }: Contexto) {
   const pagina = paginaCampanhaSchema.safeParse(new URL(req.url).searchParams.get("pagina") ?? 0);
   if (!z.uuid().safeParse(id).success || !pagina.success) return resposta({ erro: "Consulta inválida." }, 400);
   try {
-    const { opcoes, meta } = configuracaoCampanhas();
+    const { opcoes, limite } = configuracaoCampanhas();
     const [campanha] = await rpcCampanhas<Campanha[]>("campanha_whatsapp_progresso", {
-      p_id: id, p_pagina: pagina.data, p_limite: meta?.limite ?? 0, p_cadencia: opcoes.cadencia,
+      p_id: id, p_pagina: pagina.data, p_limite: limite, p_cadencia: opcoes.cadencia,
     });
     return campanha ? resposta({ campanha, opcoes }) : resposta({ erro: "Campanha não encontrada." }, 404);
   } catch {
