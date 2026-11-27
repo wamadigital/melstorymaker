@@ -139,7 +139,7 @@ export function NovaCampanha({ opcoes, sair, iniciada }: {
                   Cerca de {duracao(Math.max(0, aptos - 1) * Math.max((intervaloMin ?? 0) * 60, modo === "simulacao" ? 10 : opcoes.cadencia))}
                 </dd></div>
               </dl>
-              <p className="text-xs text-muted-foreground">Estimativa sem atrasos do worker nem o limite diário de envios.</p>
+              <p className="text-xs text-muted-foreground">Estimativa sem atrasos do worker.</p>
             </> : <>
               <Campo titulo="Nome da campanha"><Input value={nome} onChange={(e) => nomear(e.target.value)} maxLength={120} required /></Campo>
               <Campo titulo="Modo de envio">

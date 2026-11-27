@@ -1,4 +1,4 @@
--- Rodar após schema.sql e as duas migrações de Campanhas, somente em banco descartável.
+-- Rodar após schema.sql e as migrações de Campanhas, somente em banco descartável.
 begin;
 
 insert into public.leads(categoria, status, data_evento, whatsapp, qualificado_em, respostas)
@@ -81,8 +81,7 @@ begin
   -- Avançar os relógios do banco de teste sem esperar cinco minutos.
   update public.campanhas_whatsapp set proximo_em=now()-interval '1 minute' where id=campanha;
   update public.campanha_whatsapp_tentativas set iniciada_em=now()-interval '1 minute', finalizada_em=now()-interval '1 minute', retomar_em=null;
-  assert public.campanha_whatsapp_reivindicar(1,10) is null, 'limite móvel de 24h';
-  novo := public.campanha_whatsapp_reivindicar(100,10);
+  novo := public.campanha_whatsapp_reivindicar(1,10);
   assert novo->>'id' = job->>'id' and novo->>'tentativa' = '2' and novo->>'message' = job->>'message';
   select variante into variante_repetida from public.campanha_whatsapp_destinatarios where id=primeiro_id;
   assert variante_original = variante_repetida;
@@ -131,6 +130,51 @@ begin
   assert public.campanha_whatsapp_resultado_worker(primeiro_id,1,'enviado');
   assert (select tentativas = 1 from public.campanha_whatsapp_destinatarios where id=primeiro_id);
   assert public.campanha_whatsapp_progresso(teste,0)->0#>>'{filtros,mensagem_teste}' = '2';
+end;
+$$;
+
+-- Mais de 20 contatos são processados na mesma janela de 24 horas.
+-- Os relógios são ajustados apenas nos registros fictícios desta transação.
+do $$
+declare
+  autor uuid := 'b1000000-0000-4000-8000-000000000001';
+  campanha uuid := 'b1000000-0000-4000-8000-000000000006';
+  filtros jsonb := '{"inicio":"2029-03-01","fim":"2029-03-01","categoria":"corporativo"}';
+  publico jsonb;
+  job jsonb;
+  id_job uuid;
+  resumo jsonb;
+begin
+  insert into public.leads(categoria, status, data_evento, whatsapp)
+    select 'corporativo', 'enviado', '2029-03-01', '1191234'||lpad(n::text,4,'0')
+      from generate_series(1,25) n;
+  insert into public.campanha_whatsapp_consentimentos(telefone,autorizado,evidencia,registrado_por)
+    select '551191234'||lpad(n::text,4,'0'), true, 'fixture de cadência', autor from generate_series(1,25) n;
+  publico := public.campanha_whatsapp_publico(filtros,'real',0);
+  assert publico->>'aptos' = '25';
+  assert public.campanha_whatsapp_iniciar(campanha,autor,'Mais de 20','real',filtros,publico->>'revisao',
+    array['Conteúdo fictício'],'[]',null,2) = 'criada';
+
+  update public.campanha_whatsapp_tentativas set finalizada_em=now()-interval '3 minutes', retomar_em=null;
+  for n in 1..25 loop
+    job := public.campanha_whatsapp_reivindicar(1,60);
+    assert job is not null and job->>'modo' = 'real' and job->>'tentativa' = '1', 'Falhou no contato '||n;
+    id_job := (job->>'id')::uuid;
+    assert public.campanha_whatsapp_resultado_worker(id_job,1,'enviado');
+    if n < 25 then
+      -- Um relógio vencido da campanha ainda respeita a cadência do disparador.
+      update public.campanhas_whatsapp set proximo_em=now()-interval '1 second' where id=campanha;
+      assert public.campanha_whatsapp_reivindicar(1,60) is null;
+
+      -- Uma cadência vencida ainda respeita os 2 minutos da campanha.
+      update public.campanha_whatsapp_tentativas set finalizada_em=now()-interval '70 seconds' where destinatario_id=id_job;
+      update public.campanhas_whatsapp set proximo_em=now()+interval '50 seconds' where id=campanha;
+      assert public.campanha_whatsapp_reivindicar(1,60) is null;
+      update public.campanhas_whatsapp set proximo_em=now()-interval '1 second' where id=campanha;
+    end if;
+  end loop;
+  resumo := public.campanha_whatsapp_progresso(campanha,0,1,60)->0;
+  assert resumo->>'status'='concluida' and resumo#>>'{contadores,enviados}'='25', resumo::text;
 end;
 $$;
 

@@ -25,7 +25,7 @@ export async function POST(req: Request) {
   const parsed = protocolo.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ ativo: false }, { headers });
   const dados = parsed.data;
-  const { opcoes, limite } = configuracaoCampanhas();
+  const opcoes = configuracaoCampanhas();
   try {
     if (dados.acao === "resultado") {
       const confirmado = await rpcCampanhas<boolean>("campanha_whatsapp_resultado_worker", {
@@ -35,7 +35,7 @@ export async function POST(req: Request) {
     }
     if (!opcoes.workerAtivo) return NextResponse.json({ ativo: false }, { headers });
     const trabalho = await rpcCampanhas<Trabalho | null>("campanha_whatsapp_reivindicar", {
-      p_limite: dados.conectado ? limite : 0, p_cadencia: opcoes.cadencia,
+      p_limite: Number(dados.conectado && opcoes.enviosAtivos), p_cadencia: opcoes.cadencia,
     });
     if (trabalho?.modo === "simulacao") {
       await rpcCampanhas<boolean>("campanha_whatsapp_finalizar", {

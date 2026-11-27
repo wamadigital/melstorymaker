@@ -3,13 +3,11 @@ import { test } from "node:test";
 import { configuracaoCampanhas } from "./config";
 import { consultaPublicoSchema, testeCampanhaSchema } from "./contrato";
 
-test("o worker existente habilita envios sem credenciais adicionais e respeita a pausa pelo limite", () => {
+test("a fila depende do worker e mantém a cadência do disparador", () => {
   const ambiente = { WHATSAPP_CAMPANHAS_WORKER_ATIVO: "true", WHATSAPP_WORKER_TOKEN: "x".repeat(32) };
-  assert.deepEqual(configuracaoCampanhas(ambiente), {
-    opcoes: { workerAtivo: true, enviosAtivos: true, cadencia: 60 }, limite: 20,
-  });
-  assert.equal(configuracaoCampanhas({ ...ambiente, WHATSAPP_CAMPANHAS_LIMITE_24H: "0" }).opcoes.enviosAtivos, false);
-  assert.equal(configuracaoCampanhas({ ...ambiente, WHATSAPP_WORKER_TOKEN: "" }).opcoes.workerAtivo, false);
+  assert.deepEqual(configuracaoCampanhas(ambiente), { workerAtivo: true, enviosAtivos: true, cadencia: 60 });
+  assert.equal(configuracaoCampanhas({ ...ambiente, WHATSAPP_CAMPANHAS_CADENCIA_SEGUNDOS: "90" }).cadencia, 90);
+  assert.equal(configuracaoCampanhas({ ...ambiente, WHATSAPP_WORKER_TOKEN: "" }).enviosAtivos, false);
 });
 
 test("a prévia aceita vários status de exclusão e rejeita valores fora do Kanban", () => {
