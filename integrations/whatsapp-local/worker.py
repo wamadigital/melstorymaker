@@ -288,11 +288,15 @@ class API:
 
     async def post(self, path: str, body: dict) -> dict:
         def request():
-            timeout = 55 if path.endswith("/reivindicar") else 20
+            timeout = 55 if path.endswith(("/reivindicar", "/campanhas")) else 20
             response = self.session.post(ORIGIN + path, json=body, timeout=(5, timeout), allow_redirects=False)
             response.raise_for_status()
             return response.json()
         return await asyncio.to_thread(request)
+
+    async def campanhas(self) -> bool:
+        result = await self.post("/api/integracoes/whatsapp/campanhas", {})
+        return result.get("ativo") is True
 
     async def claim(self) -> dict:
         self.poll_after_seconds = 60
@@ -632,6 +636,23 @@ async def iteration(api, mcp, ledger: Ledger) -> str:
     return "idle"
 
 
+async def executar_campanhas(token: str, once: bool) -> None:
+    api = API(token)
+    try:
+        while True:
+            intervalo = 60
+            try:
+                if await api.campanhas():
+                    intervalo = 10
+            except Exception:
+                LOG.warning("Fila de campanhas indisponível")
+            if once:
+                return
+            await asyncio.sleep(intervalo)
+    finally:
+        api.session.close()
+
+
 async def run(once: bool) -> None:
     config = json.loads((STATE / "worker-config.json").read_text())
     if config.get("enabled") is not True:
@@ -647,6 +668,9 @@ async def run(once: bool) -> None:
     token = (STATE / "worker-token").read_text().strip()
     api = API(token)
     ledger = Ledger(STATE / "worker-ledger.db")
+    campanhas = None
+    if os.environ.get("MEL_WHATSAPP_CAMPANHAS") == "true":
+        campanhas = asyncio.create_task(executar_campanhas(token, once))
     params = StdioServerParameters(command="/bin/bash", args=[str(ROOT / "integrations/whatsapp-local/run-mcp.sh")], cwd=str(ROOT), env=os.environ.copy())
     try:
         # Mesmo um MCP indisponível no restart não bloqueia recibos já gravados.
@@ -669,9 +693,14 @@ async def run(once: bool) -> None:
                         # Nunca escrever resposta/telefone/texto/token nos logs.
                         LOG.warning("Fila indisponível ou resultado pendente de reconciliação")
                     if once:
+                        if campanhas:
+                            await campanhas
                         break
                     await asyncio.sleep(getattr(api, "poll_after_seconds", 60))
     finally:
+        if campanhas and not campanhas.done():
+            campanhas.cancel()
+            await asyncio.gather(campanhas, return_exceptions=True)
         ledger.close()
         api.session.close()
         lock_file.close()

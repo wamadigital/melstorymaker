@@ -36,7 +36,7 @@ export function protocoloWorker(req: Request): ProtocoloWorker {
   return valor === "6" ? 6 : valor === "5" ? 5 : valor === "4" ? 4 : valor === "3" ? 3 : valor === "2" ? 2 : 1;
 }
 
-function autenticar(req: Request, ambiente: AmbienteWhatsApp): Response | null {
+export function autenticarWorker(req: Request, ambiente: AmbienteWhatsApp): Response | null {
   const token = ambiente.WHATSAPP_WORKER_TOKEN;
   if (!token || token.length < 32) return resposta({ erro: "Worker nao configurado" }, 503);
   const recebido = req.headers.get("authorization") ?? "";
@@ -48,7 +48,7 @@ function autenticar(req: Request, ambiente: AmbienteWhatsApp): Response | null {
 }
 
 export async function tratarReivindicacao(req: Request, deps = reais()): Promise<Response> {
-  const recusa = autenticar(req, deps.ambiente);
+  const recusa = autenticarWorker(req, deps.ambiente);
   if (recusa) return recusa;
   // Manutenção do CRM independe das flags de mensagens. Só roda depois da
   // autenticação; nenhuma fila é reivindicada se o encerramento falhar.
@@ -86,7 +86,7 @@ export async function tratarReivindicacao(req: Request, deps = reais()): Promise
 export async function tratarResultado(
   req: Request, id: string, deps = reais(),
 ): Promise<Response> {
-  const recusa = autenticar(req, deps.ambiente);
+  const recusa = autenticarWorker(req, deps.ambiente);
   if (recusa) return recusa;
   if (!uuid.safeParse(id).success) return resposta({ erro: "Job invalido" }, 400);
   let corpo: unknown;

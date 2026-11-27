@@ -8,7 +8,7 @@ from pathlib import Path
 import tempfile
 from types import SimpleNamespace
 import unittest
-from unittest.mock import patch, AsyncMock
+from unittest.mock import patch, AsyncMock, Mock
 
 import worker
 from worker import Ledger, iteration, process
@@ -1411,6 +1411,24 @@ class InitialProposalTests(unittest.TestCase):
             api, mcp = FakeAPI(), FakeMCP()
             self.assertEqual(asyncio.run(process(api, mcp, self.ledger, job)), "invalid_job")
             self.assertEqual(mcp.calls, 0)
+
+
+class CampanhaWorkerTest(unittest.IsolatedAsyncioTestCase):
+    async def test_rodada_de_campanhas_usa_rota_privada_propria(self):
+        api = worker.API("token-ficticio-so-para-testar-a-fila")
+        self.addCleanup(api.session.close)
+        api.post = AsyncMock(return_value={"ativo": True, "processado": False})
+
+        self.assertTrue(await api.campanhas())
+        api.post.assert_awaited_once_with("/api/integracoes/whatsapp/campanhas", {})
+        self.assertEqual(api.poll_after_seconds, 60)
+
+    async def test_modo_once_fecha_sessao_mesmo_se_a_fila_falhar(self):
+        api = SimpleNamespace(campanhas=AsyncMock(side_effect=ConnectionError), session=Mock())
+        with patch.object(worker, "API", return_value=api), self.assertLogs(worker.LOG, "WARNING"):
+            await worker.executar_campanhas("token-ficticio", once=True)
+        api.campanhas.assert_awaited_once()
+        api.session.close.assert_called_once()
 
 
 if __name__ == "__main__":

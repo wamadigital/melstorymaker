@@ -24,6 +24,7 @@ import { CaixaMarcacao } from "@/components/form/CaixaMarcacao";
 import { EntradaData } from "@/components/form/EntradaData";
 import { PreviaProposta } from "@/components/admin/PreviaProposta";
 import { SecaoContrato } from "@/components/admin/contrato/SecaoContrato";
+import { ConsentimentoCampanhas } from "@/components/admin/campanhas/ConsentimentoCampanhas";
 import { QualificacaoLead } from "@/components/admin/QualificacaoLead";
 import { NavegacaoLeads, type NavegacaoNoDetalhe } from "@/components/admin/NavegacaoLeads";
 import { CLASSE_STATUS, ROTULO_STATUS, rotuloCategoria } from "@/lib/admin/rotulos";
@@ -328,6 +329,8 @@ export function DetalheLead({
         ocupado={acao !== null || contratoOcupado}
         onOcupado={(ocupado) => setAcao(ocupado ? "qualificar" : null)}
       />
+
+      <ConsentimentoCampanhas leadId={lead.id} />
 
       {aviso && (
         <p
