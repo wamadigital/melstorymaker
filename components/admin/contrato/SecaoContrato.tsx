@@ -131,7 +131,7 @@ type Acao =
   | "cancelar"
   | "mover";
 
-type Lugar = "quem" | "dados" | "texto" | "pdf" | "assinatura";
+type Lugar = "quem" | "dados" | "rascunho" | "texto" | "pdf" | "assinatura";
 
 /** `clausula`: o recado e daquela clausula do texto (salvar, remover), e aparece nela. */
 type RecadoSecao = { lugar: Lugar; clausula?: string; tom: TomRecado; texto: string; lista?: string[] };
@@ -498,14 +498,35 @@ function SecaoCarregada({
   }
 
   // ---------------------------------------------------------------- acoes
-  function salvarRascunho() {
-    void executar("salvar", "dados", async () => {
+  function salvarRascunho(lugar: "rascunho" | "dados") {
+    void executar("salvar", lugar, async () => {
       const enviados = dados;
       const r = await chamar<{ registro: RegistroContrato }>(base, "PUT", { dados: enviados });
-      if (!r.ok) return falhou("dados", r);
+      if (!r.ok) return falhou(lugar, r);
+      if (!r.json.registro || !dadosDoRegistro(r.json.registro.dados)) {
+        setRecado({ lugar, tom: "erro", texto: "Não consegui confirmar o salvamento. Tente de novo." });
+        return;
+      }
       aplicarRegistro(r.json.registro, enviados);
-      setRecado({ lugar: "dados", tom: "ok", texto: "Rascunho salvo." });
+      router.refresh();
+      setRecado({ lugar, tom: "ok", texto: "Rascunho salvo. Reabra este lead para continuar mais tarde." });
     });
+  }
+
+  function botaoRascunho(lugar: "rascunho" | "dados") {
+    return (
+      <Button
+        type="button"
+        variant="outline"
+        size="lg"
+        className={lugar === "rascunho" ? "ml-auto h-11" : undefined}
+        onClick={() => salvarRascunho(lugar)}
+        disabled={acao !== null || (!!registro && !sujo)}
+      >
+        {acao === "salvar" ? <Loader2 className="animate-spin" /> : <Save />}
+        Salvar rascunho
+      </Button>
+    );
   }
 
   async function extrair(texto: string): Promise<boolean> {
@@ -967,7 +988,9 @@ function SecaoCarregada({
         ) : (
           <span className="text-xs text-muted-foreground">ainda não salvo</span>
         )}
+        {!travado && botaoRascunho("rascunho")}
       </header>
+      {recadoEm("rascunho")}
 
       {travado && (
         <Recado tom="info">
@@ -1047,16 +1070,7 @@ function SecaoCarregada({
           )}
 
           <div className="flex flex-wrap items-center gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="lg"
-              onClick={salvarRascunho}
-              disabled={acao !== null || (!!registro && !sujo)}
-            >
-              {acao === "salvar" ? <Loader2 className="animate-spin" /> : <Save />}
-              Salvar rascunho
-            </Button>
+            {botaoRascunho("dados")}
             <Button type="button" size="lg" onClick={gerarTexto} disabled={acao !== null || editandoClausula}>
               {acao === "redigir" || acao === "revisar" ? <Loader2 className="animate-spin" /> : <FileText />}
               {documento ? "Gerar o texto de novo" : "Gerar texto do contrato"}

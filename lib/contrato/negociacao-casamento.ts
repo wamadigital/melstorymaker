@@ -154,9 +154,6 @@ export function resolverNegociacaoCasamento(
   }
   const opcao = opcaoCasamentoSelecionada(dados);
   if (!opcao) throw new ErroNegociacaoCasamento("Escolha a Opção 1 ou a Opção 2 do casamento.");
-  if (condicoesNegociadasCasamento(dados).length > 38) {
-    throw new ErroNegociacaoCasamento("Use no máximo 38 parágrafos nas condições negociadas da opção selecionada.");
-  }
   const servico = efetivo(negociacao, opcao);
   if (!iguais(dados.servico, servico)) {
     throw new ErroNegociacaoCasamento("O serviço do contrato diverge da opção de casamento selecionada. Selecione a opção novamente.");

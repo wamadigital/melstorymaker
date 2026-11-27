@@ -617,6 +617,24 @@ async function registrarTestes() {
 
   // ------------------------------------------------------ UI-08 e ensaio --
 
+  test("o contrato reaberto usa a data e o horário em branco do rascunho, mesmo com valores no lead", () => {
+    const reg = registro("rascunho");
+    reg.dados.evento.data = "";
+    reg.dados.evento.horarioInicio = "";
+    reg.dados.observacoes = "Observação pendente de um rascunho fictício.";
+    const markup = comRoteador(h(SecaoContrato, { lead: LEAD_CASAMENTO, registro: reg, ...FLAGS }));
+    for (const id of [ID.evData, ID.evHorario]) {
+      const input = markup.match(new RegExp(`<input[^>]*id="${id}"[^>]*>`))?.[0];
+      assert.match(input ?? "", /\bvalue=""/);
+    }
+    assert.match(markup, /Observação pendente de um rascunho fictício/);
+    for (const nome of ["data do evento", "início da cobertura"]) {
+      const botao = markup.match(new RegExp(`<button[^>]*aria-label="A definir \\(${nome}\\)"[^>]*>`))?.[0];
+      assert.match(botao ?? "", /aria-pressed="true"/);
+    }
+    assert.match(markup.slice(markup.indexOf("<header"), markup.indexOf("</header>")), /Salvar rascunho/);
+  });
+
   test("local do making of e textarea, como os locais do evento", () => {
     const d = dadosCasamento();
     const markup = html(
@@ -753,8 +771,9 @@ async function registrarTestes() {
     for (const id of [ID.blocoQuem, ID.blocoEvento, ID.blocoServico, ID.blocoPagamento]) {
       assert.ok(detalhes.includes(`id="${id}"`), `o bloco ${id} esta dentro dele`);
     }
-    // Os botoes de salvar e gerar continuam fora, a vista.
-    assert.ok(markup.indexOf("Salvar rascunho") > i + detalhes.length);
+    // Salvar fica a vista antes e depois dos campos recolhidos.
+    assert.ok(markup.indexOf("Salvar rascunho") < i);
+    assert.ok(markup.lastIndexOf("Salvar rascunho") > i + detalhes.length);
 
     const semPdf = comRoteador(h(SecaoContrato, { lead: LEAD_CASAMENTO, registro: registro("redigido"), ...FLAGS }));
     assert.ok(!semPdf.includes("Ver e editar os dados do contrato"), "antes do PDF o formulario fica aberto");

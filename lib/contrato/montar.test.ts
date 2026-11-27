@@ -807,8 +807,6 @@ test("dados vazios: a montagem recusa com a lista humana do que falta", () => {
     "E-mail de quem assina",
     "Endereço de quem assina: logradouro (rua, avenida...)",
     "Vínculo de quem assina com a pessoa homenageada (mãe, pai, responsável legal)",
-    "Data do evento",
-    "Início da cobertura do evento",
     "Nome da debutante",
     "Local do evento",
     "Pacote",
@@ -822,6 +820,21 @@ test("dados vazios: a montagem recusa com a lista humana do que falta", () => {
     () => montarContrato(dados, ctx),
     (e: unknown) => e instanceof CamposFaltandoContratoError && e.campos.length === campos.length && !e.message.includes("CPF"),
   );
+});
+
+test("data e início da cobertura em branco permitem montar o contrato como A DEFINIR", () => {
+  const dados = dadosDe("casamento", "Pacote Principal", { evento: { data: "", horarioInicio: "" } });
+  const ctx = contextoDe("casamento");
+
+  assert.deepEqual(faltantes(dados, ctx), []);
+  const { documento } = montarContrato(dados, ctx);
+  const clausulaLocal = documento.clausulas.find((clausula) => clausula.id === "local");
+  assert.ok(clausulaLocal?.paragrafos.includes("Data do evento: A DEFINIR;"));
+  assert.ok(clausulaLocal?.paragrafos.includes("Início da cobertura do evento: A DEFINIR;"));
+  assert.match(textoCorrido(documento), /até 10 \(dez\) dias antes da data do evento/);
+
+  dados.evento.data = "2027-02-30";
+  assert.ok(faltantes(dados, ctx).includes("Data do evento (a data não é válida)"));
 });
 
 test("CPF com digito errado, e-mail malformado, data passada e UF invalida sao recusados", () => {

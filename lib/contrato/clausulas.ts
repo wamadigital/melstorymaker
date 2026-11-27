@@ -541,8 +541,8 @@ export function clausulaLocal(b: BaseRedacao): Clausula {
   const ev = b.dados.evento;
   const e = b.escopo;
   const linhas: string[] = [
-    `Data do evento: ${dataPorExtenso(ev.data)}`,
-    `Início da cobertura do evento: ${horaBr(ev.horarioInicio)}`,
+    `Data do evento: ${dataPorExtenso(ev.data) || "A DEFINIR"}`,
+    `Início da cobertura do evento: ${horaBr(ev.horarioInicio) || "A DEFINIR"}`,
   ];
 
   for (const l of ev.locais) {
