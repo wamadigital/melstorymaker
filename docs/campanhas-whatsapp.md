@@ -9,7 +9,7 @@ A campanha congela o público e sorteia uma mensagem de texto por telefone ao cl
 1. Aplique as [migrações de Campanhas](../supabase/migrations/) no Supabase, na ordem dos arquivos e após o [schema base](../supabase/schema.sql).
 2. Publique a aplicação na Vercel com `WHATSAPP_CAMPANHAS_WORKER_ATIVO=true` e preserve o `WHATSAPP_WORKER_TOKEN` compartilhado.
 3. Publique o worker atualizado no serviço WhatsApp da Railway com `MEL_WHATSAPP_CAMPANHAS=true`. O mesmo conector e a mesma sessão atendem às campanhas e aos lembretes.
-4. A fila de campanhas usa por padrão até 20 tentativas nas últimas 24 horas, com pelo menos 60 segundos entre tentativas. Ajuste `WHATSAPP_CAMPANHAS_LIMITE_24H` e `WHATSAPP_CAMPANHAS_CADENCIA_SEGUNDOS` no servidor. O intervalo escolhido na campanha pode ampliar a cadência. Resultado indeterminado fica no histórico e não gera reenvio automático.
+4. A fila processa todos os destinatários elegíveis sem teto diário. A cadência mínima do disparador é de 60 segundos por padrão e pode ser ajustada via `WHATSAPP_CAMPANHAS_CADENCIA_SEGUNDOS`. O intervalo escolhido na campanha é respeitado junto com essa cadência. Resultado indeterminado fica no histórico e não gera reenvio automático.
 5. Registre a autorização explícita por telefone no detalhe do card em **Gerenciar consentimento**. Use **Registrar descadastro** para suspender futuros envios àquele número.
 
 ## Testar antes de iniciar

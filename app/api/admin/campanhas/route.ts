@@ -17,12 +17,12 @@ const resposta = (corpo: object, status = 200) => NextResponse.json(corpo, {
 export async function GET(req: Request) {
   if (!await getSessaoAdmin()) return resposta({ erro: "Sessão expirada." }, 401);
   const params = new URL(req.url).searchParams;
-  const { opcoes, limite } = configuracaoCampanhas();
+  const opcoes = configuracaoCampanhas();
   const pagina = paginaCampanhaSchema.safeParse(params.get("pagina") ?? 0);
   if (!pagina.success) return resposta({ erro: "Página inválida." }, 400);
   try {
     const campanhas = await rpcCampanhas<Campanha[]>("campanha_whatsapp_progresso", {
-      p_id: null, p_pagina: pagina.data, p_limite: limite, p_cadencia: opcoes.cadencia,
+      p_id: null, p_pagina: pagina.data, p_limite: Number(opcoes.enviosAtivos), p_cadencia: opcoes.cadencia,
     });
     return resposta({
       campanhas: campanhas.slice(0, LIMITE_PAGINA_CAMPANHAS),
@@ -38,7 +38,7 @@ export async function POST(req: Request) {
   const admin = await getSessaoAdmin();
   if (!admin) return resposta({ erro: "Sessão expirada." }, 401);
   const dados = await req.json().catch(() => null);
-  const { opcoes } = configuracaoCampanhas();
+  const opcoes = configuracaoCampanhas();
   if (dados?.acao === "teste") {
     const teste = testeCampanhaSchema.safeParse(dados);
     if (!teste.success) return resposta({ erro: "Informe o telefone e a mensagem do teste." }, 422);
